@@ -1,0 +1,30 @@
+[project]
+name = "pai"
+version = "0.1.0"
+description = "A minimal coding agent harness, built from scratch in Python. Architecture informed by reading pi and Claude Code source."
+requires-python = ">=3.10"
+dependencies = [
+    "openai>=1.40",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+pai = "pai.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "llm: 需要真实 LLM API key 的测试（无 key 自动跳过）",
+]

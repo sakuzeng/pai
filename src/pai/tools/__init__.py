@@ -1,0 +1,78 @@
+"""工具系统：@tool 装饰器从函数签名生成 schema 并注册（schema 与代码同源）。
+
+从 mini-pi 移植，两点变化：
+- REGISTRY 收进模块而非散在脚本顶层，get_tools() 支持子集选取（为子 agent 的受限工具集留口）
+- Tool.run() 统一"异常转字符串结果"，loop 不再自己 try/except
+"""
+
+from __future__ import annotations
+
+import inspect
+from dataclasses import dataclass
+from typing import Annotated, Callable, get_args, get_origin, get_type_hints
+
+PY_TO_JSON = {str: "string", int: "integer", float: "number", bool: "boolean"}
+
+REGISTRY: dict[str, "Tool"] = {}
+
+
+@dataclass
+class Tool:
+    name: str
+    description: str
+    parameters: dict
+    func: Callable
+
+    def schema(self) -> dict:
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "description": self.description,
+                "parameters": self.parameters,
+            },
+        }
+
+    def run(self, **kwargs) -> str:
+        # 工具错误必须变成给模型的反馈而不是异常（AGENTS.md 架构约束）
+        try:
+            return self.func(**kwargs)
+        except Exception as e:  # noqa: BLE001 - 工具边界是异常的最终防线
+            return f"错误：{type(e).__name__}: {e}"
+
+
+def tool(func: Callable) -> Callable:
+    """从签名/Annotated 注解/docstring 首行生成 JSON Schema 并注册。"""
+    hints = get_type_hints(func, include_extras=True)
+    sig = inspect.signature(func)
+
+    properties: dict[str, dict] = {}
+    required: list[str] = []
+    for pname, param in sig.parameters.items():
+        hint = hints.get(pname, str)
+        desc = ""
+        typ = hint
+        if get_origin(hint) is Annotated:
+            typ, *meta = get_args(hint)
+            desc = meta[0] if meta else ""
+        properties[pname] = {"type": PY_TO_JSON.get(typ, "string"), "description": desc}
+        if param.default is inspect.Parameter.empty:
+            required.append(pname)
+
+    t = Tool(
+        name=func.__name__,
+        description=(func.__doc__ or "").strip().splitlines()[0],
+        parameters={"type": "object", "properties": properties, "required": required},
+        func=func,
+    )
+    REGISTRY[t.name] = t
+    return func
+
+
+def get_tools(names: list[str] | None = None) -> dict[str, Tool]:
+    """默认全量；传 names 取子集（未来子 agent 的受限工具集用）。"""
+    from pai.tools import fs, shell  # noqa: F401 - import 即注册
+
+    if names is None:
+        return dict(REGISTRY)
+    return {n: REGISTRY[n] for n in names}
