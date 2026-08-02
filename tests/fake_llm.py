@@ -3,6 +3,7 @@
 用法：FakeClient([turn1, turn2, ...])，每个 turn 是脚本化的一次模型回复：
 - {"tool_calls": [("bash", '{"command": "ls"}')]} 表示模型发起工具调用
 - {"content": "done"} 表示模型给出最终文本
+- {"usage": {...}} 可选，模拟 provider 回传的用量；不写则该轮无 usage（真实 API 也可能不回）
 FakeClient 会记录每次收到的 messages / tools，供断言。
 """
 
@@ -21,7 +22,9 @@ def _make_response(turn: dict, call_id_counter) -> SimpleNamespace:
             for name, args in turn["tool_calls"]
         ]
     msg = SimpleNamespace(content=turn.get("content"), tool_calls=tool_calls)
-    return SimpleNamespace(choices=[SimpleNamespace(message=msg)])
+    # 真实 SDK 回的是 pydantic 对象，字段以属性暴露；这里用 SimpleNamespace 同构模拟
+    usage = SimpleNamespace(**turn["usage"]) if turn.get("usage") else None
+    return SimpleNamespace(choices=[SimpleNamespace(message=msg)], usage=usage)
 
 
 class FakeClient:

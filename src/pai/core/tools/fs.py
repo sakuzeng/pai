@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from pai.tools import tool
+from pai.core.tools import tool
 
 MAX_OUTPUT_CHARS = 4000
 

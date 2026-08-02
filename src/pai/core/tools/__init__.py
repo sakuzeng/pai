@@ -59,9 +59,15 @@ def tool(func: Callable) -> Callable:
         if param.default is inspect.Parameter.empty:
             required.append(pname)
 
+    # docstring 首行就是给模型看的工具描述，缺了模型无从选择用哪个工具。
+    # 显式报错而不是让 splitlines()[0] 抛 IndexError——报错要指向真因。
+    doc = (func.__doc__ or "").strip()
+    if not doc:
+        raise ValueError(f"工具 {func.__name__} 缺少 docstring：首行会作为工具描述发给模型")
+
     t = Tool(
         name=func.__name__,
-        description=(func.__doc__ or "").strip().splitlines()[0],
+        description=doc.splitlines()[0],
         parameters={"type": "object", "properties": properties, "required": required},
         func=func,
     )
@@ -71,7 +77,7 @@ def tool(func: Callable) -> Callable:
 
 def get_tools(names: list[str] | None = None) -> dict[str, Tool]:
     """默认全量；传 names 取子集（未来子 agent 的受限工具集用）。"""
-    from pai.tools import fs, shell  # noqa: F401 - import 即注册
+    from pai.core.tools import fs, shell  # noqa: F401 - import 即注册
 
     if names is None:
         return dict(REGISTRY)

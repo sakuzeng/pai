@@ -1,4 +1,4 @@
-from pai.tools import get_tools
+from pai.core.tools import get_tools
 
 
 def test_schema_generated_from_signature():
@@ -38,3 +38,16 @@ def test_tool_run_converts_exception_to_message():
     tools = get_tools()
     result = tools["read_file"].run(path="/definitely/not/exist/xyz.txt")
     assert result.startswith("错误：")  # 异常变反馈，不上抛
+
+
+def test_tool_without_docstring_is_rejected_clearly():
+    """空 docstring 会让 `splitlines()[0]` 抛 IndexError——报错必须指向真因，而不是索引越界。"""
+    import pytest
+
+    from pai.core.tools import tool
+
+    with pytest.raises(ValueError, match="docstring"):
+
+        @tool
+        def no_doc(path: str) -> str:
+            pass
