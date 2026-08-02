@@ -64,6 +64,14 @@
       所有测试脚本每轮只有一个 tool_call；「N 条 tool 消息按序配对」「合法+未知工具混同轮」
       两个配对不变量无测试。DeepSeek 会发并行工具调用，非假想场景。
 - [ ] **`session.py` 文件名精确到秒**（R#15）：同秒创建两个 SessionLog 会写同一文件。
+- [ ] **抽出共享测试夹具层**（对照 pi 的 `test/harness/session-test-utils.ts`、`test/utils/`）
+      现状：5 个测试文件平铺，夹具各自为战——`REAL_TRAJECTORY` / `REAL_USAGE_TRAJECTORY` /
+      `REAL_USAGE_STEPS` 在 test_compaction.py，`USAGE` / `_budget_script` 在 test_loop.py，
+      改一处工具描述可能让多处假失败（R#9 只覆盖了"冻结 schema"这一角）。
+      **触发条件**：测试文件到 10 个左右，或 find_cut_point/summarize 的夹具开始重复时再抽。
+      现在抽是过度设计——57 个用例还不知道该抽什么。
+      注：pi 的 `test/harness/` 是"给 harness 模块写的测试"（镜像源码结构），不是测试框架；
+      pai 真正缺的是共享夹具与目录分层，不是"缺一个 harness"。
 - [ ] **`compaction.py` 拆成目录的触发条件**：现在 189 行，单文件合适；
       pi 的 compaction.ts 到 893 行才拆。等 `summarize` 落地（预计 +300 行）再拆，
       拆法照 pi：`estimate` / `serialize` / `cut_point` / `summarize` + `__init__.py` 统一导出。

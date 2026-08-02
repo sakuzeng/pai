@@ -1,6 +1,6 @@
 # 当前状态快照
 
-最后更新：2026-08-03。给接手者（人或 AI）一页看清现状。
+最后更新：2026-08-03（框架对齐 pi、公开发布之后）。给接手者（人或 AI）一页看清现状。
 「做了什么」的时间线见 [devlog.md](devlog.md)，「为什么这么选」见 [decisions.md](decisions.md)。
 
 ## 一句话
@@ -12,11 +12,13 @@ agent loop + 工具系统 + 会话落盘已跑通；阶段 1 压缩做完了**�
 
 | 模块 | 状态 | 说明 |
 |---|---|---|
-| `loop.py` | 可用 | agent loop，依赖注入、max_steps 兜底、每条消息落盘、usage 落盘 |
-| `tools/` | 可用 | `@tool` 从签名生成 schema；bash / read_file / write_file / edit_file |
-| `session.py` | 可用 | append-only JSONL |
-| `config.py` / `cli.py` | 可用 | OpenAI 兼容协议打 DeepSeek；单次任务执行完退出（非 REPL） |
-| `compaction.py` | **部分** | 见下 |
+| `core/loop.py` | 可用 | agent loop：依赖注入、max_steps 兜底、每条消息落盘、usage 落盘、用量预算熔断 |
+| `core/tools/` | 可用 | `@tool` 从签名生成 schema；bash / read_file / write_file / edit_file |
+| `core/session.py` | 可用 | append-only JSONL |
+| `core/compaction.py` | **部分** | 见下 |
+| `modes/once.py` | 可用 | 单次任务，跑完即退出（对应 pi 的 print-mode）。client/model 可注入故可离线测 |
+| `cli.py` / `config.py` | 可用 | cli 只做参数解析与分发；OpenAI 兼容协议打 DeepSeek |
+| `modes/interactive.py` | 未开始 | REPL。结构已预留，加一个文件即可，core 不动 |
 | memory / permissions / streaming / skills / mcp_client / evals | 未开始 | 路线图后续阶段 |
 
 ## compaction.py 里有什么
@@ -42,11 +44,11 @@ agent loop + 工具系统 + 会话落盘已跑通；阶段 1 压缩做完了**�
 
 ## 测试
 
-- `pytest -q -m "not llm"` → **44 passed, 1 deselected**，全部离线（`tests/fake_llm.py` 假 provider）。
-- `pytest -q` → **45 passed**，其中 1 条是打真实 API 的冒烟测试。
-  **有 `DEEPSEEK_API_KEY` 时跑全量会真实花钱**；无 key 时该条自动跳过。
+共收集 **57 项**：
 
-日常开发建议用 `-m "not llm"`。
+- `./test.sh` → **56 passed, 1 deselected**，全部离线（`tests/fake_llm.py` 假 provider）。**这是默认路径。**
+- `./test.sh --llm` → 额外跑 1 条打真实 API 的冒烟测试，**会产生费用**。
+  需同时满足有 `DEEPSEEK_API_KEY` 且 `PAI_RUN_LLM_TESTS=1`——花钱的副作用不能是默认行为。
 
 两份真实轨迹夹具内联在 `tests/test_compaction.py`：
 `REAL_TRAJECTORY`（含一条真实的 sed 失败）、`REAL_USAGE_TRAJECTORY` + `REAL_USAGE_STEPS`。
