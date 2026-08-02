@@ -5,3 +5,8 @@ sessions/
 .pytest_cache/
 build/
 dist/
+
+# 第三方文档快照：版权归原作者，用 refs/fetch_deepseek_docs.py 自行生成
+refs/deepseek-api/
+# agent 跑测试留下的产物
+pai_playground/
