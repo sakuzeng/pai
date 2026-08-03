@@ -686,3 +686,59 @@ if (accumulatedTokens >= keepRecentTokens) {   // 与常数 20000 比
 探针花费：约 10 次小请求，分币级。
 
 **下一条**：P0 第 3 条——锚重置后的读数盲区（R#7）。
+
+---
+
+## 2026-08-03 · P0 第 3-5 条：锚簿记测试、冻结夹具 schema、读数盲区裁决
+
+**P0 五条至此全部清完**，find_cut_point 可以动工了。
+
+### R#8 锚簿记补测试——顺带挖出一个测试基建的硬伤
+
+评审说：把 `anchor_index = len(messages)` 改成 `len(messages)-1`，全部测试照样绿。
+写精确断言时发现**真问题不在 loop，在 `tests/fake_llm.py`**：
+
+```python
+self.requests.append(kwargs)     # ← 存的是引用
+```
+
+而 loop 是**原地 append 到同一个 messages 列表**的，所以 `requests[0]` 与 `requests[1]`
+指向同一个对象，最后都变成最终状态。**"第 N 次请求发了什么"这件事，此前根本断言不了**——
+现有测试能过是因为它们只找"存在某条消息"，而最终列表里确实有。
+修复：`copy.deepcopy(kwargs)`。
+
+修完基建后新增两条测试直接绿，说明 loop 的簿记本来就是对的：
+- `test_anchor_bookkeeping_is_exact`：预测值必须**精确等于** `上一步真实 prompt +
+  上一步真实 completion + 估算(锚之后新增的消息)`。
+- `test_anchor_does_not_double_count_the_assistant_message`：反向钉死——
+  assistant 消息不能既算进 completion_tokens 又被估一遍（夹具刻意造大 assistant 消息，
+  并断言"若重复计入会大出整条 assistant 的估算量"）。
+
+**验证测试真的能抓**：故意把 `anchor_index` 改成 `len(messages)-1` →
+两条测试立刻红（`assert 750 == 741`）；还原 → 72 绿。评审说的那个洞堵上了。
+
+### R#9 冻结夹具里的工具 schema
+
+`REAL_USAGE_STEPS` 的真实 token 数是在当时那套工具 schema 下测的，测试却读活的 `get_tools()`。
+新增 `FROZEN_TOOL_SCHEMAS` 常量（4 个工具、1138 字符 JSON、估算 389 token），
+测试改用它。
+
+**验证解耦**：给 bash 工具的 docstring 加一大段文字 → 测试仍 72 绿（此前会假失败且
+报错说"误差过大"而非"你改了工具描述"）；还原 → 72 绿。
+
+### R#7 锚重置后的读数盲区（裁决，无代码）
+
+`compact()` 还不存在，所以这条是把坑说清楚 + 定裁决：
+- STATUS 缺陷 1 改写，补上**具体后果**：低估会让压缩后的上下文**看起来比实际小**，
+  于是误判"压成功了"而放行，下一轮直接爆窗口。
+- decisions 第 34 条：**压缩是否成功只认压缩后第一次真实 usage 回传，不认估算值。**
+  `compact()` 后不立即判成败，熔断器的失败计数以压缩后首次 API 响应的真实
+  `prompt_tokens` 为准。代价是熔断判断推迟一个来回——可接受，因为替代方案会在最关键处出错。
+
+顺带把 STATUS 缺陷 2 的**理由**换掉：原理由（「均匀偏差不影响切点」）已被推翻，
+改为指向第 19 条（划掉保留）与第 32 条，并补上"偏差不均匀"的实测。
+
+**测试**：`./test.sh` **72 passed, 1 deselected**（新增 2 条锚簿记测试）。
+
+**P0 完成情况**：R#3 ✅ / R#4 ✅ / R#7 ✅ / R#8 ✅ / R#9 ✅ ——**五条全清**。
+**下一步**：P1 主线 `find_cut_point`。

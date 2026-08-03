@@ -7,6 +7,7 @@
 FakeClient 会记录每次收到的 messages / tools，供断言。
 """
 
+import copy
 import itertools
 from types import SimpleNamespace
 
@@ -37,7 +38,9 @@ class FakeClient:
         )
 
     def _create(self, **kwargs) -> SimpleNamespace:
-        self.requests.append(kwargs)
+        # 必须深拷贝：loop 是原地 append 到同一个 messages 列表的，直接存引用会让
+        # 每次记录都指向最终状态——"第 N 次请求发了什么"就永远断言不出来。
+        self.requests.append(copy.deepcopy(kwargs))
         if not self._script:
             raise AssertionError("FakeClient 脚本已耗尽，loop 比预期多调了一次模型")
         return _make_response(self._script.pop(0), self._ids)

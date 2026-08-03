@@ -230,3 +230,72 @@ def test_budget_stop_is_reported_with_numbers():
     answer = run_agent("x", client=client, model="fake", tools=get_tools(),
                        max_steps=5, max_total_tokens=1500, on_event=lambda _: None)
     assert "2000" in answer and "1500" in answer
+
+
+# ---------- 锚簿记（off-by-one 高危点） ----------
+
+
+def test_anchor_bookkeeping_is_exact(tmp_path):
+    """精确钉死 anchor / anchor_index，而不是只断言 estimated > 0。
+
+    外部评审实测：把 loop 里的 `anchor_index = len(messages)` 改成 `len(messages)-1`，
+    全部测试照样绿——说明当时的断言（estimated > 0）根本没测住这个 off-by-one。
+
+    第 2 步的预测值必须精确等于：
+        上一步真实 prompt + 上一步真实 completion + 估算(锚之后新增的消息)
+    锚之后新增的只有 tool 消息——那条 assistant 消息的真实 token 数就是 completion_tokens，
+    已被锚覆盖，绝不能再估一遍。
+    """
+    from pai.core.compaction import estimate_conversation_tokens
+    from pai.core.session import SessionLog
+
+    usage1 = {"prompt_tokens": 700, "completion_tokens": 40, "total_tokens": 740}
+    client = FakeClient([
+        {"tool_calls": [("bash", json.dumps({"command": "printf hi"}))], "usage": usage1},
+        {"content": "ok", "usage": {"prompt_tokens": 800, "completion_tokens": 5,
+                                    "total_tokens": 805}},
+    ])
+    session = SessionLog(tmp_path)
+    run_agent("x", client=client, model="fake", tools=get_tools(),
+              session=session, on_event=lambda _: None)
+
+    usages = [r for r in _read_session(session) if r.get("type") == "usage"]
+    # 第二次请求实际发出去的 messages：system, user, assistant(tool_calls), tool
+    sent = client.requests[1]["messages"]
+    assert [m["role"] for m in sent] == ["system", "user", "assistant", "tool"]
+
+    tail = sent[3:]  # 锚覆盖到 assistant 为止，尾部只剩这条 tool 消息
+    expected = 700 + 40 + estimate_conversation_tokens(tail)
+    assert usages[1]["estimated_prompt_tokens"] == expected
+
+
+def test_anchor_does_not_double_count_the_assistant_message():
+    """反向钉死：assistant 消息绝不能既算进 completion_tokens 又被估算一遍。
+
+    若 anchor_index 少 1（指向 assistant 而非其后），估算就会把它重复计入，
+    结果必然大于正确值。这条测试专门抓那个方向的错。
+    """
+    from pai.core.compaction import estimate_conversation_tokens
+    from pai.core.session import SessionLog
+    import tempfile
+
+    usage1 = {"prompt_tokens": 700, "completion_tokens": 40, "total_tokens": 740}
+    long_args = json.dumps({"command": "printf " + "x" * 500})
+    client = FakeClient([
+        {"tool_calls": [("bash", long_args)], "usage": usage1},
+        {"content": "ok", "usage": {"prompt_tokens": 800, "completion_tokens": 5,
+                                    "total_tokens": 805}},
+    ])
+    with tempfile.TemporaryDirectory() as d:
+        session = SessionLog(d)
+        run_agent("x", client=client, model="fake", tools=get_tools(),
+                  session=session, on_event=lambda _: None)
+        usages = [r for r in _read_session(session) if r.get("type") == "usage"]
+
+    sent = client.requests[1]["messages"]
+    assistant_est = estimate_conversation_tokens([sent[2]])
+    assert assistant_est > 100, "夹具没造出足够大的 assistant 消息，测不出重复计入"
+    # 若重复计入，预测值会比正确值大出整条 assistant 的估算量
+    correct = 700 + 40 + estimate_conversation_tokens(sent[3:])
+    assert usages[1]["estimated_prompt_tokens"] == correct
+    assert usages[1]["estimated_prompt_tokens"] < correct + assistant_est

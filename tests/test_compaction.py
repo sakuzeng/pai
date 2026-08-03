@@ -442,6 +442,105 @@ REAL_USAGE_STEPS = [
 ]
 
 
+
+# 录制 REAL_USAGE_STEPS 时的工具 schema 快照，**刻意冻结**，不用 get_tools() 取活的。
+# 理由：上面那些真实 token 数是在这套 schema 下测出来的；若测试读活 schema，
+# 将来改一句工具描述就会让断言假失败，且报错说「误差过大」而不是「你改了工具描述」。
+# 冻结后二者解耦：改工具不会打扰这条测试，而这条测试也不再假装能验证当前工具集。
+FROZEN_TOOL_SCHEMAS = [
+        {
+            "type": "function",
+            "function": {
+                "name": "read_file",
+                "description": "读取一个文件的全部内容。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "要读取的文件路径（相对或绝对）"
+                        }
+                    },
+                    "required": [
+                        "path"
+                    ]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "write_file",
+                "description": "把内容写入文件（覆盖式，文件不存在则创建）。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "要写入的文件路径"
+                        },
+                        "content": {
+                            "type": "string",
+                            "description": "写入的完整内容（会覆盖原文件）"
+                        }
+                    },
+                    "required": [
+                        "path",
+                        "content"
+                    ]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "edit_file",
+                "description": "精确替换文件中的一段文本：old 必须在文件中唯一出现一次。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "要编辑的文件路径"
+                        },
+                        "old": {
+                            "type": "string",
+                            "description": "要被替换的原文本，必须在文件中唯一出现一次"
+                        },
+                        "new": {
+                            "type": "string",
+                            "description": "替换后的新文本"
+                        }
+                    },
+                    "required": [
+                        "path",
+                        "old",
+                        "new"
+                    ]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "bash",
+                "description": "在 shell 里执行一条命令并返回它的输出（stdout+stderr）。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "string",
+                            "description": "要执行的 shell 命令"
+                        }
+                    },
+                    "required": [
+                        "command"
+                    ]
+                }
+            }
+        }
+    ]
+
 def test_context_tokens_without_anchor_falls_back_to_pure_estimate():
     """首次请求没有 usage 可锚，只能纯估——那时上下文才几百 token，离阈值差几个数量级。"""
     from pai.core.compaction import context_tokens, estimate_request_tokens
@@ -478,9 +577,8 @@ def test_anchored_estimate_beats_pure_estimate_on_real_usage():
     白送的精确值，不用估。
     """
     from pai.core.compaction import context_tokens, estimate_request_tokens
-    from pai.core.tools import get_tools
 
-    schemas = [t.schema() for t in get_tools().values()]
+    schemas = FROZEN_TOOL_SCHEMAS  # 冻结的，不用 get_tools()——见常量处说明
     # 每步请求包含的消息数：2（system+user）、4、6
     sent_counts = [2, 4, 6]
 

@@ -45,9 +45,9 @@ agent loop + 工具系统 + 会话落盘已跑通；阶段 1 压缩做完了**�
 
 ## 测试
 
-共收集 **71 项**：
+共收集 **73 项**：
 
-- `./test.sh` → **70 passed, 1 deselected**，全部离线（`tests/fake_llm.py` 假 provider）。**这是默认路径。**
+- `./test.sh` → **72 passed, 1 deselected**，全部离线（`tests/fake_llm.py` 假 provider）。**这是默认路径。**
 - `./test.sh --llm` → 额外跑 1 条打真实 API 的冒烟测试，**会产生费用**。
   需同时满足有 `DEEPSEEK_API_KEY` 且 `PAI_RUN_LLM_TESTS=1`——花钱的副作用不能是默认行为。
 
@@ -56,10 +56,17 @@ agent loop + 工具系统 + 会话落盘已跑通；阶段 1 压缩做完了**�
 
 ## 已知缺陷（都记在 devlog 对应条目下）
 
-1. **锚与压缩天然冲突**：锚假设历史 append-only，而压缩会改写历史。
-   实现 `compact()` 时必须把 `anchor` 重置为 `None`，否则拿旧锚算新对话。
-2. `estimate_tokens` 系统性低估约 **1.5 倍**（chat template 框架开销 + 工具 schema），
-   **刻意不修**（decisions 第 19 条）——分工上它只需相对准。
+1. **锚与压缩天然冲突，且重置后有读数盲区**（评审 R#7，比原自评更严重）。
+   锚假设历史 append-only，而压缩会改写历史——`compact()` 必须把 `anchor` 重置为 `None`。
+   但**重置之后到下一次真实 usage 回来之前，读数退化为纯估算（-33%）**，
+   而那恰是最需要准确回答「压缩救回来了没有」的时刻（熔断器靠它决定要不要继续压）。
+   低估方向尤其危险：会让压缩后的上下文**看起来比实际小**，
+   于是误判「压成功了」而放行，下一轮直接爆窗口。
+   → 裁决见 decisions 第 34 条：**熔断器不看估算值，等下一次真实 usage 回传再判。**
+2. `estimate_tokens` 系统性低估约 **1.5 倍**（chat template 框架开销 + 工具 schema）。
+   **仍不修**，但**理由已换**——原理由（「均匀偏差不影响切点」）已被推翻，
+   见 decisions 第 19 条（划掉保留）与第 32 条（改用真实 usage 差值定切点）。
+   补充实测：偏差**不均匀**——短 tool 结果低估 4-5 倍，长消息只低估约 2%。
 3. `reserve_tokens=16384` 无实测依据，照搬 pi 并按 DeepSeek 反推。
 4. `should_compact` 有退化情形：`window <= reserve_tokens` 时恒为 True，
    需上层熔断器兜底（decisions 第 14 条），尚未实现。
