@@ -1,4 +1,215 @@
 <!doctype html>
+<html lang="zh-CN">
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>pai 架构总览</title>
-<p>pai-viz 占位页(Task 4 替换)</p>
+<style>
+  :root {
+    --bg:#111318; --panel:#1a1d24; --card:#22262f; --line:#3a4150;
+    --text:#d8dce6; --dim:#8a93a6; --ok:#4ade80; --partial:#facc15;
+    --todo:#5b6372; --err:#f87171; --accent:#818cf8;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font:14px/1.5 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif; }
+  header { display:flex; align-items:center; gap:12px; padding:14px 22px;
+           border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--bg); }
+  h1 { font-size:16px; margin:0; }
+  #meta { color:var(--dim); font-size:12px; margin-left:auto; }
+  button { background:var(--card); color:var(--text); border:1px solid var(--line);
+           border-radius:6px; padding:6px 14px; cursor:pointer; }
+  button:hover { border-color:var(--accent); }
+  .banner { margin:12px 22px 0; padding:10px 14px; border-radius:8px;
+            display:none; white-space:pre-wrap; font-size:13px; }
+  #error { background:#3b1d1d; border:1px solid var(--err); color:#fecaca; }
+  #warn  { background:#3b331d; border:1px solid var(--partial); color:#fde68a; }
+  section { padding:16px 22px 34px; }
+  h2 { font-size:12px; color:var(--dim); text-transform:uppercase; letter-spacing:.1em; }
+  /* —— 结构图 —— */
+  #pipeline { position:relative; display:flex; gap:72px; align-items:flex-start;
+              overflow-x:auto; padding:8px 2px; }
+  #wires { position:absolute; inset:0; pointer-events:none; }
+  .col { display:flex; flex-direction:column; gap:14px; min-width:200px;
+         position:relative; z-index:1; }
+  .node { background:var(--card); border:1px solid var(--line); border-radius:10px;
+          padding:10px 12px; }
+  .node .t { font-weight:600; font-size:13px; }
+  .node .d { color:var(--dim); font-size:12px; margin-top:2px; }
+  .node.ok      { border-left:3px solid var(--ok); }
+  .node.partial { border-left:3px solid var(--partial); }
+  .node.todo    { border:1px dashed var(--todo); color:var(--dim); background:transparent; }
+  .node.todo .t::after { content:" · 未开始"; font-weight:400; font-size:11px; color:var(--todo); }
+  .node.partial .t::after { content:" · 部分"; font-weight:400; font-size:11px; color:var(--partial); }
+  /* tools 节点内的工具卡 */
+  .tool { border:1px solid var(--line); border-radius:8px; padding:8px 10px;
+          margin-top:8px; cursor:pointer; background:var(--panel); }
+  .tool .name { font-family:ui-monospace,Menlo,monospace; font-size:13px; color:var(--accent); }
+  .tool .desc { color:var(--dim); font-size:12px; }
+  .tool table { display:none; width:100%; margin-top:6px; border-collapse:collapse; font-size:12px; }
+  .tool.open table { display:table; }
+  .tool td { padding:2px 6px 2px 0; color:var(--dim); vertical-align:top; }
+  .tool td.pn { font-family:ui-monospace,Menlo,monospace; color:var(--text); }
+  .req { color:var(--partial); }
+  /* —— 阶段路线图 —— */
+  #stages { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:12px; }
+  .stage { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
+  .stage .top { display:flex; align-items:center; gap:8px; }
+  .stage .label { font-family:ui-monospace,Menlo,monospace; font-size:13px; }
+  .stage .badge { font-size:11px; border-radius:99px; padding:1px 9px; margin-left:auto; }
+  .stage.ok      .badge { background:#14321f; color:var(--ok); }
+  .stage.partial .badge { background:#332c11; color:var(--partial); }
+  .stage.todo    .badge { background:#242a35; color:var(--dim); }
+  .stage.unknown .badge { background:#242a35; color:var(--dim); }
+  .stage.todo { border-style:dashed; }
+  .stage .note { color:var(--dim); font-size:12px; margin-top:6px; }
+</style>
+
+<header>
+  <h1>pai 架构总览</h1>
+  <span id="meta"></span>
+  <button id="refresh">刷新</button>
+</header>
+<div id="error" class="banner"></div>
+<div id="warn" class="banner"></div>
+<section>
+  <h2>运行时结构</h2>
+  <div id="pipeline"><svg id="wires"></svg></div>
+</section>
+<section>
+  <h2>阶段路线图(来自 docs/dev/STATUS.md)</h2>
+  <div id="stages"></div>
+</section>
+
+<script>
+const $ = id => document.getElementById(id);
+let lastData = null;
+
+async function load() {
+  $('error').style.display = 'none';
+  try {
+    const r = await fetch('/api/structure');
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+    lastData = data;
+    render(data);
+    $('meta').textContent = '最后刷新 ' + new Date().toLocaleTimeString()
+      + ' · ' + data.model + ' · 工具 ' + data.tools.length + ' 个';
+  } catch (e) {
+    $('error').textContent = '收集失败:\n' + e.message;
+    $('error').style.display = 'block';
+  }
+}
+
+function statusOf(data, key) {
+  const s = (data.stages || []).find(x => x.key === key);
+  return s ? s.status : null;
+}
+
+function render(data) {
+  const warn = $('warn');
+  warn.style.display = (data.warnings || []).length ? 'block' : 'none';
+  warn.textContent = (data.warnings || []).join('\n');
+  renderPipeline(data);
+  renderStages(data.stages || []);
+}
+
+function renderPipeline(data) {
+  const P = $('pipeline');
+  P.querySelectorAll('.col').forEach(e => e.remove());
+  const maxCol = Math.max(...data.pipeline.nodes.map(n => n.col));
+  const cols = [];
+  for (let i = 0; i <= maxCol; i++) {
+    const c = document.createElement('div');
+    c.className = 'col';
+    P.appendChild(c); cols.push(c);
+  }
+  const els = {};
+  for (const n of data.pipeline.nodes) {
+    const el = document.createElement('div');
+    el.className = 'node';
+    const st = n.stage ? statusOf(data, n.stage) : null;
+    if (st) el.classList.add(st);
+    el.innerHTML = '<div class="t"></div>' + (n.desc ? '<div class="d"></div>' : '');
+    el.querySelector('.t').textContent = n.label;
+    if (n.desc) el.querySelector('.d').textContent = n.desc;
+    if (n.id === 'tools') for (const t of data.tools) el.appendChild(toolCard(t));
+    cols[n.col].appendChild(el);
+    els[n.id] = el;
+  }
+  requestAnimationFrame(() => drawWires(data, els));
+}
+
+function toolCard(t) {
+  const el = document.createElement('div');
+  el.className = 'tool';
+  el.innerHTML = '<div class="name"></div><div class="desc"></div><table></table>';
+  el.querySelector('.name').textContent = t.name;
+  el.querySelector('.desc').textContent = t.description;
+  const tb = el.querySelector('table');
+  for (const p of t.params) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td class="pn"></td><td></td><td></td>';
+    tr.children[0].textContent = p.name + (p.required ? ' *' : '');
+    if (p.required) tr.children[0].classList.add('req');
+    tr.children[1].textContent = p.type;
+    tr.children[2].textContent = p.desc;
+    tb.appendChild(tr);
+  }
+  el.addEventListener('click', () => el.classList.toggle('open'));
+  return el;
+}
+
+function drawWires(data, els) {
+  const P = $('pipeline'), svg = $('wires');
+  svg.setAttribute('width', P.scrollWidth);
+  svg.setAttribute('height', P.scrollHeight);
+  svg.innerHTML = '';
+  const pr = P.getBoundingClientRect();
+  const todoIds = new Set(data.pipeline.nodes
+    .filter(n => n.stage && statusOf(data, n.stage) === 'todo').map(n => n.id));
+  for (const [a, b] of data.pipeline.edges) {
+    if (!els[a] || !els[b]) continue;
+    const ra = els[a].getBoundingClientRect(), rb = els[b].getBoundingClientRect();
+    let d;
+    if (Math.abs(ra.left - rb.left) < 20) {   // 同列:上下相连
+      const upper = ra.top < rb.top ? ra : rb, lower = ra.top < rb.top ? rb : ra;
+      const x = upper.left - pr.left + P.scrollLeft + upper.width / 2;
+      d = `M ${x} ${upper.bottom - pr.top} L ${x} ${lower.top - pr.top}`;
+    } else {                                   // 跨列:右缘 → 左缘,贝塞尔
+      const src = ra.left < rb.left ? ra : rb, dst = ra.left < rb.left ? rb : ra;
+      const x1 = src.right - pr.left + P.scrollLeft, y1 = src.top - pr.top + src.height / 2;
+      const x2 = dst.left - pr.left + P.scrollLeft,  y2 = dst.top - pr.top + dst.height / 2;
+      const mx = (x1 + x2) / 2;
+      d = `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`;
+    }
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', d);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', 'var(--line)');
+    path.setAttribute('stroke-width', '1.5');
+    if (todoIds.has(a) || todoIds.has(b)) path.setAttribute('stroke-dasharray', '5 4');
+    svg.appendChild(path);
+  }
+}
+
+function renderStages(stages) {
+  const S = $('stages');
+  S.innerHTML = '';
+  for (const st of stages) {
+    const el = document.createElement('div');
+    el.className = 'stage ' + st.status;
+    el.innerHTML = '<div class="top"><span class="label"></span><span class="badge"></span></div>'
+                 + '<div class="note"></div>';
+    el.querySelector('.label').textContent = st.label;
+    el.querySelector('.badge').textContent =
+      ({ok: '可用', partial: '部分', todo: '未开始'})[st.status] || st.status;
+    el.querySelector('.note').textContent = st.note;
+    S.appendChild(el);
+  }
+}
+
+$('refresh').addEventListener('click', load);
+window.addEventListener('resize', () => { if (lastData) renderPipeline(lastData); });
+load();
+</script>
+</html>

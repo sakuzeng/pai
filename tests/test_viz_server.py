@@ -33,6 +33,14 @@ def test_api_structure_returns_collected_json(viz_server):
     assert any(t["name"] == "bash" for t in data["tools"])
 
 
+def test_index_is_real_page_not_placeholder(viz_server):
+    with urllib.request.urlopen(f"{viz_server}/") as r:
+        html = r.read().decode("utf-8")
+    # 真页面的标志:会去打 API、有两个区域的容器
+    assert "/api/structure" in html
+    assert 'id="pipeline"' in html and 'id="stages"' in html
+
+
 def test_unknown_path_404(viz_server):
     import urllib.error
     with pytest.raises(urllib.error.HTTPError) as ei:
