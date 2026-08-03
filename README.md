@@ -17,7 +17,7 @@ pai "在当前目录创建 hello.txt 写入 hello world 并读出来确认"
 测试（默认不打真实 API——花钱的副作用不能是默认行为）：
 
 ```bash
-./test.sh              # 离线，56 passed
+./test.sh              # 离线，66 passed
 ./test.sh --llm        # 额外跑真实 API 冒烟，会产生费用
 ```
 
@@ -44,6 +44,7 @@ src/pai/
     once.py        单次任务，跑完即退出（对应 pi 的 print-mode）
     ── 将来 ──
     interactive.py REPL
+  viz/             架构可视化：pai-viz 起本地网页，结构图（工具自动自省）+ 阶段路线图（解析 STATUS.md）
 evals/             阶段 6：评测集与跑批
 tests/             pytest；tests/fake_llm.py 是假 provider（学 pi 的 faux provider 模式）
 test.sh            统一测试入口，默认不打真实 API

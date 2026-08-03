@@ -17,6 +17,7 @@ agent loop + 工具系统 + 会话落盘已跑通；阶段 1 压缩做完了**�
 | `core/session.py` | 可用 | append-only JSONL |
 | `core/compaction.py` | **部分** | 见下 |
 | `modes/once.py` | 可用 | 单次任务，跑完即退出（对应 pi 的 print-mode）。client/model 可注入故可离线测 |
+| `viz/` | 可用 | `pai-viz` 本地架构可视化：工具自省自动上图，阶段状态解析本表 |
 | `cli.py` / `config.py` | 可用 | cli 只做参数解析与分发；OpenAI 兼容协议打 DeepSeek |
 | `modes/interactive.py` | 未开始 | REPL。结构已预留，加一个文件即可，core 不动 |
 | memory / permissions / streaming / skills / mcp_client / evals | 未开始 | 路线图后续阶段 |
@@ -44,9 +45,9 @@ agent loop + 工具系统 + 会话落盘已跑通；阶段 1 压缩做完了**�
 
 ## 测试
 
-共收集 **57 项**：
+共收集 **67 项**：
 
-- `./test.sh` → **56 passed, 1 deselected**，全部离线（`tests/fake_llm.py` 假 provider）。**这是默认路径。**
+- `./test.sh` → **66 passed, 1 deselected**，全部离线（`tests/fake_llm.py` 假 provider）。**这是默认路径。**
 - `./test.sh --llm` → 额外跑 1 条打真实 API 的冒烟测试，**会产生费用**。
   需同时满足有 `DEEPSEEK_API_KEY` 且 `PAI_RUN_LLM_TESTS=1`——花钱的副作用不能是默认行为。
 

@@ -514,3 +514,65 @@ src/pai/
 已设触发条件（summarize 落地后）并登记进 TODO.md P2。
 
 **待办**：本条涉及的新待办已同步进 TODO.md（compaction 拆分触发条件）。
+
+---
+
+## 2026-08-03 · pai-viz：本地架构可视化（结构图 + 阶段路线图）
+
+**目标**：阶段模块越来越多，光靠脑内维护"现在架构长什么样、进度到哪"越来越不可靠。
+做一个本地网页，一眼看清运行时结构与阶段路线图，且代码一变（尤其加新工具）刷新即现，
+不用另外手动维护一份架构描述——描述本身就该从代码和 STATUS.md 里长出来。
+
+**动的文件**
+- 新增 `src/pai/viz/`（三个文件，自成一体，对现有代码零侵入）：
+  - `collect.py` —— 数据收集，三块拼一份 JSON：
+    - `tools`（全自动）：调 `get_tools()` 拿 `@tool` 注册表，工具名/描述/参数 schema 零手工维护；
+    - `pipeline`（手写数据、程序渲染）：运行时结构图的节点与连线，一份 Python 字面量描述
+      `user task → agent loop ⇄ LLM / tools 组 → session 落盘 / 预算熔断`；
+    - `stages`（解析 STATUS.md）：解析「模块现状」表，状态词按包含匹配映射成状态码
+      （可用→ok、部分→partial、未开始→todo），格式解析失败返回空列表而不抛异常——
+      STATUS.md 是手写文档，格式漂移是正常事件，页面用警告条提示即可。
+  - `server.py` —— stdlib `http.server`（零新依赖）：`GET /` 返回 `index.html`（`importlib.resources`
+    读同包资源），`GET /api/structure` 起子进程跑 collect，超时 30s。
+  - `index.html` —— 单页 dark 主题，SVG 连线画结构图 + 网格卡片画阶段路线图。
+- `pyproject.toml` 加一行 console script：`pai-viz = "pai.viz.server:main"`。
+- 新增 `tests/test_viz_collect.py`（6 条）+ `tests/test_viz_server.py`（4 条），全离线。
+- `cli.py` / `core/` / `modes/` 一行未动——删掉 `viz/` 目录和那一行 console script，项目回原样。
+
+**为什么每次请求起子进程**：server 是常驻进程，Python 模块 import 有缓存，新加的 `@tool`
+在老进程里刷不出来。每次 `/api/structure` 起一个新解释器（`python -m pai.viz.collect`）
+现场收集，约 100-200ms，本地开发无感，换来两个好处：①改完代码刷新浏览器新工具立刻出现
+（这是核心体验，不是附带的）；②隔离性——子进程崩了（比如改代码改出语法错误）只在页面上
+显示红色错误条，server 本身不挂，顺手当了个编译检查。
+
+**为什么 stages 解析 STATUS.md 而不是另造状态文件**：STATUS.md 已经是"现在到哪"的单一
+事实来源，再造一份 viz 专用状态文件等于要求人手动同步两处——本文件前面好几条待办记录都在
+讲"没有强制同步机制的东西一定会漂"。collect.py 直接解析 STATUS.md 的模块现状表格，
+补一行模块进表，viz 页面下次刷新自动显示，包括这次给 `viz/` 自己加的那一行
+（自举：加完 viz 自己就出现在自己画的图里）。
+
+**pipeline 概念图预画未来节点**：结构图从第一版就把 compaction、permissions、streaming、
+memory、skills、mcp_client 等还没接入 loop 的环节画上（参照 Pi 仪表盘虚线框的画法），
+节点关联 STATUS.md 里的模块名，未开始渲染成虚线灰、部分黄、可用实线正常色——
+这张图既是蓝图也是进度条，以后每接一个阶段进 loop，图上对应节点"点亮"，不用另画新图。
+
+**实现中修的一处设计缺陷**：计划文档里 resize 的示例处理是重新调用整体渲染（会重建整个
+DOM，展开的工具卡片状态会丢）；落地时改成只重算并重画 SVG 连线坐标，不碰卡片 DOM
+（`index.html` 里 `resize` 监听只调 `drawWires`）。
+
+**实现方式**：走的是 subagent-driven TDD，先写离线测试再补实现。Spec 见
+`docs/superpowers/specs/2026-08-03-viz-design.md`。
+
+**测试**
+- collect：工具自省输出含 `bash` / `read_file` / `write_file` / `edit_file` 且形状正确；
+  STATUS.md 解析用内联 markdown 夹具测「正常表格」「畸形表格」两条路。
+- server：随机端口起服务，冒烟测两个端点返回 200 与 JSON 形状。
+- 全量：`./test.sh` **66 passed, 1 deselected**（此前 56 passed；新增 10 项：
+  `test_viz_collect.py` 6 条 + `test_viz_server.py` 4 条）。README / STATUS.md 里旧的
+  「56 passed」「57 项」同步改成真实数字，顺手堵上这次自己就会犯的"代码合了、文档数字没跟"。
+- 手动烟测：`pai-viz --no-open --port 7788 &`，`curl -s localhost:7788/ | grep -c pipeline`
+  ≥1（不是占位页）；`curl -s localhost:7788/api/structure` 能看到 `stages` 里
+  `viz` 这一条、状态 `ok`（因为本条刚把 `viz/` 行加进 STATUS.md）。
+
+**已知缺陷 / 待办**：不做自动刷新（点按钮手动刷新，YAGNI，见 spec 决定表）；不做会话回放、
+用量仪表盘（以后需要再立项）；子进程 30s 超时值未实测是否够用，随功能变大再看。
