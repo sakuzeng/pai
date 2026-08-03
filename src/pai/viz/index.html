@@ -83,6 +83,7 @@
 <script>
 const $ = id => document.getElementById(id);
 let lastData = null;
+let lastEls = null;
 
 async function load() {
   $('error').style.display = 'none';
@@ -136,6 +137,7 @@ function renderPipeline(data) {
     cols[n.col].appendChild(el);
     els[n.id] = el;
   }
+  lastEls = els;
   requestAnimationFrame(() => drawWires(data, els));
 }
 
@@ -209,7 +211,7 @@ function renderStages(stages) {
 }
 
 $('refresh').addEventListener('click', load);
-window.addEventListener('resize', () => { if (lastData) renderPipeline(lastData); });
+window.addEventListener('resize', () => { if (lastData && lastEls) drawWires(lastData, lastEls); });
 load();
 </script>
 </html>
