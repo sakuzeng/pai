@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from pai.viz.collect import build_structure
+from pai.viz.collect import build_structure, parse_status_table
 
 
 def test_tools_are_introspected_from_registry():
@@ -37,3 +37,48 @@ def test_structure_is_json_serializable_and_has_model():
     # STATUS 文件不存在:stages 为空 + 有警告,但不崩(设计的「两块互不拖累」)
     assert s["stages"] == []
     assert s["warnings"]
+
+
+FIXTURE_OK = """\
+# 当前状态快照
+
+## 模块现状
+
+| 模块 | 状态 | 说明 |
+|---|---|---|
+| `core/loop.py` | 可用 | agent loop:依赖注入 |
+| `core/compaction.py` | **部分** | 见下 |
+| `core/tools/` | 可用 | @tool 装饰器 |
+| `cli.py` / `config.py` | 可用 | cli 只做分发 |
+| memory / permissions / streaming | 未开始 | 路线图后续阶段 |
+
+## 下一节
+
+正文。
+"""
+
+
+def test_parse_status_table_normal():
+    stages = parse_status_table(FIXTURE_OK)
+    by_key = {s["key"]: s for s in stages}
+    assert by_key["loop"]["status"] == "ok"
+    assert by_key["compaction"]["status"] == "partial"  # ** 加粗要能穿透
+    assert by_key["tools"]["status"] == "ok"            # 目录尾 / 要能剥掉
+    # 一格多模块按「空格斜杠空格」切开,各成一条
+    assert by_key["cli"]["status"] == "ok" and by_key["config"]["status"] == "ok"
+    assert by_key["memory"]["status"] == "todo"
+    assert by_key["memory"]["note"] == "路线图后续阶段"
+
+
+def test_parse_status_table_malformed_returns_empty():
+    # 没有「模块现状」小节 → 空列表,不抛(页面显示警告条,结构图照常)
+    assert parse_status_table("# 别的文档\n\n随便什么") == []
+    assert parse_status_table("## 模块现状\n\n这节没有表格") == []
+
+
+def test_build_structure_reads_real_status(tmp_path):
+    f = tmp_path / "STATUS.md"
+    f.write_text(FIXTURE_OK, encoding="utf-8")
+    s = build_structure(status_path=f)
+    assert s["warnings"] == []
+    assert any(st["key"] == "loop" and st["status"] == "ok" for st in s["stages"])

@@ -12,6 +12,67 @@ from pathlib import Path
 
 STATUS_DEFAULT = Path("docs/dev/STATUS.md")
 
+# 状态词 → 状态码。用「包含」匹配:表格里可能写成 **部分**、可用(备注)等
+_STATUS_WORDS = [("可用", "ok"), ("部分", "partial"), ("未开始", "todo")]
+
+
+def _stage_key(cell: str) -> str:
+    """`core/tools/` → tools;`cli.py` → cli;memory → memory。
+
+    剥反引号/加粗/路径前缀/.py 后缀,得到与 pipeline 节点 stage 字段对齐的短名。
+    """
+    name = cell.strip().strip("`").strip("*").strip()
+    name = name.rstrip("/")
+    name = name.rsplit("/", 1)[-1]
+    if name.endswith(".py"):
+        name = name[:-3]
+    return name
+
+
+def parse_status_table(text: str) -> list:
+    """解析 STATUS.md「模块现状」表。格式不符时返回 [],绝不抛——
+
+    STATUS.md 是手写文档,格式漂移是正常事件不是异常;页面用警告条提示即可,
+    不能拖垮结构图(设计文档「两块互不拖累」)。
+    """
+    lines = text.splitlines()
+    start = None
+    for i, line in enumerate(lines):
+        if line.strip().startswith("## 模块现状"):
+            start = i
+            break
+    if start is None:
+        return []
+
+    stages: list = []
+    for line in lines[start + 1:]:
+        s = line.strip()
+        if s.startswith("## "):  # 下一节,结束
+            break
+        if not s.startswith("|"):
+            if stages:
+                break  # 表格已经收集过且离开了表格区
+            continue
+        cells = [c.strip() for c in s.strip("|").split("|")]
+        if len(cells) < 3:
+            continue
+        if cells[0] == "模块" or set(cells[0]) <= set("-: "):
+            continue  # 表头行 / 分隔行
+        status = "unknown"
+        for word, code in _STATUS_WORDS:
+            if word in cells[1]:
+                status = code
+                break
+        # 「空格斜杠空格」是多模块分隔符;路径 core/loop.py 的 / 两侧无空格,不受影响
+        for part in cells[0].split(" / "):
+            stages.append({
+                "key": _stage_key(part),
+                "label": part.strip().strip("`"),
+                "status": status,
+                "note": cells[2],
+            })
+    return stages
+
 # pipeline 是手写的概念图(数据流),不是 import 依赖图——这是设计决定:
 # 结构由人定义,程序只填充自动化的部分(工具清单、阶段状态)。
 # col 是前端布局列号;stage 关联 STATUS.md「模块现状」表里的模块名(见 _stage_key)。
@@ -77,9 +138,13 @@ def build_structure(status_path: Path = STATUS_DEFAULT) -> dict:
     model = model_name()
 
     warnings: list = []
-    stages: list = []  # Task 2 接 STATUS.md 解析,这里先占位
+    stages: list = []
     if not status_path.exists():
         warnings.append(f"未找到 {status_path},阶段路线图为空(请从项目根目录运行 pai-viz)")
+    else:
+        stages = parse_status_table(status_path.read_text(encoding="utf-8"))
+        if not stages:
+            warnings.append(f"{status_path} 里没解析出「模块现状」表(格式变了?),阶段路线图为空")
 
     nodes = [dict(n) for n in _PIPELINE_NODES]
     for n in nodes:
