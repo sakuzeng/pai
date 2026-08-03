@@ -32,6 +32,17 @@ pai-viz --no-open       # 不自动打开浏览器
 必须在项目根目录运行——「阶段路线图」靠相对路径读 `docs/dev/STATUS.md`，不在根目录跑
 不会报错，但该区域会为空并显示警告条(结构图部分不受影响)。
 
+**运行时结构图**：agent loop 的数据流 + 工具卡片(从 `@tool` 注册表自动自省——新加一个
+工具，刷新页面就出现，含参数 schema)。未来环节(压缩/权限/流式/记忆/skills/MCP)从第一
+天就预画成虚线灰卡，状态跟 STATUS.md 联动，做完一块图上亮一块。点工具卡展开参数表：
+
+![运行时结构图](docs/assets/pai-viz-structure.jpg)
+
+**阶段路线图**：解析 STATUS.md「模块现状」表，绿=可用 / 黄=部分 / 灰=未开始。
+STATUS.md 是唯一事实来源，更新表格即变色(viz 自己也在图里)：
+
+![阶段路线图](docs/assets/pai-viz-roadmap.jpg)
+
 ## 结构与阶段映射
 
 模块按学习路线图（job/agent/agent面试准备/学习开发路线图.md）的阶段切分，一个阶段一个模块，/code-check 按此验收：
