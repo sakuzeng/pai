@@ -85,9 +85,27 @@
 - [ ] `session=None` 时也每步计算 `estimated`，纯浪费（R#18，量极小）。
 - [ ] `estimate_tokens` 假设 content 是 str/None；OpenAI 协议 content 可为分段列表，
       接多模态前要处理（R#19）。
-- [ ] 预算只按 token 计不按钱计（2026-08-03）。命中缓存比未命中便宜 50 倍，
-      同样 token 数花的钱可差两个数量级。精确控费需三档分别乘单价，但单价会变
-      （官网已预告峰谷定价），硬编码是维护债。
+- [ ] **预算改按钱算**（2026-08-03，措辞已修正）。命中缓存比未命中便宜 50 倍，
+      同样 token 数花的钱可差两个数量级。此前记为"单价会变所以是维护债"——**这个判断下早了**：
+      pi 有现成答案（`ai/src/models.ts:639` `calculateCost`），把费率放进 model registry 而非代码，
+      四档分别乘单价（input / output / cacheRead / cacheWrite），
+      且支持分层价格 `tiers`（按 `inputTokensAbove` 切档）——DeepSeek 的峰谷定价可用同一机制表达。
+      所以不是"不该做"，是**需要先有一个费率表结构**。
+- [ ] **usage 归一化：算出"真正新计算的 input"**（2026-08-03）。
+      现在原样透传 provider 字段（保住 `prompt_cache_hit_tokens` 是对的），但缺一步减法。
+      pi 的语义（`api/openai-completions.ts:1337`）：`prompt_tokens` 是**含缓存的总数**，
+      `input = prompt_tokens - cacheRead - cacheWrite`，`totalTokens = input+output+cacheRead+cacheWrite`。
+      按钱算预算的前提就是这个减法。注：pi 明确兼容了 DeepSeek 的 `prompt_cache_hit_tokens` 字段。
+- [ ] **接流式前必修：并行工具调用会让 usage 重复累加**（2026-08-03）。
+      CC 注释（`utils/tokens.ts:28`）：并行工具调用流式返回时，**每个 content block 会成为一条独立的
+      assistant 记录，但共享同一个 `message.id`**——天真累加就是重复计费，CC 为此专门有
+      `getAssistantMessageId` 识别同源记录。
+      pai 当前安全（不流式，一次 `create()` 累加一次），但接流式后必然撞上。
+      与「单轮多 tool_calls 无测试覆盖」（R#11）是同一场景的两面。
+- [ ] **usage 可信度过滤**（2026-08-03）。两家都不直接信原始返回：
+      pi 排除 `aborted` / `error` / 全 0；CC 排除**合成消息**（`SYNTHETIC_MESSAGES`，
+      中断等场景注入的假 assistant 消息带假 usage）。
+      pai 现在只判 `usage is None`，够用但不完整——接中断/重试后要补。
 - [ ] 无跨会话累计预算（2026-08-03）。每次 `pai` 调用各自计数。真正的总闸是账户只充小额。
 - [ ] `GET /user/balance` 未接入。可做 `pai --balance` 或启动时低余额告警。
 - [ ] 官方离线 tokenizer（`deepseek_v3_tokenizer.zip`）未下载。能给精确值，
