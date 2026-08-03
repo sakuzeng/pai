@@ -189,3 +189,27 @@
 28. `test.sh` 统一入口，默认 `-m "not llm"`。
     学 pi 顶层的 test.sh。把「不花钱」做成默认路径，而不是要求人记住加参数——
     与第 23 条同一个原则：花钱的副作用不能是默认行为。
+
+## pai-viz · 架构可视化（2026-08-03）
+
+29. 每次 `/api/structure` 请求起子进程收集，而不是 server 常驻进程里直接 import。
+    动机是 viz 的核心承诺：加一个 `@tool`、刷新浏览器就能看到。常驻进程的模块缓存
+    会把工具注册表冻在启动时刻，reload 方案（importlib.reload）在装饰器注册模式下
+    边界情况很多。子进程新解释器每次 ~100-200ms，本地开发无感；附赠隔离性——
+    用户代码写出语法错误时子进程报错、页面红条显示 stderr，server 不死，
+    顺手当编译检查用。
+
+30. 前端零依赖手写单页，不用框架也不用 mermaid。备选是 FastAPI+mermaid（代码最少）
+    或 pydeps 依赖图（全自动）。否决理由：mermaid 样式控制力弱、依赖 CDN 离线不可用；
+    pydeps 画的是 import 关系不是概念架构。pai 全项目的立意是「从零手写、每层都理解」，
+    可视化工具没道理例外。卡片+一层 SVG 贝塞尔连线足以复刻仪表盘效果。
+    踩过的坑：SVG 连线的 stroke 用 presentation attribute 写 `var(--line)` 多数浏览器
+    不解析（回退成 none，线整体隐形），必须用 CSS 规则 `#wires path { stroke: ... }`——
+    最终整支评审在浏览器实测前抓住了它。
+
+31. 阶段状态解析 STATUS.md「模块现状」表，不另造状态文件；pipeline 概念图从第一版
+    就预画未来节点（compaction/permissions/streaming/memory/skills/mcp_client），
+    未开始渲染为虚线灰。单一事实来源：状态本来就在 STATUS.md 手工维护，再造一份
+    JSON 必然漂移。预画的收益是图 = 完整蓝图 + 实时进度，每补一个阶段图上「点亮」
+    一块。防漂移的守卫：测试断言真实 STATUS.md 解析非空，且 pipeline 节点引用的
+    stage key 全部能在表里找到——表格式一变、测试先红。

@@ -17,7 +17,7 @@ pai "在当前目录创建 hello.txt 写入 hello world 并读出来确认"
 测试（默认不打真实 API——花钱的副作用不能是默认行为）：
 
 ```bash
-./test.sh              # 离线，66 passed
+./test.sh              # 离线，70 passed
 ./test.sh --llm        # 额外跑真实 API 冒烟，会产生费用
 ```
 
