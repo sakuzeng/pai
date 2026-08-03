@@ -15,6 +15,7 @@ dev = [
 
 [project.scripts]
 pai = "pai.cli:main"
+pai-viz = "pai.viz.server:main"
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -28,3 +29,6 @@ testpaths = ["tests"]
 markers = [
     "llm: 需要真实 LLM API key 的测试（无 key 自动跳过）",
 ]
+
+[tool.setuptools.package-data]
+"pai.viz" = ["*.html"]
