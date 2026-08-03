@@ -12,12 +12,22 @@
 
 这些都会影响 find_cut_point 的设计前提，带着它们动工等于在流沙上盖楼。
 
-- [ ] **核实 thinking mode 到底默认开不开**（R#3，严重）
-      devlog 断言 v4-flash「思考默认开启」，而 loop 丢弃 `reasoning_content`；
-      官方文档写明带 tools 时未回传 reasoning_content 会返回 400。
-      实测 session 里 `reasoning_tokens` 全为 0（即实际没开），与 devlog 矛盾。
-      两个断言必有一假。做法：一次探针请求核实 → 开则 loop 必须回传 reasoning_content
-      且重审 anchor 的 completion_tokens 口径，不开则纠正 devlog。
+- [x] ~~**核实 thinking mode 到底默认开不开**（R#3，严重）~~ **已完成 2026-08-03**，见 D#33。
+      裁决：思考确实默认开（devlog 断言正确，占输出 12.5%）；不回传 `reasoning_content`
+      **未触发文档所说的 400**（测 3 次，含 181 token 重推理）；锚不受影响
+      （「增长 − completion」恒为 +13~+22，与 reasoning 量无关）。
+      **我此前说的「reasoning_tokens 全为 0」是错的**——只看了单个 session 的单条记录就推广。
+- [ ] **监控：reasoning 相关的 400**（D#33 衍生）
+      文档白纸黑字说带 tools 不回传 `reasoning_content` 会 400，实测未复现——
+      这是**未解释的偏差**，可能随模型/版本变化。一旦出现该 400，立即改为在
+      `assistant_entry` 里带上 `reasoning_content`。
+      注：机制未查明（为何丢弃后下轮 prompt 仍按含 reasoning 的量增长），
+      只有实测事实没有解释，别编。
+- [ ] **并行工具调用已确认是真实场景**（R#11 升级）
+      探针中 DeepSeek 一次返回了 **3 个并行 tool_calls**；只回 1 条 tool 消息即触发 400
+      （`insufficient tool messages following tool_calls message`）。
+      pai 的 loop 逻辑上处理了（遍历所有 tc 各回一条），但**无测试覆盖**。
+      这条从「值得改」升级：它有真实 400 复现路径。
 - [x] ~~**重审 decisions 第 19 条**（R#4）~~ **已完成 2026-08-03**，结论见 D#19（推翻，原文保留）
       与 D#32（新的做法）。复核发现原论证错在**两处**，评审只指出了一处：
       ① 绝对预算切法下比例抵消不成立；② **偏差根本不均匀**——实测短 tool 结果低估 4-5 倍

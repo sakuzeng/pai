@@ -252,3 +252,23 @@
 
     ⚠️ 当前实际影响有限：1M 窗口下多保 1 万 token 是噪音。这条主要是把正确性做对，
     以及为将来窗口更小的模型留余地——**不是救火**。
+
+33. thinking mode：默认开着，`reasoning_content` 照丢，锚不受影响——但这是**实测结论压过文档结论**。
+    官方文档（refs/deepseek-api/guides/thinking_mode.md）两处硬约束：
+    「思考模式默认打开，effort 默认 high」以及「携带 tools 的请求，后续必须完整回传
+    `reasoning_content`，否则 API 返回 400」。而 pai 的 loop 从来不回传，却从未报过 400。
+    探针实测（2026-08-03，5 组请求）：
+    - 思考确实默认开：无 tools / 带 tools 都返回非空 `reasoning_content`，
+      全部 session 合计 reasoning 占输出 12.5%（81/650）。**文档这条正确。**
+    - 不回传 `reasoning_content` **未触发 400**，测了 3 次，含 reasoning 达 181 token 的
+      重推理场景。**文档这条未复现。**
+    - 锚（`prompt_N + completion_N`）不受影响：实测「下轮 prompt 增长 − completion」
+      恒为 +13~+22 的小正数，与 reasoning 量（0 / 8 / 22 / 181）**完全无关**。
+      若 reasoning 真的不进下轮上下文，该差值应随 reasoning 增大而变成大负数——没有发生。
+    取舍：**保持现状不回传**。理由：实测安全，且回传会让 prompt 变大（服务端看来已计入，
+    再传一份是重复付费）。风险：文档白纸黑字说会 400，说明这是**未解释的偏差**，
+    可能随模型/版本变化。
+    ⚠️ 监控条件：一旦出现 reasoning 相关的 400，立即改为回传——已登记 TODO。
+    机制未查明：为何丢弃了 reasoning 而下轮 prompt 仍按含 reasoning 的量增长，
+    目前只有实测事实，没有解释。**不要在面试里编造机制解释。**
+

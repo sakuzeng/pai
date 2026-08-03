@@ -637,3 +637,52 @@ if (accumulatedTokens >= keepRecentTokens) {   // 与常数 20000 比
 **测试**：本条只改文档，`./test.sh` **70 passed, 1 deselected**（含 viz 的 14 项）。
 
 **下一条**：P0 第 2 条——thinking mode 探针（R#3），需打一次真实 API。
+
+---
+
+## 2026-08-03 · P0 第 2 条：thinking mode 探针（评审 R#3）
+
+**目标**：devlog 断言「v4-flash 思考默认开启」，loop 却丢弃 `reasoning_content`，
+而官方文档说带 tools 不回传会 400——三者不可能同时为真。打真实 API 核实。
+
+**5 组探针实测，四项裁决**
+
+| 断言 | 裁决 |
+|---|---|
+| 官方：思考模式默认打开、effort 默认 high | ✅ **正确**。无 tools / 带 tools 都返回非空 `reasoning_content` |
+| pai 的 loop 丢弃 `reasoning_content` | ✅ 事实 |
+| 官方：带 tools 不回传 `reasoning_content` 会 400 | ❌ **未复现**（测 3 次，含 reasoning 达 181 token 的重推理场景） |
+| 我此前写的「实测 reasoning_tokens 全为 0」 | ❌ **错误，是我的问题** |
+
+**我犯的错**：只看了一个 session 的**第一条 usage 记录**（恰好为 0）就断言"全为 0"，
+并据此推出"思考模式实际没开"。全量统计的真相是：
+**12 步合计 reasoning 81 / completion 650 = 12.5%**，第 1 步几乎总有 reasoning，后续步骤常为 0。
+与「55 离线」「384K 写成 8k」同一类错误：**从单点推广到全局**。
+
+**锚是否受影响——决定性实验**
+
+若 `reasoning_content` 被丢弃且不进下轮上下文，锚（`prompt_N + completion_N`）
+应按 reasoning 量高估。制造大 reasoning 验证：
+
+| 来源 | reasoning | 下轮 prompt 增长 − completion |
+|---|---|---|
+| 真实 session ×3 | 22 / 8 / 0 | +22 / +20 / +18 |
+| 重推理探针 | **181** | **+13** |
+
+差值恒为小正数，**与 reasoning 量完全无关**——若 reasoning 真的不进下轮上下文，
+差值应随之变成大负数。没有发生。**锚安全。**
+
+**取舍**：保持现状不回传（实测安全，且回传会让 prompt 变大——服务端看来已计入，
+再传一份是重复付费）。风险已登记：一旦出现 reasoning 相关的 400 立即改。
+**机制未查明**，只有实测事实没有解释，不编造。
+
+**顺带确认的一件事**：探针中 DeepSeek 一次返回了 **3 个并行 tool_calls**；
+我只回 1 条 tool 消息就触发了 400（`insufficient tool messages following tool_calls message`）。
+这证明评审 R#11 说的「DeepSeek 会发并行工具调用，非假想场景」属实，
+且有真实的 400 复现路径。pai 的 loop 逻辑上处理了（遍历所有 tc 各回一条）但无测试覆盖，
+该条已从「值得改」升级。
+
+**测试**：本条只改文档 + 打真实 API 探针，`./test.sh` **70 passed, 1 deselected**。
+探针花费：约 10 次小请求，分币级。
+
+**下一条**：P0 第 3 条——锚重置后的读数盲区（R#7）。
