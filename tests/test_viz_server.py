@@ -1,11 +1,17 @@
-"""server 冒烟测试:随机端口起真 server,打两个端点。全离线(子进程只 import pai,不打 API)。"""
+"""server 冒烟测试:随机端口起真 server,打两个端点。全离线(子进程只 import pai,不打 API)。
+
+_collect() 的错误分支(子进程报错 / stdout 不是合法 JSON)用 monkeypatch 直接测,
+不必真起子进程——起子进程测不到「子进程返回非 0」这种可控输入,mock 更直接。
+"""
 
 import json
 import threading
 import urllib.request
+from types import SimpleNamespace
 
 import pytest
 
+from pai.viz import server as server_module
 from pai.viz.server import make_server
 
 
@@ -46,3 +52,27 @@ def test_unknown_path_404(viz_server):
     with pytest.raises(urllib.error.HTTPError) as ei:
         urllib.request.urlopen(f"{viz_server}/nope")
     assert ei.value.code == 404
+
+
+def test_collect_returns_500_on_subprocess_error(monkeypatch):
+    def fake_run(*args, **kwargs):
+        return SimpleNamespace(returncode=1, stdout=b"", stderr=b"Traceback: boom")
+
+    monkeypatch.setattr(server_module.subprocess, "run", fake_run)
+    code, body = server_module._collect()
+    assert code == 500
+    data = json.loads(body)
+    assert "Traceback: boom" in data["error"]
+
+
+def test_collect_returns_500_when_stdout_is_not_valid_json(monkeypatch):
+    # returncode==0 但 stdout 被杂散 print() 弄脏——不是「子进程崩了」,是「输出脏了」,
+    # 两者要分开覆盖,否则脏输出会被当成 200 直接转发给前端,前端 JSON.parse 报个没头绪的错。
+    def fake_run(*args, **kwargs):
+        return SimpleNamespace(returncode=0, stdout=b"debug noise{}", stderr=b"")
+
+    monkeypatch.setattr(server_module.subprocess, "run", fake_run)
+    code, body = server_module._collect()
+    assert code == 500
+    data = json.loads(body)
+    assert "error" in data

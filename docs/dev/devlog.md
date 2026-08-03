@@ -560,6 +560,10 @@ memory、skills、mcp_client 等还没接入 loop 的环节画上（参照 Pi �
 DOM，展开的工具卡片状态会丢）；落地时改成只重算并重画 SVG 连线坐标，不碰卡片 DOM
 （`index.html` 里 `resize` 监听只调 `drawWires`）。
 
+**一处刻意的 spec 偏离**：LLM 节点放在第 2 列（与 tools 同列），而不是画进 loop 框内——
+loop 框本身已经承载 compaction/permissions/streaming/memory/skills/mcp_client 等多个
+未来节点，再把 llm 塞进去会让那个框过挤，可读性优先于「更贴合 spec 字面描述」。
+
 **实现方式**：走的是 subagent-driven TDD，先写离线测试再补实现。Spec 见
 `docs/superpowers/specs/2026-08-03-viz-design.md`。
 
@@ -576,3 +580,6 @@ DOM，展开的工具卡片状态会丢）；落地时改成只重算并重画 S
 
 **已知缺陷 / 待办**：不做自动刷新（点按钮手动刷新，YAGNI，见 spec 决定表）；不做会话回放、
 用量仪表盘（以后需要再立项）；子进程 30s 超时值未实测是否够用，随功能变大再看。
+
+本条涉及的新待办已同步进 TODO.md（子进程超时值无实测依据、不做自动刷新、
+会话回放与用量仪表盘未立项三项，均登记在 P3 · 可选）。

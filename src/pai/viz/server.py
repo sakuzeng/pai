@@ -29,9 +29,28 @@ def _collect() -> "tuple[int, bytes]":
             [sys.executable, "-m", "pai.viz.collect"],
             capture_output=True, timeout=30,
         )
-    except subprocess.TimeoutExpired:
-        return 500, json.dumps({"error": "collect 子进程超时(30s)"}, ensure_ascii=False).encode()
+    except subprocess.TimeoutExpired as e:
+        # 超时前子进程可能已经写出了部分 stderr(比如卡在某个耗时调用之前先报了别的错)
+        # ——丢掉这条线索会让「为什么超时」完全无从排查;stderr 在还没写任何内容时是 None。
+        stderr = (e.stderr or b"").decode("utf-8", errors="replace")
+        msg = "collect 子进程超时(30s)"
+        if stderr:
+            msg += ":\n" + stderr
+        return 500, json.dumps({"error": msg}, ensure_ascii=False).encode()
     if proc.returncode == 0:
+        # returncode==0 不代表 stdout 是干净的 JSON:import 路径上一句杂散 print()
+        # (比如某依赖库的调试输出)会把 JSON 弄脏,不校验的话前端只会看到一个不知所云的
+        # JSON.parse 报错,查不到真因。这里提前校验,把原始 stdout 带回去方便定位。
+        try:
+            json.loads(proc.stdout)
+        except json.JSONDecodeError:
+            return 500, json.dumps(
+                {
+                    "error": "collect 输出不是合法 JSON(可能有 print 之类混入 stdout):\n"
+                    + proc.stdout.decode("utf-8", errors="replace")
+                },
+                ensure_ascii=False,
+            ).encode()
         return 200, proc.stdout
     # stderr 原样透传给页面:让语法错误之类的问题直接可见,顺手当编译检查
     return 500, json.dumps(

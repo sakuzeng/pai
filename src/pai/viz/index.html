@@ -29,6 +29,11 @@
   #pipeline { position:relative; display:flex; gap:72px; align-items:flex-start;
               overflow-x:auto; padding:8px 2px; }
   #wires { position:absolute; inset:0; pointer-events:none; }
+  /* SVG 呈现属性(setAttribute('stroke', 'var(--line)'))不会解析 CSS 自定义属性——
+     浏览器直接把 var(...) 当无效值丢弃,stroke 退化成 none,连线完全不可见。
+     必须用 CSS 规则驱动样式,JS 只管 d 和 dashed 类名。 */
+  #wires path { stroke:var(--line); stroke-width:1.5; fill:none; }
+  #wires path.dashed { stroke-dasharray:5 4; }
   .col { display:flex; flex-direction:column; gap:14px; min-width:200px;
          position:relative; z-index:1; }
   .node { background:var(--card); border:1px solid var(--line); border-radius:10px;
@@ -40,6 +45,9 @@
   .node.todo    { border:1px dashed var(--todo); color:var(--dim); background:transparent; }
   .node.todo .t::after { content:" · 未开始"; font-weight:400; font-size:11px; color:var(--todo); }
   .node.partial .t::after { content:" · 部分"; font-weight:400; font-size:11px; color:var(--partial); }
+  /* 未识别的状态词(STATUS.md 格式漂移):不能长得和 .node.ok 一样,否则误导「已完成」 */
+  .node.unknown { border-left:3px solid var(--err); opacity:.6; }
+  .node.unknown .t::after { content:" · 未知状态"; font-weight:400; font-size:11px; color:var(--err); }
   /* tools 节点内的工具卡 */
   .tool { border:1px solid var(--line); border-radius:8px; padding:8px 10px;
           margin-top:8px; cursor:pointer; background:var(--panel); }
@@ -87,6 +95,7 @@ let lastEls = null;
 
 async function load() {
   $('error').style.display = 'none';
+  $('warn').style.display = 'none';  // 上一次刷新留下的警告条不该跨刷新残留
   try {
     const r = await fetch('/api/structure');
     const data = await r.json();
@@ -157,7 +166,10 @@ function toolCard(t) {
     tr.children[2].textContent = p.desc;
     tb.appendChild(tr);
   }
-  el.addEventListener('click', () => el.classList.toggle('open'));
+  el.addEventListener('click', (e) => {
+    if (e.target.closest('table')) return;  // 展开态下点参数表不应折叠卡片
+    el.classList.toggle('open');
+  });
   return el;
 }
 
@@ -186,10 +198,9 @@ function drawWires(data, els) {
     }
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     path.setAttribute('d', d);
-    path.setAttribute('fill', 'none');
-    path.setAttribute('stroke', 'var(--line)');
-    path.setAttribute('stroke-width', '1.5');
-    if (todoIds.has(a) || todoIds.has(b)) path.setAttribute('stroke-dasharray', '5 4');
+    // stroke/fill 交给 #wires path 的 CSS 规则(见 <style>);presentation attribute
+    // 里的 var() 不会被解析,只有 class 触发的 CSS 规则才行
+    if (todoIds.has(a) || todoIds.has(b)) path.classList.add('dashed');
     svg.appendChild(path);
   }
 }
