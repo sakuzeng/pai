@@ -714,3 +714,52 @@ class TestSummarize:
         summarize(self._msgs(), client=client, model="fake", instructions="只保留文件名")
         joined = "".join(m["content"] for m in client.requests[0]["messages"])
         assert "只保留文件名" in joined and SUMMARY_INSTRUCTIONS[:8] not in joined
+
+
+# ---------- TestCompactAndBreaker ----------
+
+
+class TestCompactAndBreaker:
+    def _msgs(self):
+        return [
+            {"role": "system", "content": "sys"},
+            {"role": "user", "content": "old"},
+            {"role": "assistant", "content": "old reply"},
+            {"role": "user", "content": "recent"},
+        ]
+
+    def test_compact_rebuilds_with_summary_as_user(self):
+        from fake_llm import FakeClient
+        from pai.core.compaction import compact
+
+        client = FakeClient([{"content": "这是摘要", "usage": {}}])
+        new, summary = compact(self._msgs(), cut=3, client=client, model="fake")
+        assert summary == "这是摘要"
+        assert new[0] == {"role": "system", "content": "sys"}       # system 原样保留
+        assert new[1]["role"] == "user" and "这是摘要" in new[1]["content"]
+        assert new[2:] == self._msgs()[3:]                           # 保留尾原样
+        assert all(m["role"] != "tool" for m in new[:3])
+
+    def test_verify_counts_failure_only_on_real_usage_still_over(self):
+        """D#34：成败只认压缩后首次真实 usage；降回线内清零计数。"""
+        from pai.core.compaction import (CompactionSettings, CompactionState,
+                                         verify_compaction)
+
+        settings = CompactionSettings(reserve_tokens=200)
+        state = CompactionState(awaiting_verify=True)
+        state = verify_compaction(950, 1000, settings, state)        # 仍超线（>800）
+        assert state.failures == 1 and not state.awaiting_verify
+        state.awaiting_verify = True
+        state = verify_compaction(500, 1000, settings, state)        # 降回线内
+        assert state.failures == 0
+
+    def test_breaker_trips_after_three_consecutive_failures(self):
+        from pai.core.compaction import (CompactionSettings, CompactionState,
+                                         verify_compaction)
+
+        settings = CompactionSettings(reserve_tokens=200)
+        state = CompactionState()
+        for _ in range(3):
+            state.awaiting_verify = True
+            state = verify_compaction(999, 1000, settings, state)
+        assert state.tripped                                          # 第 3 次即熔断

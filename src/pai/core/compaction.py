@@ -294,3 +294,53 @@ def summarize(
     response = client.chat.completions.create(model=model, messages=request)
     text = response.choices[0].message.content or ""
     return text, usage_fields(response)
+
+
+MAX_COMPACT_FAILURES = 3   # 对齐 CC（D#14）：没有熔断时真实事故是数千次连续失败
+
+
+@dataclass
+class CompactionState:
+    """熔断状态机（D#34）：压缩后不立即判成败，等首次真实 usage 回传。"""
+
+    failures: int = 0
+    awaiting_verify: bool = False
+    tripped: bool = False
+
+
+def verify_compaction(
+    prompt_tokens: int,
+    window: int,
+    settings: CompactionSettings,
+    state: CompactionState,
+) -> CompactionState:
+    """压缩后首次真实 prompt_tokens 才是裁决依据——估算在此刻低估 33%，信它必炸（D#34）。"""
+    still_over = prompt_tokens > window - settings.reserve_tokens
+    failures = state.failures + 1 if still_over else 0
+    return CompactionState(
+        failures=failures,
+        awaiting_verify=False,
+        tripped=state.tripped or failures >= MAX_COMPACT_FAILURES,
+    )
+
+
+def compact(
+    messages: Sequence[Mapping[str, object]],
+    *,
+    cut: int,
+    client,
+    model: str,
+    style: str = "flat",
+    instructions: str | None = None,
+) -> tuple[list[dict], str]:
+    """切 + 摘 + 重建。调用方随后必须 anchors.reset() 并置 state.awaiting_verify。
+
+    摘要消息用 user role：OpenAI 兼容协议下多条 system 支持度参差，user 前缀最稳。
+    """
+    summary, _usage = summarize(
+        messages[:cut], client=client, model=model, style=style, instructions=instructions
+    )
+    rebuilt: list[dict] = [dict(messages[0])]
+    rebuilt.append({"role": "user", "content": f"[早前对话的摘要，供延续任务用]\n{summary}"})
+    rebuilt.extend(dict(m) for m in messages[cut:])
+    return rebuilt, summary
