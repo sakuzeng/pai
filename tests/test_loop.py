@@ -299,3 +299,51 @@ def test_anchor_does_not_double_count_the_assistant_message():
     correct = 700 + 40 + estimate_conversation_tokens(sent[3:])
     assert usages[1]["estimated_prompt_tokens"] == correct
     assert usages[1]["estimated_prompt_tokens"] < correct + assistant_est
+
+
+# ---------- 并行 tool_calls 配对不变量（R#11） ----------
+
+
+def test_parallel_tool_calls_each_get_a_reply(tmp_path, monkeypatch):
+    """DeepSeek 实测一次回 3 个并行 tool_calls；漏回任何一条下轮即 400（R#11）。"""
+    monkeypatch.chdir(tmp_path)
+    from pai.core.loop import run_agent
+    from pai.core.tools import get_tools
+
+    script = [
+        {"tool_calls": [
+            ("bash", json.dumps({"command": "true"})),
+            ("bash", json.dumps({"command": "echo a"})),
+            ("bash", json.dumps({"command": "echo b"})),
+        ]},
+        {"content": "done"},
+    ]
+    client = FakeClient(script)
+    run_agent("x", client=client, model="fake", tools=get_tools(),
+              on_event=lambda _: None)
+    sent = client.requests[1]["messages"]           # 第二次请求 = 回填后的完整历史
+    assistant = next(m for m in sent if m["role"] == "assistant" and m.get("tool_calls"))
+    call_ids = [tc["id"] for tc in assistant["tool_calls"]]
+    tool_msgs = [m for m in sent if m["role"] == "tool"]
+    assert [m["tool_call_id"] for m in tool_msgs] == call_ids   # N 条、同序、一一配对
+
+
+def test_parallel_tool_calls_mixed_known_and_unknown(tmp_path, monkeypatch):
+    """合法工具与未知工具同轮混发：未知的也必须回填错误消息，不许漏配对。"""
+    monkeypatch.chdir(tmp_path)
+    from pai.core.loop import run_agent
+    from pai.core.tools import get_tools
+
+    script = [
+        {"tool_calls": [
+            ("bash", json.dumps({"command": "true"})),
+            ("no_such_tool", json.dumps({})),
+        ]},
+        {"content": "done"},
+    ]
+    client = FakeClient(script)
+    run_agent("x", client=client, model="fake", tools=get_tools(),
+              on_event=lambda _: None)
+    tool_msgs = [m for m in client.requests[1]["messages"] if m["role"] == "tool"]
+    assert len(tool_msgs) == 2
+    assert "未知工具" in tool_msgs[1]["content"]
