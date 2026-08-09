@@ -1,5 +1,5 @@
 # 02-20260803-compaction —— 上下文压缩
-状态：实现中（地基与前置裁决已完成，主线三函数未动工）
+状态：阶段 1 主线已交付（触发→切→摘→重建→熔断全部接进 loop，e2e 跑通）
 
 ## 需求
 
@@ -49,13 +49,30 @@ P0 清障已完成（R#3/4/7/8/9 五条，见 docs/dev/archive/devlog-2026-08.md
 
 ## 结果与测试
 
-进行中。现有地基测试 31 条（test_compaction.py，含两份真实轨迹夹具）；
-全套 72 passed, 1 deselected。
+6 个 task 严格 TDD（红→绿）跑完，[plan.md](plan.md) 全量代码交付，进度台账见
+`.superpowers/sdd/plan/progress.md`：
+
+| task | 内容 | 提交后全套 |
+|---|---|---|
+| 1 | `AnchorBook`（锚点列表，D#32） | 99 passed, 1 deselected |
+| 2 | 并行 tool_calls 配对测试（R#11） | 101 passed, 1 deselected |
+| 3 | `find_cut_point`（在哪下刀） | 104 passed, 1 deselected |
+| 4 | `summarize` 双模式 + 拍平/原样发实测脚手架（2 轮返工，见 progress.md） | 107 passed, 3 deselected |
+| 5 | `compact` + 熔断状态机（D#34） | 110 passed, 3 deselected |
+| 6 | 接线进 loop + e2e（含超长单轮警告） | **113 passed, 3 deselected** |
+
+Task 6 的 e2e 夹具撞出一条此前只在理论上成立的约束：`find_cut_point` 需要 ≥2 个锚点
+才能算真实差值，而 `compact()` 后锚点簿被清空——意味着**压缩后若仍处于超线状态，
+下一步必然先撞见「无可压」警告，再等一轮真实 usage 落盘才凑够两锚、算出下一次真实
+切点**。`test_breaker_stops_auto_compaction` 把简报原稿设想的「一超线就压」单轮节奏
+改写为「warn-turn + build-turn」两步一压，详见 STATUS 缺陷 1、代码注释与
+[task-6-report.md](../../../../.superpowers/sdd/plan/task-6-report.md)。
 
 ## 遗留问题
 
-均在 TODO：P0 剩余（并行 tool_calls 测试 R#11、熔断器只认真实 usage D#34、
-锚点列表 D#32）、P1 主线三函数、reserve_tokens=16384 无实测依据。
+均在 TODO：`reserve_tokens=16384` / `keep_recent_tokens=20000` 实测校准（阶段 1 主线跑通
+但仍是从 pi 借来的经验值）、microcompact 评估（触发条件已满足）。
+P0/P1 清单已全部划掉，出处见对应 TODO 条目。
 
 ## 用到的知识
 

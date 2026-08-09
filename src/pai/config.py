@@ -23,3 +23,8 @@ def model_name() -> str:
     # 「client 是否恰好先被构造」这种求值顺序巧合（R3#7）
     load_dotenv()
     return os.environ.get("PAI_MODEL", DEFAULT_MODEL)
+
+
+def context_window() -> int:
+    load_dotenv()
+    return int(os.environ.get("PAI_CONTEXT_WINDOW", 1_000_000))

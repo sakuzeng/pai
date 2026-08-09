@@ -14,7 +14,18 @@ from __future__ import annotations
 import json
 from typing import Callable
 
-from pai.core.compaction import AnchorBook, context_tokens, usage_fields
+from pai.core.compaction import (
+    AnchorBook,
+    CompactionSettings,
+    CompactionState,
+    MAX_COMPACT_FAILURES,
+    compact,
+    context_tokens,
+    find_cut_point,
+    should_compact,
+    usage_fields,
+    verify_compaction,
+)
 from pai.core.session import SessionLog
 from pai.core.tools import Tool
 
@@ -40,6 +51,8 @@ def run_agent(
     max_total_tokens: int | None = None,
     session: SessionLog | None = None,
     on_event: Callable[[str], None] = print,
+    context_window: int | None = None,
+    compaction: CompactionSettings | None = None,
 ) -> str:
     """跑一次 agent 任务，返回最终回答。
 
@@ -60,6 +73,7 @@ def run_agent(
 
     # 上下文大小以 provider 回传的真实值为锚，只估锚之后新增的消息（见 compaction.context_tokens）
     anchors = AnchorBook()
+    state = CompactionState()
     spent_tokens = 0
 
     for step in range(1, max_steps + 1):
@@ -73,12 +87,37 @@ def run_agent(
         estimated = context_tokens(
             messages, tool_schemas, anchor=anchor, anchor_index=anchor_index
         )
+
+        compaction_on = compaction is not None and context_window is not None
+        if compaction_on and not state.tripped and not state.awaiting_verify \
+                and should_compact(estimated, context_window, compaction):
+            cut = find_cut_point(messages, anchors.entries,
+                                 keep_recent_tokens=compaction.keep_recent_tokens)
+            if cut <= 1:
+                on_event(f"⚠️ 上下文超线（估算 {estimated}）但无可压（超长单轮或锚不足），"
+                         "不压，靠预算熔断兜底")
+            else:
+                messages, summary = compact(messages, cut=cut, client=client, model=model)
+                anchors.reset()                      # 历史被改写，旧锚全部作废（D#18/32）
+                state.awaiting_verify = True         # 成败等首次真实 usage（D#34）
+                after = context_tokens(messages, tool_schemas)
+                on_event(f"🗜️ 压缩：切于 {cut}，估算 {estimated} → {after}")
+                if session:
+                    session.append({"type": "compaction", "step": step, "cut": cut,
+                                    "summary": summary, "estimated_before": estimated,
+                                    "estimated_after": after})
+                estimated = after
+
         response = client.chat.completions.create(
             model=model, messages=messages, tools=tool_schemas
         )
         msg = response.choices[0].message
 
         usage = usage_fields(response)
+        if compaction_on and state.awaiting_verify and usage.get("prompt_tokens") is not None:
+            state = verify_compaction(usage["prompt_tokens"], context_window, compaction, state)
+            if state.tripped:
+                on_event(f"⚠️ 压缩连续失败 {MAX_COMPACT_FAILURES} 次，自动压缩已熔断")
         spent_tokens += usage.get("total_tokens") or 0
         if session and usage:
             session.append(

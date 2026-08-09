@@ -347,3 +347,100 @@ def test_parallel_tool_calls_mixed_known_and_unknown(tmp_path, monkeypatch):
     tool_msgs = [m for m in client.requests[1]["messages"] if m["role"] == "tool"]
     assert len(tool_msgs) == 2
     assert "未知工具" in tool_msgs[1]["content"]
+
+
+# ---------- 压缩接线（e2e） ----------
+
+
+def _usage(prompt, completion=10):
+    return {"prompt_tokens": prompt, "completion_tokens": completion,
+            "total_tokens": prompt + completion}
+
+
+def test_loop_compacts_when_over_threshold(tmp_path, monkeypatch):
+    """e2e：超线 → 切 → 摘（fake 扮演摘要模型）→ 重建 → 锚重置 → 继续任务。"""
+    monkeypatch.chdir(tmp_path)
+    from pai.core.compaction import CompactionSettings
+    from pai.core.loop import run_agent
+    from pai.core.tools import get_tools
+
+    script = [
+        {"tool_calls": [("bash", json.dumps({"command": "true"}))], "usage": _usage(100)},
+        # 850 而非「看起来够用」的 700：锚值是 prompt+completion，还要过 context_tokens 的
+        # 尾部估算才跟 window-reserve=800 比大小，700+10+尾部估算(~8) 差一口气够不着线，
+        # 850 留够余量确保第 3 次 create 是真被摘要请求命中，不是编号凑巧。
+        {"tool_calls": [("bash", json.dumps({"command": "true"}))], "usage": _usage(850)},
+        {"content": "这是摘要"},                                   # ← 压缩触发的摘要请求
+        {"tool_calls": [("bash", json.dumps({"command": "true"}))], "usage": _usage(300)},
+        {"content": "done"},
+    ]
+    client = FakeClient(script)
+    settings = CompactionSettings(reserve_tokens=200, keep_recent_tokens=500)
+    answer = run_agent("x", client=client, model="fake", tools=get_tools(),
+                       context_window=1000, compaction=settings, on_event=lambda _: None)
+    assert answer == "done"
+    summary_req = client.requests[2]                    # 第 3 次 create = 摘要请求
+    assert "tools" not in summary_req
+    after = client.requests[3]["messages"]              # 压缩后的下一次任务请求
+    assert any("[早前对话的摘要" in (m.get("content") or "") for m in after)
+    assert after[0]["role"] == "system"
+    assert all(after[i]["role"] != "tool" or             # 无孤儿 tool_result
+               after[i - 1].get("tool_calls") or after[i - 1]["role"] == "tool"
+               for i in range(1, len(after)))
+
+
+def test_loop_warns_not_compacts_when_no_cut_available(tmp_path, monkeypatch):
+    """超长单轮裁决（spec 问 2）：无可压 → 不压 + 警告事件，靠预算熔断兜底。"""
+    monkeypatch.chdir(tmp_path)
+    from pai.core.compaction import CompactionSettings
+    from pai.core.loop import run_agent
+    from pai.core.tools import get_tools
+
+    events: list[str] = []
+    script = [
+        {"tool_calls": [("bash", json.dumps({"command": "true"}))], "usage": _usage(900)},
+        {"content": "done"},
+    ]
+    run_agent("x", client=FakeClient(script), model="fake", tools=get_tools(),
+              context_window=1000, compaction=CompactionSettings(reserve_tokens=200),
+              on_event=events.append)
+    assert any("无可压" in e for e in events)            # 只有 1 个锚,find_cut_point 返回 1
+    assert len(events) == len([e for e in events if e]) # 没发生摘要请求（脚本只有 2 turn 且未爆）
+
+
+def test_breaker_stops_auto_compaction(tmp_path, monkeypatch):
+    """连续 3 次压缩后仍超线 → tripped，不再发起第 4 次摘要请求。"""
+    monkeypatch.chdir(tmp_path)
+    from pai.core.compaction import CompactionSettings
+    from pai.core.loop import run_agent
+    from pai.core.tools import get_tools
+
+    # find_cut_point 铁律（test_compaction.py 已钉死）：单锚永远返回 1（无可压），
+    # 切点需要两个锚算差值。压缩一发生就 anchors.reset()，所以每次真正压缩之间必须
+    # 有两轮真实 usage 落盘——第一轮撞见「仅一锚」只能警告，顺带把它记成第二个锚，
+    # 第二轮才有得算。故每个压缩周期是 warn-turn + build-turn，不是简报原稿设想的
+    # 「一超线就压」单轮节奏；用真实 FakeClient 跑通后回填的序列，语义不变
+    # （连续 3 次压缩、真实 usage 仍超线、第 3 次后熔断），只是把「怎么攒够两个锚」
+    # 显式摆出来。
+    tool_turn = {"tool_calls": [("bash", json.dumps({"command": "true"}))]}
+    script = [
+        {**tool_turn, "usage": _usage(100)},   # 锚 A：起步，未超线
+        {**tool_turn, "usage": _usage(850)},   # 锚 B：与 A 一起够两锚，第 3 次请求前触发首压
+        {"content": "摘1"},
+        {**tool_turn, "usage": _usage(950)},   # 压后 verify：真实 usage 仍超线 → failures=1
+        {**tool_turn, "usage": _usage(975)},   # 单锚警告，顺带攒出第二锚
+        {"content": "摘2"},
+        {**tool_turn, "usage": _usage(950)},   # verify：仍超线 → failures=2
+        {**tool_turn, "usage": _usage(975)},   # 单锚警告，顺带攒出第二锚
+        {"content": "摘3"},
+        {**tool_turn, "usage": _usage(950)},   # verify：仍超线 → failures=3 → tripped
+        {"content": "done"},                   # tripped 后：不再压，任务正常收尾
+    ]
+    client = FakeClient(script)
+    answer = run_agent("x", client=client, model="fake", tools=get_tools(),
+                       context_window=1000, max_steps=10,
+                       compaction=CompactionSettings(reserve_tokens=200, keep_recent_tokens=1),
+                       on_event=lambda _: None)
+    assert answer == "done"
+    summary_reqs = [r for r in client.requests if "tools" not in r]
+    assert len(summary_reqs) == 3                        # 熔断后没有第 4 次

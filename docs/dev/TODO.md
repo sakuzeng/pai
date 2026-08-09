@@ -35,19 +35,19 @@
       ① 绝对预算切法下比例抵消不成立；② **偏差根本不均匀**——实测短 tool 结果低估 4-5 倍
       （固定的每条约 25-30 token 框架开销占比暴涨），长消息只低估约 2%。
       → 衍生出下面这条实现要求。
-- [ ] **find_cut_point 用真实 usage 差值，不用字符估算**（D#32）
-      `第 N 轮后新增消息的真实 token = prompt_{N+1} − (prompt_N + completion_N)`，
-      实测 4 步任务得 42 / 33 / 43，全部真实值。切点只能落轮次边界，而真实用量也只能按轮次
-      反推——粒度天然匹配。
-      **实现要求**：`loop` 需保留**锚点列表** `[(message_index, real_tokens), ...]` 而非只留最新一个；
-      仅未锚定的尾部用字符估算。压缩后旧锚点全部作废需清空（与 D#18 的 anchor 重置同一件事）。
+- [x] ~~**find_cut_point 用真实 usage 差值，不用字符估算**（D#32）~~ **已完成
+      2026-08-09**（compaction 阶段 1 task 3）：`AnchorBook.entries` 保留锚点列表，
+      `find_cut_point` 按相邻真实差值反推切点，绝不切在孤儿 tool_result 上；
+      单锚（锚不足两个）如实返回 1（无可压），任务 6 的 e2e 撞出这条约束的实际影响
+      （见 STATUS 缺陷 1）。
 - [x] ~~**锚重置后的读数盲区补进 STATUS 缺陷 1**（R#7）~~ **已完成 2026-08-03**：
       STATUS 缺陷 1 已改写（含"低估会让压缩后上下文看起来更小 → 误判成功 → 下轮爆窗口"
       这条具体后果），裁决见 D#34。
-- [ ] **实现熔断器时：失败计数只认压缩后首次真实 usage**（D#34）
-      `compact()` 后不立即判成败，标记"等待压缩后首次真实读数"；
-      以该次 API 响应的真实 `prompt_tokens` 为准，仍超阈值才计一次失败；
-      连续失败达上限（CC 用 3）→ 停止自动压缩。代价是熔断判断推迟一个来回。
+- [x] ~~**实现熔断器时：失败计数只认压缩后首次真实 usage**（D#34）~~ **已完成
+      2026-08-09**（compaction 阶段 1 task 5+6）：`CompactionState`/`verify_compaction`
+      标记 `awaiting_verify`，等压缩后首次真实 `prompt_tokens` 才判成败；
+      `MAX_COMPACT_FAILURES=3` 接进 loop 触发块，连续 3 次仍超线即 tripped，
+      `test_breaker_stops_auto_compaction` 覆盖。
 - [x] ~~**给 loop 层锚簿记补测试**（R#8）~~ **早在 2026-08-03 已完成，本条漏勾，
       2026-08-09 对账核销**。tests/test_loop.py:238 `test_anchor_bookkeeping_is_exact`
       与 :272 反向钉死双计入；注入 off-by-one（`len(messages)-1`）实测会红。
@@ -56,19 +56,29 @@
       2026-08-09 对账核销**。`FROZEN_TOOL_SCHEMAS`（test_compaction.py:450），
       改工具 docstring 实测不再假失败。
 
-## P1 · 主线（阶段 1 压缩）
+## P1 · 主线（阶段 1 压缩）—— **已全部完成 2026-08-09**（compaction task 1-6，feat/compaction 分支）
 
-- [ ] `find_cut_point`（在哪下刀）。约束：绝不在 tool 结果上切，否则产生孤儿 tool_result。
-- [ ] `summarize`（调模型摘要）。届时一并决定：
-      - 拍平 vs 原样发（D#12/D#16，R#12）——需实测 DeepSeek 上的「不听话率」，
-        并把「0.64 系数来自单条小轨迹」「原样发要求 tools 逐字节一致」两个虚项补进实验设计
-      - `serialize_conversation` 是否跳过 system 消息（R#16）——不跳则 system 会同时出现在
-        拍平文本与新上下文里，浪费摘要预算
-      - 用真实摘要长度校准 `reserve_tokens=16384`（目前照搬 pi，无实测依据）
-- [ ] `compact`（把两者接起来），必须同时带**熔断器**（D#14）：连续压缩失败达上限即停。
-- [ ] 把 `should_compact` 真正接进 loop——目前 `context_tokens` 算出来只落盘、不决策。
-- [ ] **压缩会改写历史，必须让 anchor 失效**：`compact()` 里把 `anchor` 重置为 `None`，
-      否则拿旧锚算新对话。锚定法假设 append-only，与压缩天然冲突。
+- [x] ~~`find_cut_point`（在哪下刀）~~。约束落实：绝不在 tool 结果上切
+      （`test_never_starts_kept_segment_with_tool_result`）。
+- [x] ~~`summarize`（调模型摘要）~~。届时决定的三件事均已定：
+      - 拍平 vs 原样发（D#12/D#16，R#12）——**已实测裁决 D#37，默认 `style="flat"`**，
+        loop 调 `compact` 不传 style 用默认值；数据存 evidence/20260809-拍平vs原样发实测/
+      - `serialize_conversation` 跳过 system 消息（R#16）——已实现，见函数调用处
+      - 用真实摘要长度校准 `reserve_tokens=16384`——**仍未做**，见 STATUS 缺陷 3，
+        单独登记在下面
+- [x] ~~`compact`（把两者接起来），必须同时带**熔断器**（D#14）~~：
+      `CompactionState`/`verify_compaction`/`MAX_COMPACT_FAILURES=3` 已实现并接进 loop。
+- [x] ~~把 `should_compact` 真正接进 loop~~：`run_agent` 新增 `context_window`/`compaction`
+      两个 keyword-only 参数（都给才启用；默认 `None` 时行为与接线前完全一致），
+      触发块在 `estimated` 计算之后、`create` 调用之前；`once.run_once` 透传
+      `context_window()`（读 `PAI_CONTEXT_WINDOW`，默认 1_000_000）与 `CompactionSettings()`。
+- [x] ~~**压缩会改写历史，必须让 anchor 失效**~~：`compact()` 后调用方立即
+      `anchors.reset()`（`AnchorBook.reset()`），不是把单个 `anchor` 置 `None`——
+      阶段 1 的最终设计是保留**锚点列表**（D#32），reset 清空整个列表。
+- [ ] **reserve_tokens=16384 / keep_recent_tokens=20000 实测校准**（登记自 STATUS 缺陷 3）：
+      两个数字仍是从 pi 借来的经验值，接线阶段的 e2e 测试只验证了阈值公式本身
+      （`tokens > window - reserve`）与切点算法的正确性，没有真实摘要长度/真实触发频率
+      数据。需要 `--llm` 冒烟测试或生产使用积累后再回来定。
 
 ## P2 · 值得改
 
@@ -156,7 +166,8 @@
 - [ ] **面试准备仓库加反向链接指向 pai knowledge/**（2026-08-09，D#35）：
       在其 04_Harness 专题 README 加一行即可。属另一仓库的独立小改动，在这里备忘。
 - [ ] **microcompact 评估**（2026-08-09，K source-walks/cc-compaction.md）：
-      阶段 1 压缩闭环跑通后评估——pai 的 4 个工具全部可重放，按 tool_call_id 清旧结果
+      **触发条件已满足**（阶段 1 压缩闭环 2026-08-09 已跑通接进 loop）——pai 的 4 个工具
+      全部可重放，按 tool_call_id 清旧结果
       不用调模型，可能是性价比最高的第二级压缩。
 - [x] ~~**R2#1 残余：anna 披露边界的最终确认**~~ **已裁决 2026-08-09：不入库，本地保留**。
       `knowledge/anna/` 与 `reviews/2026-08-09-体系评审.md` 进 .gitignore；

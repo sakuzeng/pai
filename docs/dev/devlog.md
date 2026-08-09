@@ -23,3 +23,4 @@
 - 2026-08-09 devlog 历史归档——17 条详细条目原样迁入 archive/devlog-2026-08.md，主文件 828→22 行 → [archive](archive/devlog-2026-08.md)
 - 2026-08-09 decisions 加索引——36 条一行标题表+一致性测试钉住，正文一字未删；32-36 条错位节名归正 → [decisions.md](decisions.md)
 - 2026-08-09 02-compaction spec 获批→plan 定稿——6 task 带全量代码严格 TDD，待提交现有改动后开 SDD 分支 → [plan](features/02-20260803-compaction/plan.md)
+- 2026-08-09 02-compaction 阶段 1 主线交付——触发/切/摘/重建/熔断接进 loop，e2e 钉死单锚不可切的隐藏约束，113 passed → [档案](features/02-20260803-compaction/README.md)

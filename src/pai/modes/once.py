@@ -8,7 +8,8 @@ from __future__ import annotations
 
 from typing import Callable
 
-from pai.config import make_client, model_name
+from pai.config import context_window, make_client, model_name
+from pai.core.compaction import CompactionSettings
 from pai.core.loop import run_agent
 from pai.core.session import SessionLog
 from pai.core.tools import get_tools
@@ -33,4 +34,6 @@ def run_once(
         max_total_tokens=max_total_tokens,
         session=None if no_session else SessionLog(),
         on_event=on_event,
+        context_window=context_window(),
+        compaction=CompactionSettings(),
     )
