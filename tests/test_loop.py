@@ -391,8 +391,9 @@ def test_loop_compacts_when_over_threshold(tmp_path, monkeypatch):
 
 def test_loop_warns_not_compacts_when_no_cut_available(tmp_path, monkeypatch):
     """单锚场景（find_cut_point 结构性地需要 ≥2 个锚才能算切点）：不是真的无可压，
-    是压缩节奏里正常的「锚点重建中」一步——事件应是平静的进度提示，不是 ⚠️ 警告
-    （审查修复：区分「真无可压」与「锚点重建中」两种语义，避免持续超线时刷屏误导）。
+    是压缩节奏里正常的「锚点不足（<2）」一步——事件应是平静的进度提示，不是 ⚠️ 警告
+    （审查修复：区分「真无可压」与「锚点不足」两种语义，避免持续超线时刷屏误导；
+    事件文案本身也不该在从未压缩过的会话里提「压缩后」——那会误导用户以为已经压过）。
     不压、不发起摘要请求的行为本身不变。
     """
     monkeypatch.chdir(tmp_path)
@@ -409,7 +410,7 @@ def test_loop_warns_not_compacts_when_no_cut_available(tmp_path, monkeypatch):
     run_agent("x", client=client, model="fake", tools=get_tools(),
               context_window=1000, compaction=CompactionSettings(reserve_tokens=200),
               on_event=events.append)
-    assert any("重建中" in e for e in events)             # 只有 1 个锚，不是真无可压
+    assert any("锚点不足" in e for e in events)            # 只有 1 个锚，不是真无可压
     assert not any("⚠️" in e for e in events)             # 不该带警告前缀
     assert all("tools" in r for r in client.requests)    # 没发生摘要请求（摘要请求不带 tools）
 

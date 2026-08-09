@@ -1,9 +1,8 @@
-"""上下文压缩的地基三件套：token 秤、警戒线、对话拍平机。
+"""上下文压缩全链路：token 秤、警戒线、真实 usage 锚簿、切点、摘要、重建、熔断。
 
-阶段 1 的第 1-2 步。全是纯函数——不联网、不读文件、不改 messages——
-这样第 3 步 find_cut_point 和最终的自动压缩才有可测的立足点。
-
-刻意还没有的：compact（把两者接起来）。
+阶段 1 全部落地：estimate_tokens/context_tokens 做估算与锚定，should_compact 是警戒线，
+AnchorBook/find_cut_point 按真实 usage 差值定切点，summarize/compact 负责摘要与重建，
+CompactionState/verify_compaction 是压缩失败熔断器（D#34）。loop.py 负责接线触发。
 """
 
 from __future__ import annotations
@@ -179,7 +178,8 @@ def find_cut_point(
     """在哪下刀（D#32）：从最新锚往回累计真实差值，够 keep_recent_tokens 即停。
 
     只在锚点边界下刀——真实成本只能按轮次反推，粒度天然对齐。返回保留段起点；
-    1 = 无可压（锚不足 / 预算吞下全部历史），调用方按 spec 裁决走「不压 + 警告」。
+    1 = 无可压（锚不足两个 / keep_recent_tokens 吞下全部历史）。调用方按锚数分流：
+    锚不足两个是压缩节奏里的正常一步，走静默进度；锚已够两个才是真无可压，才升级为警告。
     落点若是 tool 消息则前移，绝不让保留段以孤儿 tool_result 开头。
     """
     if len(anchors) < 2:

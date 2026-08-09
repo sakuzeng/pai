@@ -6,7 +6,8 @@
 - 工具异常处理下沉到 Tool.run()
 - 每条消息同步落 SessionLog（审计地基）
 
-刻意还没有的（路线图阶段任务）：压缩、权限钩子、流式、循环检测。
+压缩已接线（触发/切/摘/重建/熔断，见 pai.core.compaction）。
+刻意还没有的（路线图阶段任务）：权限钩子、流式、循环检测。
 """
 
 from __future__ import annotations
@@ -99,7 +100,7 @@ def run_agent(
                     # find_cut_point 结构性地需要 ≥2 个锚才能算真实差值
                     # （test_compaction.py::test_returns_1_when_nothing_can_be_cut 钉死），
                     # 只差一轮真实 usage 落盘就能重建第二个锚——本步暂缓，不是警告。
-                    on_event(f"🗜️ 压缩后锚点重建中（还差一轮真实 usage），本步暂缓（估算 {estimated}）")
+                    on_event(f"🗜️ 锚点不足（<2）无法定真实切点，本步暂缓压缩（估算 {estimated}）")
                 else:
                     on_event(f"⚠️ 上下文超线（估算 {estimated}）但无可压（超长单轮或预算吞下全部历史），"
                              "不压，靠预算熔断兜底")
