@@ -704,6 +704,7 @@ class TestSummarize:
         sent = client.requests[0]["messages"]
         assert {"role": "user", "content": "建个文件"} in sent   # 原消息原样在场
         assert sent[-1]["role"] == "user" and "摘要" in sent[-1]["content"]  # 末尾追加摘要指令
+        assert all(m["role"] != "system" for m in sent)  # 仲裁 2026-08-09：raw 同样不带 system——原 system 会诱导「继续干活」
 
     def test_instructions_override_default(self):
         from fake_llm import FakeClient
