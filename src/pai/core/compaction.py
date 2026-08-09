@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Iterable, Mapping, Sequence
 
 # 官方换算系数，来源 refs/deepseek-api/quick_start/token_usage.md：
@@ -54,6 +54,29 @@ class CompactionSettings:
 
     reserve_tokens: int = 16384
     enabled: bool = True
+
+
+@dataclass
+class AnchorBook:
+    """真实 usage 锚点簿（D#32）：单锚只够判「该不该压」，切点计算需要完整列表。
+
+    entries[i] = (锚覆盖到的 message 下标, 累计真实 token)；相邻差值 = 该轮真实成本。
+    压缩会改写历史，必须 reset()——锚定法假设 append-only。
+    """
+
+    entries: list[tuple[int, int]] = field(default_factory=list)
+
+    def record(self, message_index: int, real_tokens: int) -> None:
+        self.entries.append((message_index, real_tokens))
+
+    def latest(self) -> tuple[int | None, int]:
+        if not self.entries:
+            return None, 0
+        index, tokens = self.entries[-1]
+        return tokens, index
+
+    def reset(self) -> None:
+        self.entries.clear()
 
 
 def estimate_tokens(message: Mapping[str, object]) -> int:

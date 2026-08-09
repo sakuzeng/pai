@@ -593,3 +593,39 @@ def test_anchored_estimate_beats_pure_estimate_on_real_usage():
             assert abs(estimate_request_tokens(msgs, schemas) - real) / real > 0.30
         anchor = real + usage["completion_tokens"]
         anchor_index = count + 1  # +1：那条 assistant 消息已被 completion_tokens 覆盖
+
+
+# ---------- AnchorBook ----------
+
+
+class TestAnchorBook:
+    def test_records_and_latest(self):
+        from pai.core.compaction import AnchorBook
+
+        book = AnchorBook()
+        assert book.latest() == (None, 0)      # 无锚时 context_tokens 走纯估算
+        book.record(3, 1000)                   # 第 1 轮后：messages 前 3 条 = 1000 真实 token
+        book.record(5, 1075)
+        assert book.latest() == (1075, 5)
+        assert book.entries == [(3, 1000), (5, 1075)]
+
+    def test_turn_cost_is_adjacent_difference(self):
+        """D#32：第 N 轮新增消息的真实成本 = 相邻锚差值——实测 42/33/43 的那套语义。"""
+        from pai.core.compaction import AnchorBook
+
+        book = AnchorBook()
+        book.record(3, 100)
+        book.record(5, 142)
+        book.record(7, 175)
+        costs = [b - a for (_, a), (_, b) in zip(book.entries, book.entries[1:])]
+        assert costs == [42, 33]
+
+    def test_reset_clears_everything(self):
+        """压缩改写历史后旧锚全部作废（D#18/D#32 前提：append-only）。"""
+        from pai.core.compaction import AnchorBook
+
+        book = AnchorBook()
+        book.record(3, 1000)
+        book.reset()
+        assert book.latest() == (None, 0)
+        assert book.entries == []

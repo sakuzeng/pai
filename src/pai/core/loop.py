@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 from typing import Callable
 
-from pai.core.compaction import context_tokens
+from pai.core.compaction import AnchorBook, context_tokens
 from pai.core.session import SessionLog
 from pai.core.tools import Tool
 
@@ -59,8 +59,7 @@ def run_agent(
     tool_schemas = [t.schema() for t in tools.values()]
 
     # 上下文大小以 provider 回传的真实值为锚，只估锚之后新增的消息（见 compaction.context_tokens）
-    anchor: int | None = None
-    anchor_index = 0
+    anchors = AnchorBook()
     spent_tokens = 0
 
     for step in range(1, max_steps + 1):
@@ -70,6 +69,7 @@ def run_agent(
                 f"在第 {step} 步发出请求前停止。任务可能未完成。"
             )
 
+        anchor, anchor_index = anchors.latest()
         estimated = context_tokens(
             messages, tool_schemas, anchor=anchor, anchor_index=anchor_index
         )
@@ -107,8 +107,9 @@ def run_agent(
 
         # 锚顺延到刚追加的 assistant 之后：它的真实 token 数就是 completion_tokens，不用估
         if usage and usage.get("prompt_tokens") is not None:
-            anchor = usage["prompt_tokens"] + (usage.get("completion_tokens") or 0)
-            anchor_index = len(messages)
+            anchors.record(
+                len(messages), usage["prompt_tokens"] + (usage.get("completion_tokens") or 0)
+            )
 
         if not msg.tool_calls:
             return msg.content or ""
