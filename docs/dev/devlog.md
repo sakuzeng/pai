@@ -24,3 +24,5 @@
 - 2026-08-09 decisions 加索引——36 条一行标题表+一致性测试钉住，正文一字未删；32-36 条错位节名归正 → [decisions.md](decisions.md)
 - 2026-08-09 02-compaction spec 获批→plan 定稿——6 task 带全量代码严格 TDD，待提交现有改动后开 SDD 分支 → [plan](features/02-20260803-compaction/plan.md)
 - 2026-08-09 02-compaction 阶段 1 主线交付——触发/切/摘/重建/熔断接进 loop，e2e 钉死单锚不可切的隐藏约束，113 passed → [档案](features/02-20260803-compaction/README.md)
+- 2026-08-09 02-compaction SDD 六 task 完成——AnchorBook/find_cut_point/summarize/compact/熔断/接线全链 TDD，2 轮任务级修复（含 Critical：测试文件被重写当场恢复）→ [档案](features/02-20260803-compaction/README.md)
+- 2026-08-09 02-compaction 终审通过——最强模型全分支审查 With fixes（Critical：摘要 usage 漏记预算，计划自带 bug）→ 修复波 4/4 复审 clean，115 passed；5 项 Minor 延后入 TODO → [档案](features/02-20260803-compaction/README.md)

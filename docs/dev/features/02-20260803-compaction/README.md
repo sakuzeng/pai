@@ -1,5 +1,5 @@
 # 02-20260803-compaction —— 上下文压缩
-状态：阶段 1 主线已交付（触发→切→摘→重建→熔断全部接进 loop，e2e 跑通）
+状态：已交付（2026-08-09 终审通过；触发→切→摘→重建→熔断全链 e2e，待合并 main 后转已验收）
 
 ## 需求
 
@@ -59,14 +59,14 @@ P0 清障已完成（R#3/4/7/8/9 五条，见 docs/dev/archive/devlog-2026-08.md
 | 3 | `find_cut_point`（在哪下刀） | 104 passed, 1 deselected |
 | 4 | `summarize` 双模式 + 拍平/原样发实测脚手架（2 轮返工，见 progress.md） | 107 passed, 3 deselected |
 | 5 | `compact` + 熔断状态机（D#34） | 110 passed, 3 deselected |
-| 6 | 接线进 loop + e2e（含超长单轮警告） | **113 passed, 3 deselected** |
+| 6 | 接线进 loop + e2e（含超长单轮警告） | 113 passed, 3 deselected |
+| 终审 | 最强模型全分支审查 With fixes → 修复波 4/4 addressed 复审 clean（Critical：摘要 usage 漏记预算——计划自带 bug） | **115 passed, 3 deselected** |
 
 Task 6 的 e2e 夹具撞出一条此前只在理论上成立的约束：`find_cut_point` 需要 ≥2 个锚点
 才能算真实差值，而 `compact()` 后锚点簿被清空——意味着**压缩后若仍处于超线状态，
 下一步必然先撞见「无可压」警告，再等一轮真实 usage 落盘才凑够两锚、算出下一次真实
 切点**。`test_breaker_stops_auto_compaction` 把简报原稿设想的「一超线就压」单轮节奏
-改写为「warn-turn + build-turn」两步一压，详见 STATUS 缺陷 1、代码注释与
-[task-6-report.md](../../../../.superpowers/sdd/plan/task-6-report.md)。
+改写为「warn-turn + build-turn」两步一压，详见 STATUS 缺陷 1 与代码注释（find_cut_point 与 loop 触发块）。
 
 ## 遗留问题
 

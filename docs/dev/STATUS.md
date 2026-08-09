@@ -50,9 +50,9 @@ agent loop + 工具系统 + 会话落盘已跑通；阶段 1 压缩闭环**已�
 
 ## 测试
 
-共收集 **116 项**（2026-08-09 阶段 1 压缩闭环收尾新增 3 条 loop e2e）：
+共收集 **118 项**（2026-08-09 阶段 1 压缩闭环 + 终审修复波：e2e 与预算/警告分支测试）：
 
-- `./test.sh` → **113 passed, 3 deselected**，全部离线（`tests/fake_llm.py` 假 provider）。**这是默认路径。**
+- `./test.sh` → **115 passed, 3 deselected**，全部离线（`tests/fake_llm.py` 假 provider）。**这是默认路径。**
 - `./test.sh --llm` → 额外跑打真实 API 的冒烟测试，**会产生费用**。
   需同时满足有 `DEEPSEEK_API_KEY` 且 `PAI_RUN_LLM_TESTS=1`——花钱的副作用不能是默认行为。
 

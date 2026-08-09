@@ -48,7 +48,7 @@
 |---|---|---|
 | [00-20260802-harness-skeleton](00-20260802-harness-skeleton/README.md) | 已验收 | `pai "任务"` 可真跑：loop/4 工具/JSONL 落盘/once 模式，冷眼评审严重项清零 |
 | [01-20260803-viz](01-20260803-viz/README.md) | 已验收 | `pai-viz` 本地网页：结构图自动自省 + 阶段路线图，14 条测试 |
-| [02-20260803-compaction](02-20260803-compaction/README.md) | 实现中 | 地基就位（锚定误差 1.3%、预算熔断）、P0 清障完毕；三函数主线未动工 |
+| [02-20260803-compaction](02-20260803-compaction/README.md) | 已交付 | 压缩闭环全链接进 loop（触发/切/摘/重建/熔断），SDD 6 task+终审修复波，115 passed；实测裁决默认拍平（D#37） |
 | [03-20260809-design-gate](03-20260809-design-gate/README.md) | 已交付 | 档案未拍板不许改 src/tests 的 PreToolUse 门禁，注入验证真会拦 |
 | [04-20260809-review-fixes](04-20260809-review-fixes/README.md) | 已交付 | 全量代码梳理（R3，15 条 finding）后修掉 10 条防御缺口，TDD 7 红转绿 |
 

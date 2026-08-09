@@ -82,6 +82,17 @@
 
 ## P2 · 值得改
 
+- [ ] **verify_compaction 的 tripped 单向性补测试**（02 终审延后项）：置位后降线不回落，
+      实现已双重审查确认正确（表达式 + 熔断后触发块整体跳过），3 行测试即可。
+- [ ] **AnchorBook.latest() 返回序与 entries 存储序相反**（02 终审 Minor#6）：
+      (tokens, index) vs (index, tokens)，未来调用者的坑；namedtuple 或统一序。
+- [ ] **context_window() 对非法 PAI_CONTEXT_WINDOW 裸抛 ValueError**（02 终审 Minor#7）：
+      make_client 有清晰报错先例，对齐。
+- [ ] **压缩后 session 审计流不含重建摘要消息**（02 终审 Minor#8）：可由 cut+summary
+      重建，但「每条消息落盘」字面已不成立，补一行注释说明重建规则。
+- [ ] **压缩后首个响应无 usage 时 awaiting_verify 永挂**（02 终审 Minor#9）：与预算
+      退化取舍一致属预期，补注释说明这是设计而非事故。
+
 - [ ] **SYSTEM_PROMPT 硬编码四个工具名，与依赖注入矛盾**（R3#5）：get_tools() 子集
       被真用到的第一天，提示词就在向模型撒谎。改为从 tools 注册表生成清单行。
 - [ ] **截断逻辑 fs/shell 两处重复**（R3#6）：第三个产出文本的工具出现时抽
