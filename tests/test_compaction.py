@@ -626,7 +626,8 @@ class TestFindCutPoint:
         assert msgs[cut]["role"] != "tool"
 
     def test_returns_1_when_nothing_can_be_cut(self):
-        """锚不足两个 / 预算大到全保留 → 返回 1（无可压），调用方走不压+警告。"""
+        """锚不足两个 / 预算大到全保留 → 返回 1（无可压）。调用方按锚数分流：
+        锚不足两个是压缩节奏里的正常一步，走静默进度；锚已够两个才是真无可压，才升级为警告。"""
         from pai.core.compaction import find_cut_point
 
         msgs = self._msgs(9)
@@ -732,9 +733,12 @@ class TestCompactAndBreaker:
         from fake_llm import FakeClient
         from pai.core.compaction import compact
 
-        client = FakeClient([{"content": "这是摘要", "usage": {}}])
-        new, summary = compact(self._msgs(), cut=3, client=client, model="fake")
+        client = FakeClient([{"content": "这是摘要",
+                              "usage": {"prompt_tokens": 30, "completion_tokens": 12,
+                                        "total_tokens": 42}}])
+        new, summary, usage = compact(self._msgs(), cut=3, client=client, model="fake")
         assert summary == "这是摘要"
+        assert usage["total_tokens"] == 42     # 摘要请求自己的 usage 也要透传给调用方入账
         assert new[0] == {"role": "system", "content": "sys"}       # system 原样保留
         assert new[1]["role"] == "user" and "这是摘要" in new[1]["content"]
         assert new[2:] == self._msgs()[3:]                           # 保留尾原样

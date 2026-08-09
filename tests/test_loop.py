@@ -405,12 +405,13 @@ def test_loop_warns_not_compacts_when_no_cut_available(tmp_path, monkeypatch):
         {"tool_calls": [("bash", json.dumps({"command": "true"}))], "usage": _usage(900)},
         {"content": "done"},
     ]
-    run_agent("x", client=FakeClient(script), model="fake", tools=get_tools(),
+    client = FakeClient(script)
+    run_agent("x", client=client, model="fake", tools=get_tools(),
               context_window=1000, compaction=CompactionSettings(reserve_tokens=200),
               on_event=events.append)
     assert any("重建中" in e for e in events)             # 只有 1 个锚，不是真无可压
     assert not any("⚠️" in e for e in events)             # 不该带警告前缀
-    assert len(events) == len([e for e in events if e]) # 没发生摘要请求（脚本只有 2 turn 且未爆）
+    assert all("tools" in r for r in client.requests)    # 没发生摘要请求（摘要请求不带 tools）
 
 
 def test_breaker_stops_auto_compaction(tmp_path, monkeypatch):
@@ -450,3 +451,73 @@ def test_breaker_stops_auto_compaction(tmp_path, monkeypatch):
     assert answer == "done"
     summary_reqs = [r for r in client.requests if "tools" not in r]
     assert len(summary_reqs) == 3                        # 熔断后没有第 4 次
+
+
+# ---------- 摘要请求 usage 入账（终审 Critical #1） ----------
+
+
+def test_loop_compaction_usage_counts_toward_budget(tmp_path, monkeypatch):
+    """摘要请求（拍平重发近全窗口）是全系统最贵的单次请求，其 usage 必须计入
+    max_total_tokens 熔断与 session 记录，不能被 compact() 悄悄丢弃。
+
+    用比正常更紧的 max_total_tokens=1400 制造可区分场景：
+    - 若摘要 usage（total_tokens=500）被计入，累计 970(前两步)+500(摘要)+310(第三步) = 1780，
+      在第 4 步请求前超预算熔断，answer 带「预算」、不是「done」；
+    - 若被丢弃，累计只有 970+310=1280 ≤ 1400，第 4 步会正常发出并拿到「done」。
+    """
+    monkeypatch.chdir(tmp_path)
+    from pai.core.compaction import CompactionSettings
+    from pai.core.loop import run_agent
+    from pai.core.session import SessionLog
+    from pai.core.tools import get_tools
+
+    script = [
+        {"tool_calls": [("bash", json.dumps({"command": "true"}))], "usage": _usage(100)},
+        {"tool_calls": [("bash", json.dumps({"command": "true"}))], "usage": _usage(850)},
+        {"content": "这是摘要",                              # ← 压缩触发的摘要请求，带 usage
+         "usage": {"prompt_tokens": 480, "completion_tokens": 20, "total_tokens": 500}},
+        {"tool_calls": [("bash", json.dumps({"command": "true"}))], "usage": _usage(300)},
+        {"content": "done"},
+    ]
+    client = FakeClient(script)
+    settings = CompactionSettings(reserve_tokens=200, keep_recent_tokens=500)
+    session = SessionLog(tmp_path)
+    answer = run_agent("x", client=client, model="fake", tools=get_tools(),
+                       context_window=1000, compaction=settings, max_total_tokens=1400,
+                       session=session, on_event=lambda _: None)
+
+    assert answer != "done"
+    assert "预算" in answer               # 计入摘要 usage 后，第 4 步请求前熔断
+
+    records = _read_session(session)
+    compaction_record = [r for r in records if r.get("type") == "compaction"][0]
+    assert compaction_record["usage"]["total_tokens"] == 500   # 摘要 usage 也落进 session 记录
+
+
+# ---------- 真无可压（终审 Important #2） ----------
+
+
+def test_loop_warns_when_truly_uncompactable(tmp_path, monkeypatch):
+    """两个锚点已就位，但 keep_recent_tokens 大到连最老的锚也保不住预算——这才是真无可压
+    （区别于「只有 1 个锚」的正常节奏），必须走 ⚠️ 警告分支、不发起摘要请求。
+    """
+    monkeypatch.chdir(tmp_path)
+    from pai.core.compaction import CompactionSettings
+    from pai.core.loop import run_agent
+    from pai.core.tools import get_tools
+
+    events: list[str] = []
+    script = [
+        {"tool_calls": [("bash", json.dumps({"command": "true"}))], "usage": _usage(100)},
+        {"tool_calls": [("bash", json.dumps({"command": "true"}))], "usage": _usage(850)},
+        {"content": "done"},
+    ]
+    client = FakeClient(script)
+    settings = CompactionSettings(reserve_tokens=200, keep_recent_tokens=1_000_000)
+    answer = run_agent("x", client=client, model="fake", tools=get_tools(),
+                       context_window=1000, compaction=settings, on_event=events.append)
+
+    assert answer == "done"
+    assert any("⚠️" in e for e in events)
+    assert any("靠预算熔断兜底" in e for e in events)
+    assert all("tools" in r for r in client.requests)   # 没有摘要请求（摘要请求不带 tools）

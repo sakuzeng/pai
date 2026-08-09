@@ -332,15 +332,19 @@ def compact(
     model: str,
     style: str = "flat",
     instructions: str | None = None,
-) -> tuple[list[dict], str]:
+) -> tuple[list[dict], str, dict]:
     """切 + 摘 + 重建。调用方随后必须 anchors.reset() 并置 state.awaiting_verify。
 
     摘要消息用 user role：OpenAI 兼容协议下多条 system 支持度参差，user 前缀最稳。
+
+    返回 (rebuilt, summary, usage)：usage 是摘要请求自己的真实用量，调用方必须把它并入
+    max_total_tokens 预算与会话统计——摘要请求拍平重发近全窗口，是全系统最贵的单次请求，
+    丢掉它的账会让预算熔断与会话统计都对不上实际花费。
     """
-    summary, _usage = summarize(
+    summary, usage = summarize(
         messages[:cut], client=client, model=model, style=style, instructions=instructions
     )
     rebuilt: list[dict] = [dict(messages[0])]
     rebuilt.append({"role": "user", "content": f"[早前对话的摘要，供延续任务用]\n{summary}"})
     rebuilt.extend(dict(m) for m in messages[cut:])
-    return rebuilt, summary
+    return rebuilt, summary, usage
