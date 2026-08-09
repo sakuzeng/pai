@@ -3,7 +3,7 @@
 阶段 1 的第 1-2 步。全是纯函数——不联网、不读文件、不改 messages——
 这样第 3 步 find_cut_point 和最终的自动压缩才有可测的立足点。
 
-刻意还没有的：find_cut_point（在哪下刀）、summarize（调模型摘要）、compact（把两者接起来）。
+刻意还没有的：compact（把两者接起来）。
 """
 
 from __future__ import annotations
@@ -238,3 +238,59 @@ def _truncate(text: str, max_chars: int) -> str:
     if len(text) <= max_chars:
         return text
     return f"{text[:max_chars]}\n[... {len(text) - max_chars} more characters truncated]"
+
+
+SUMMARY_INSTRUCTIONS = (
+    "你在为一段编码 agent 的对话历史写交接摘要，续任者只靠它接着干活。必须保留：\n"
+    "1) 用户的请求与意图 2) 关键技术概念 3) 检查/修改过的文件与重要代码片段\n"
+    "4) 出过的错误与修法 5) 未完成的待办 6) 当前正在做的事。\n"
+    "只输出摘要正文，不要评论任务本身，更不要继续执行任务。"
+)
+
+
+def usage_fields(response) -> dict:
+    """取 provider 回传的 usage 字段；没有就返回空 dict。
+
+    只透传不归一化——归一化会丢掉 DeepSeek 专有的 prompt_cache_hit/miss_tokens，
+    而那正是缓存命中率的唯一来源。
+    SDK 回的是 pydantic 对象（非标字段也在里面），model_dump 拿得全；
+    退化路径覆盖 dict 与 SimpleNamespace。
+    """
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return {}
+    if hasattr(usage, "model_dump"):
+        return usage.model_dump()
+    if isinstance(usage, dict):
+        return dict(usage)
+    return {k: v for k, v in vars(usage).items() if not k.startswith("_")}
+
+
+def summarize(
+    messages: Sequence[Mapping[str, object]],
+    *,
+    client,
+    model: str,
+    style: str = "flat",
+    instructions: str | None = None,
+) -> tuple[str, dict]:
+    """调模型生成摘要。style 由实测裁决默认值（spec 问 1）：flat=拍平，raw=原样发。
+
+    不带 tools——摘要请求绝不该触发工具调用；这也是「继续干活」误解的第一道防线。
+    """
+    prompt = instructions or SUMMARY_INSTRUCTIONS
+    if style == "flat":
+        body = serialize_conversation(m for m in messages if m.get("role") != "system")
+        request: list[dict] = [
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": f"待摘要的对话记录：\n{body}"},
+        ]
+    elif style == "raw":
+        request = [dict(m) for m in messages if m.get("role") != "system"]
+        request.append({"role": "user", "content": f"停下手头任务。{prompt}\n现在输出上面全部对话的摘要。"})
+    else:
+        raise ValueError(f"未知 style: {style!r}（只认 flat / raw）")
+
+    response = client.chat.completions.create(model=model, messages=request)
+    text = response.choices[0].message.content or ""
+    return text, usage_fields(response)

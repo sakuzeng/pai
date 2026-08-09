@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 from typing import Callable
 
-from pai.core.compaction import AnchorBook, context_tokens
+from pai.core.compaction import AnchorBook, context_tokens, usage_fields
 from pai.core.session import SessionLog
 from pai.core.tools import Tool
 
@@ -78,7 +78,7 @@ def run_agent(
         )
         msg = response.choices[0].message
 
-        usage = _usage_fields(response)
+        usage = usage_fields(response)
         spent_tokens += usage.get("total_tokens") or 0
         if session and usage:
             session.append(
@@ -137,21 +137,3 @@ def run_agent(
                 session.append(tool_entry)
 
     return f"达到最大步数（{max_steps}），任务可能未完成。"
-
-
-def _usage_fields(response) -> dict:
-    """取 provider 回传的 usage 字段；没有就返回空 dict。
-
-    只透传不归一化——归一化会丢掉 DeepSeek 专有的 prompt_cache_hit/miss_tokens，
-    而那正是缓存命中率的唯一来源。
-    SDK 回的是 pydantic 对象（非标字段也在里面），model_dump 拿得全；
-    退化路径覆盖 dict 与 SimpleNamespace。
-    """
-    usage = getattr(response, "usage", None)
-    if usage is None:
-        return {}
-    if hasattr(usage, "model_dump"):
-        return usage.model_dump()
-    if isinstance(usage, dict):
-        return dict(usage)
-    return {k: v for k, v in vars(usage).items() if not k.startswith("_")}
