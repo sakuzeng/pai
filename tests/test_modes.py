@@ -29,11 +29,24 @@ def test_run_once_passes_budget_through():
     assert "预算" in answer
 
 
-def test_run_once_no_session_skips_disk():
+def test_run_once_no_session_skips_disk(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)  # 若回归真建了目录，必须在这里暴露，而不是污染仓库根（R3#4）
     client = FakeClient([{"content": "ok"}])
     run_once("x", client=client, model="fake", no_session=True, on_event=lambda _: None)
-    # 没有 session 时不应因缺目录而崩，也不该建 sessions/
-    assert True
+    assert not (tmp_path / "sessions").exists()
+
+
+def test_cli_rejects_negative_max_tokens(monkeypatch):
+    """--max-tokens -1 应在解析层报错（R3#10），而不是跑起来输出「累计 0 超过上限 -1」。"""
+    import pytest
+
+    import pai.cli as cli
+
+    monkeypatch.setattr(cli, "run_once", lambda *a, **k: "不应执行到这里")
+    monkeypatch.setattr("sys.argv", ["pai", "x", "--max-tokens", "-1"])
+    with pytest.raises(SystemExit) as e:
+        cli.main()
+    assert e.value.code == 2  # argparse parser.error 的约定退出码
 
 
 def test_run_once_respects_max_steps():

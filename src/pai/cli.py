@@ -21,6 +21,8 @@ def main() -> None:
     )
     parser.add_argument("--no-session", action="store_true", help="不落盘会话 JSONL")
     args = parser.parse_args()
+    if args.max_tokens < 0:
+        parser.error("--max-tokens 不能为负（0 = 不限）")
 
     answer = run_once(
         args.task,

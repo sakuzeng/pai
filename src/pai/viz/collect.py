@@ -130,12 +130,9 @@ def _tool_entries() -> list:
 
 
 def build_structure(status_path: Path = STATUS_DEFAULT) -> dict:
-    from dotenv import load_dotenv
-
     from pai.config import model_name
 
-    load_dotenv()  # PAI_MODEL 可能配在 .env;没有 .env 也不报错
-    model = model_name()
+    model = model_name()  # config 自带 load_dotenv,不再需要这里手动补位(R3#7)
 
     warnings: list = []
     stages: list = []

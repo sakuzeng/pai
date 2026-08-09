@@ -19,4 +19,7 @@ def make_client() -> OpenAI:
 
 
 def model_name() -> str:
+    # 幂等。不放这里的话，.env 里的 PAI_MODEL 生效与否取决于
+    # 「client 是否恰好先被构造」这种求值顺序巧合（R3#7）
+    load_dotenv()
     return os.environ.get("PAI_MODEL", DEFAULT_MODEL)

@@ -36,9 +36,11 @@ class Tool:
     def run(self, **kwargs) -> str:
         # 工具错误必须变成给模型的反馈而不是异常（AGENTS.md 架构约束）
         try:
-            return self.func(**kwargs)
+            result = self.func(**kwargs)
         except Exception as e:  # noqa: BLE001 - 工具边界是异常的最终防线
             return f"错误：{type(e).__name__}: {e}"
+        # 返回值同样是边界的一部分：None/dict 会让 loop 在 result[:200] 处崩（R3#2）
+        return result if isinstance(result, str) else str(result)
 
 
 def tool(func: Callable) -> Callable:
@@ -55,7 +57,13 @@ def tool(func: Callable) -> Callable:
         if get_origin(hint) is Annotated:
             typ, *meta = get_args(hint)
             desc = meta[0] if meta else ""
-        properties[pname] = {"type": PY_TO_JSON.get(typ, "string"), "description": desc}
+        if typ not in PY_TO_JSON:
+            # 静默降级成 string 会生成错 schema，坑的是下一个加工具的人（R3#2）
+            raise ValueError(
+                f"工具 {func.__name__} 参数 {pname} 的类型 {typ!r} 不支持："
+                f"只认 {sorted(t.__name__ for t in PY_TO_JSON)}，复杂结构请用 JSON 字符串参数"
+            )
+        properties[pname] = {"type": PY_TO_JSON[typ], "description": desc}
         if param.default is inspect.Parameter.empty:
             required.append(pname)
 
