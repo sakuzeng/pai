@@ -50,10 +50,13 @@ class CompactionSettings:
     注意它不是按模型输出上限算的：deepseek-v4-flash 输出上限 384K，
     但摘要实际长度远小于此（CC 统计其摘要 p99.99 为 17,387 token）。
     这个数目前无实测依据，待 usage 落盘后用真实摘要长度校准。
+
+    keep_recent_tokens 照 pi，与 reserve 同样待实测校准。
     """
 
     reserve_tokens: int = 16384
     enabled: bool = True
+    keep_recent_tokens: int = 20000
 
 
 @dataclass
@@ -165,6 +168,31 @@ def should_compact(tokens: int, window: int, settings: CompactionSettings) -> bo
     if not settings.enabled:
         return False
     return tokens > window - settings.reserve_tokens
+
+
+def find_cut_point(
+    messages: Sequence[Mapping[str, object]],
+    anchors: Sequence[tuple[int, int]],
+    *,
+    keep_recent_tokens: int = 20000,
+) -> int:
+    """在哪下刀（D#32）：从最新锚往回累计真实差值，够 keep_recent_tokens 即停。
+
+    只在锚点边界下刀——真实成本只能按轮次反推，粒度天然对齐。返回保留段起点；
+    1 = 无可压（锚不足 / 预算吞下全部历史），调用方按 spec 裁决走「不压 + 警告」。
+    落点若是 tool 消息则前移，绝不让保留段以孤儿 tool_result 开头。
+    """
+    if len(anchors) < 2:
+        return 1
+    _, latest_total = anchors[-1]
+    cut = 1
+    for index, total in reversed(anchors[:-1]):
+        if latest_total - total >= keep_recent_tokens:
+            cut = index
+            break
+    while 0 < cut < len(messages) and messages[cut].get("role") == "tool":
+        cut -= 1                       # 前移方向 = 多保留，宁多勿孤儿
+    return max(cut, 1)
 
 
 def serialize_conversation(

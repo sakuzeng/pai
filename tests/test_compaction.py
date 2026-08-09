@@ -598,6 +598,44 @@ def test_anchored_estimate_beats_pure_estimate_on_real_usage():
 # ---------- AnchorBook ----------
 
 
+class TestFindCutPoint:
+    def _msgs(self, n):
+        out = [{"role": "system", "content": "s"}]
+        for i in range((n - 1) // 2):
+            out.append({"role": "assistant", "content": None,
+                        "tool_calls": [{"id": f"c{i}", "type": "function",
+                                        "function": {"name": "bash", "arguments": "{}"}}]})
+            out.append({"role": "tool", "tool_call_id": f"c{i}", "content": "ok"})
+        return out
+
+    def test_cuts_at_anchor_keeping_recent_budget(self):
+        from pai.core.compaction import find_cut_point
+
+        msgs = self._msgs(9)                       # system + 4 轮 (assistant, tool)
+        anchors = [(3, 100), (5, 300), (7, 600), (9, 1000)]
+        # 从最新往回累计真实差值：9←7 是 400，>=350 即停 → 切在下标 7
+        assert find_cut_point(msgs, anchors, keep_recent_tokens=350) == 7
+
+    def test_never_starts_kept_segment_with_tool_result(self):
+        """切点铁律：落在 role=tool 上就前移到该轮 assistant——绝不产生孤儿 tool_result。"""
+        from pai.core.compaction import find_cut_point
+
+        msgs = self._msgs(9)
+        anchors = [(4, 100), (6, 300), (8, 600)]   # 锚故意落在 tool 消息下标上
+        cut = find_cut_point(msgs, anchors, keep_recent_tokens=250)
+        assert msgs[cut]["role"] != "tool"
+
+    def test_returns_1_when_nothing_can_be_cut(self):
+        """锚不足两个 / 预算大到全保留 → 返回 1（无可压），调用方走不压+警告。"""
+        from pai.core.compaction import find_cut_point
+
+        msgs = self._msgs(9)
+        assert find_cut_point(msgs, [], keep_recent_tokens=100) == 1
+        assert find_cut_point(msgs, [(9, 50)], keep_recent_tokens=100) == 1
+        anchors = [(3, 100), (9, 200)]
+        assert find_cut_point(msgs, anchors, keep_recent_tokens=99999) == 1
+
+
 class TestAnchorBook:
     def test_records_and_latest(self):
         from pai.core.compaction import AnchorBook
