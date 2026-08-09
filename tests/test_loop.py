@@ -390,7 +390,11 @@ def test_loop_compacts_when_over_threshold(tmp_path, monkeypatch):
 
 
 def test_loop_warns_not_compacts_when_no_cut_available(tmp_path, monkeypatch):
-    """超长单轮裁决（spec 问 2）：无可压 → 不压 + 警告事件，靠预算熔断兜底。"""
+    """单锚场景（find_cut_point 结构性地需要 ≥2 个锚才能算切点）：不是真的无可压，
+    是压缩节奏里正常的「锚点重建中」一步——事件应是平静的进度提示，不是 ⚠️ 警告
+    （审查修复：区分「真无可压」与「锚点重建中」两种语义，避免持续超线时刷屏误导）。
+    不压、不发起摘要请求的行为本身不变。
+    """
     monkeypatch.chdir(tmp_path)
     from pai.core.compaction import CompactionSettings
     from pai.core.loop import run_agent
@@ -404,7 +408,8 @@ def test_loop_warns_not_compacts_when_no_cut_available(tmp_path, monkeypatch):
     run_agent("x", client=FakeClient(script), model="fake", tools=get_tools(),
               context_window=1000, compaction=CompactionSettings(reserve_tokens=200),
               on_event=events.append)
-    assert any("无可压" in e for e in events)            # 只有 1 个锚,find_cut_point 返回 1
+    assert any("重建中" in e for e in events)             # 只有 1 个锚，不是真无可压
+    assert not any("⚠️" in e for e in events)             # 不该带警告前缀
     assert len(events) == len([e for e in events if e]) # 没发生摘要请求（脚本只有 2 turn 且未爆）
 
 
@@ -417,8 +422,9 @@ def test_breaker_stops_auto_compaction(tmp_path, monkeypatch):
 
     # find_cut_point 铁律（test_compaction.py 已钉死）：单锚永远返回 1（无可压），
     # 切点需要两个锚算差值。压缩一发生就 anchors.reset()，所以每次真正压缩之间必须
-    # 有两轮真实 usage 落盘——第一轮撞见「仅一锚」只能警告，顺带把它记成第二个锚，
-    # 第二轮才有得算。故每个压缩周期是 warn-turn + build-turn，不是简报原稿设想的
+    # 有两轮真实 usage 落盘——第一轮撞见「仅一锚」只是平静地「重建中」暂缓（不是警告，
+    # 审查修复后 loop.py 按 len(anchors.entries) < 2 区分语义），顺带把它记成第二个锚，
+    # 第二轮才有得算。故每个压缩周期是 rebuild-turn + build-turn，不是简报原稿设想的
     # 「一超线就压」单轮节奏；用真实 FakeClient 跑通后回填的序列，语义不变
     # （连续 3 次压缩、真实 usage 仍超线、第 3 次后熔断），只是把「怎么攒够两个锚」
     # 显式摆出来。
@@ -428,10 +434,10 @@ def test_breaker_stops_auto_compaction(tmp_path, monkeypatch):
         {**tool_turn, "usage": _usage(850)},   # 锚 B：与 A 一起够两锚，第 3 次请求前触发首压
         {"content": "摘1"},
         {**tool_turn, "usage": _usage(950)},   # 压后 verify：真实 usage 仍超线 → failures=1
-        {**tool_turn, "usage": _usage(975)},   # 单锚警告，顺带攒出第二锚
+        {**tool_turn, "usage": _usage(975)},   # 单锚「重建中」暂缓（非警告），顺带攒出第二锚
         {"content": "摘2"},
         {**tool_turn, "usage": _usage(950)},   # verify：仍超线 → failures=2
-        {**tool_turn, "usage": _usage(975)},   # 单锚警告，顺带攒出第二锚
+        {**tool_turn, "usage": _usage(975)},   # 单锚「重建中」暂缓（非警告），顺带攒出第二锚
         {"content": "摘3"},
         {**tool_turn, "usage": _usage(950)},   # verify：仍超线 → failures=3 → tripped
         {"content": "done"},                   # tripped 后：不再压，任务正常收尾

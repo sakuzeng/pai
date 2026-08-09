@@ -94,8 +94,15 @@ def run_agent(
             cut = find_cut_point(messages, anchors.entries,
                                  keep_recent_tokens=compaction.keep_recent_tokens)
             if cut <= 1:
-                on_event(f"⚠️ 上下文超线（估算 {estimated}）但无可压（超长单轮或锚不足），"
-                         "不压，靠预算熔断兜底")
+                if len(anchors.entries) < 2:
+                    # 正常两步节奏，不是真的没救：compact() 刚清空过锚点簿（D#18/32），
+                    # find_cut_point 结构性地需要 ≥2 个锚才能算真实差值
+                    # （test_compaction.py::test_returns_1_when_nothing_can_be_cut 钉死），
+                    # 只差一轮真实 usage 落盘就能重建第二个锚——本步暂缓，不是警告。
+                    on_event(f"🗜️ 压缩后锚点重建中（还差一轮真实 usage），本步暂缓（估算 {estimated}）")
+                else:
+                    on_event(f"⚠️ 上下文超线（估算 {estimated}）但无可压（超长单轮或预算吞下全部历史），"
+                             "不压，靠预算熔断兜底")
             else:
                 messages, summary = compact(messages, cut=cut, client=client, model=model)
                 anchors.reset()                      # 历史被改写，旧锚全部作废（D#18/32）
