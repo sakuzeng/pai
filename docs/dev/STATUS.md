@@ -1,12 +1,15 @@
 # 当前状态快照
 
-最后更新：2026-08-03（框架对齐 pi、公开发布之后）。给接手者（人或 AI）一页看清现状。
-「做了什么」的时间线见 [devlog.md](devlog.md)，「为什么这么选」见 [decisions.md](decisions.md)。
+最后更新：2026-08-09（体系补全：knowledge / features / roadmap 就位）。给接手者（人或 AI）一页看清现状。
+「做了什么」的时间线见 [devlog.md](devlog.md)，「为什么这么选」见 [decisions.md](decisions.md)，
+功能级故事线见 [features/](features/README.md)，阶段地图见 [roadmap.md](roadmap.md)。
 
 ## 一句话
 
 agent loop + 工具系统 + 会话落盘已跑通；阶段 1 压缩做完了**地基**（token 秤、警戒线、
 拍平机、上下文大小锚定），但**压缩本身还没接进 loop**——目前只测量、不决策、不压。
+动工前清障（P0 五条 R#3/4/7/8/9）**已全部清完**，`find_cut_point` 可动工；
+该功能全貌见 [features/02-20260803-compaction/](features/02-20260803-compaction/README.md)。
 
 ## 模块现状
 
@@ -20,7 +23,7 @@ agent loop + 工具系统 + 会话落盘已跑通；阶段 1 压缩做完了**�
 | `viz/` | 可用 | `pai-viz` 本地架构可视化：工具自省自动上图，阶段状态解析本表 |
 | `cli.py` / `config.py` | 可用 | cli 只做参数解析与分发；OpenAI 兼容协议打 DeepSeek |
 | `modes/interactive.py` | 未开始 | REPL。结构已预留，加一个文件即可，core 不动 |
-| memory / permissions / streaming / skills / mcp_client / evals | 未开始 | 路线图后续阶段 |
+| memory / permissions / streaming / skills / mcp_client / evals | 未开始 | 路线图后续阶段，见 [roadmap.md](roadmap.md) |
 
 ## compaction.py 里有什么
 
@@ -45,16 +48,17 @@ agent loop + 工具系统 + 会话落盘已跑通；阶段 1 压缩做完了**�
 
 ## 测试
 
-共收集 **73 项**：
+共收集 **93 项**（2026-08-09 新增：3 条文档一致性、10 条方案门禁、7 条评审修复钉子，
+见 features/03、04 档案）：
 
-- `./test.sh` → **72 passed, 1 deselected**，全部离线（`tests/fake_llm.py` 假 provider）。**这是默认路径。**
+- `./test.sh` → **92 passed, 1 deselected**，全部离线（`tests/fake_llm.py` 假 provider）。**这是默认路径。**
 - `./test.sh --llm` → 额外跑 1 条打真实 API 的冒烟测试，**会产生费用**。
   需同时满足有 `DEEPSEEK_API_KEY` 且 `PAI_RUN_LLM_TESTS=1`——花钱的副作用不能是默认行为。
 
 两份真实轨迹夹具内联在 `tests/test_compaction.py`：
 `REAL_TRAJECTORY`（含一条真实的 sed 失败）、`REAL_USAGE_TRAJECTORY` + `REAL_USAGE_STEPS`。
 
-## 已知缺陷（都记在 devlog 对应条目下）
+## 已知缺陷（详细条目在 [archive/devlog-2026-08.md](archive/devlog-2026-08.md)）
 
 1. **锚与压缩天然冲突，且重置后有读数盲区**（评审 R#7，比原自评更严重）。
    锚假设历史 append-only，而压缩会改写历史——`compact()` 必须把 `anchor` 重置为 `None`。
@@ -78,3 +82,5 @@ agent loop + 工具系统 + 会话落盘已跑通；阶段 1 压缩做完了**�
 ## 下一步
 
 `find_cut_point`（在哪下刀）→ `summarize`（调模型摘要）→ `compact`（接起来，带熔断器）。
+走 superpowers 全链路，spec/plan/devlog 落 [features/02-20260803-compaction/](features/02-20260803-compaction/README.md)；
+动工前先过 roadmap 阶段 1「前置精读」（已 ✓）。

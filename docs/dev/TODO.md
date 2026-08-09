@@ -4,7 +4,9 @@
 本文件是唯一入口，每条注明出处，改完在对应出处补记再从这里划掉。
 
 出处记法：`R#n` = docs/dev/reviews/2026-08-03-冷眼评审.md 第 n 条；
-`D#n` = decisions.md 第 n 条；`日期` = devlog 对应条目。
+`R2#n` = docs/dev/reviews/2026-08-09-体系评审.md 第 n 条；
+`R3#n` = docs/dev/reviews/2026-08-09-代码梳理.md 第 n 条；
+`D#n` = decisions.md 第 n 条；`K <路径>` = knowledge/ 笔记；`日期` = devlog 里程碑或 archive/devlog-2026-08.md 对应条目。
 
 ---
 
@@ -46,13 +48,13 @@
       `compact()` 后不立即判成败，标记"等待压缩后首次真实读数"；
       以该次 API 响应的真实 `prompt_tokens` 为准，仍超阈值才计一次失败；
       连续失败达上限（CC 用 3）→ 停止自动压缩。代价是熔断判断推迟一个来回。
-- [ ] **给 loop 层锚簿记补测试**（R#8）
-      `loop.py` 的 `anchor_index = len(messages)` 是 off-by-one 高危点；
-      评审实测改成 `len(messages)-1` 后全部测试照样绿（现有断言只有 `estimated > 0`，过弱）。
-      做法：两步带 usage 的脚本，精确断言第二条 usage 的 `estimated == anchor + 尾部估算`。
-- [ ] **冻结测试夹具里的工具 schema**（R#9）
-      `REAL_USAGE_STEPS` 的真实值录制于当时的 schema，测试却用 `get_tools()` 取活 schema——
-      将来改一句工具描述就可能假失败，且报错不指向真因。
+- [x] ~~**给 loop 层锚簿记补测试**（R#8）~~ **早在 2026-08-03 已完成，本条漏勾，
+      2026-08-09 对账核销**。tests/test_loop.py:238 `test_anchor_bookkeeping_is_exact`
+      与 :272 反向钉死双计入；注入 off-by-one（`len(messages)-1`）实测会红。
+      顺带修了 FakeClient 存引用的测试基建硬伤（deepcopy），见 archive/devlog-2026-08.md 2026-08-03 条目。
+- [x] ~~**冻结测试夹具里的工具 schema**（R#9）~~ **早在 2026-08-03 已完成，本条漏勾，
+      2026-08-09 对账核销**。`FROZEN_TOOL_SCHEMAS`（test_compaction.py:450），
+      改工具 docstring 实测不再假失败。
 
 ## P1 · 主线（阶段 1 压缩）
 
@@ -69,6 +71,17 @@
       否则拿旧锚算新对话。锚定法假设 append-only，与压缩天然冲突。
 
 ## P2 · 值得改
+
+- [ ] **SYSTEM_PROMPT 硬编码四个工具名，与依赖注入矛盾**（R3#5）：get_tools() 子集
+      被真用到的第一天，提示词就在向模型撒谎。改为从 tools 注册表生成清单行。
+- [ ] **截断逻辑 fs/shell 两处重复**（R3#6）：第三个产出文本的工具出现时抽
+      `truncate_output()` 进 tools/__init__.py，现在抽是过度设计。
+- [ ] **design_gate.py 与 once.py 补类型注解**（R3#8）：修 R#14 时顺手一并带上。
+- [ ] **loop 预算 fallback**（R3#15，未核实）：provider 不回 total_tokens 时预算静默
+      失效，可 fallback prompt+completion。DeepSeek 会回，仅记档。
+- [ ] **风格杂项**（R3#16）：FROZEN_TOOL_SCHEMAS 缩进、test_loop 混用
+      TemporaryDirectory、collect.py 裸 list 注解、loop 重复注释（R3#11）、
+      server.py 冗余字符串注解（R3#12）。顺手为之，不单独立项。
 
 - [ ] **decisions 第 8 条与第 6 条自相矛盾**（R#5）
       第 6 条说「低估是唯一会炸窗口的方向」，第 8 条却让未知 role 静默记 0——
@@ -140,6 +153,31 @@
       若用起来发现手动刷新烦，再加。
 - [ ] **pai-viz 的会话回放、用量仪表盘未立项**（2026-08-03）：以后有需要再单独立项设计，
       不是本轮 viz 范围。
+- [ ] **面试准备仓库加反向链接指向 pai knowledge/**（2026-08-09，D#35）：
+      在其 04_Harness 专题 README 加一行即可。属另一仓库的独立小改动，在这里备忘。
+- [ ] **microcompact 评估**（2026-08-09，K source-walks/cc-compaction.md）：
+      阶段 1 压缩闭环跑通后评估——pai 的 4 个工具全部可重放，按 tool_call_id 清旧结果
+      不用调模型，可能是性价比最高的第二级压缩。
+- [x] ~~**R2#1 残余：anna 披露边界的最终确认**~~ **已裁决 2026-08-09：不入库，本地保留**。
+      `knowledge/anna/` 与 `reviews/2026-08-09-体系评审.md` 进 .gitignore；
+      一致性测试对 gitignored 目标放行（新克隆不算断链）。
+      代价如实记（gates.md 头部同步声明）：gates.md 从此**无版本控制无备份**，
+      「给 anna 方法论留带版本控制的沉淀」的初衷未达成，防丢靠本地。
+- [ ] **gates.md 与体系评审文件的本地备份**（R2#1 裁决的衍生）：两文件不入库后无任何
+      备份，anna 原目录也非 git——是否给它们做个私有备份（私有 gist / 本机第二位置），
+      用户定。
+- [ ] **design_gate 真实会话验收**（2026-08-09，features/03-20260809-design-gate）：hook 配置
+      快照机制下本会话注册可能不生效——下次会话故意在未拍板状态改一次 src/，
+      实测被拦后把档案状态转「已验收」。
+- [ ] **超长单轮的复杂兜底**（2026-08-09，features/02-20260803-compaction spec 非目标节）：
+      本轮裁决「不压 + 警告，靠预算熔断兜底」；若窗口变小或警告日志真实出现，
+      再设计轮内清工具结果 / 劈轮方案（后者需重开 D#32）。
+- [ ] **read_log/read_gate 防幻觉读取**（2026-08-09，用户经验回流，K anna 篇本地）：
+      「模型自报读过不可信 → PostToolUse 记内容哈希 + 收尾判定」。当前评审流程用
+      逐字核验顶着，等评审常态化或出现「引用落空」事故再上——记录器先行（成本低）、
+      判定器后置。
+- [ ] **model-config 页的 auto-compact 阈值未查**（R2 未核实节）：context-window 页把
+      阈值指向 model-config 页，届时实现 should_compact 接线时顺手查证。
 
 ---
 
