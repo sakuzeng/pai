@@ -362,7 +362,7 @@ pytest 每个 `monkeypatch.chdir(tmp_path)` 都是一个新 cwd，于是一个�
 于是 `history_path_for()` 落到真实 `$HOME`。这不是「某个测试写错了」——
 20 个调用点意味着第 21 个还会忘。
 
-**修法（结构上做不到，而不是靠记性）**：新建 `tests/conftest.py`，autouse fixture
+**修法（结构上做不到，而不是靠记性）**：在 `tests/conftest.py` 里加 autouse fixture
 把每个测试的 `$HOME` 指向临时目录。另加一条**防护的防护**
 （`test_tests_can_never_touch_the_real_home`）——否则哪天 conftest 被改坏了没人知道。
 
@@ -381,6 +381,20 @@ pytest 每个 `monkeypatch.chdir(tmp_path)` 都是一个新 cwd，于是一个�
 
 **数据清理**：全量备份到 `~/.pai.bak-213818`，保留用户真实的 3 行输入，
 删掉其余历史文件与冒烟测试写出的 `projects/`。
+
+**修的时候我又犯了一个更糟的错（合并 main 后才发现）**：我以为 `tests/conftest.py`
+不存在，用 Write **整个覆盖**了它——而原文件里有一个**防止花钱**的守卫
+（`pytest_collection_modifyitems`：llm 测试必须「有 key **且** `PAI_RUN_LLM_TESTS=1`」
+才跑，D#21-23，注释里写着「外部评审时评审者本人就中招了」）。
+`./test.sh` 自带 `-m "not llm"` 所以一直是绿的，**掩盖了裸跑 `pytest` 会直接花钱**这个回归。
+是合并后看 diff 里「`conftest.py | 64 +--` 是修改不是新建」才发现的。已恢复并与隔离 fixture 合并，
+实测裸跑 `pytest` → `3 skipped`，不花钱。
+**教训**：写一个「我以为不存在」的文件之前必须先确认它真的不存在——
+尤其是 conftest 这种「存在与否会改变整套测试行为」的文件。
+
+**顺带修了我自己新加的守卫的一处误报**：`test_status_reports_the_current_test_count`
+在裸跑 `pytest` 时会红——因为那时 llm 测试是 **skipped**（算进 collected=260），
+而 `./test.sh` 带 marker 时是 **deselected**（不算，=257）。收紧成只在标准入口口径下对账。
 
 **教训（够格进复盘）**：今天四个补漏都是「功能没做对」，这一个是**「测试本身伤害了用户」**——
 性质更严重。而且它绕开了所有防线：测试全绿、评审看代码看不出来、

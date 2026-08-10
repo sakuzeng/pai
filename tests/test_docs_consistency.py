@@ -134,8 +134,13 @@ def test_status_reports_the_current_test_count(request):
     `testscollected` 是**选中**的用例数（不含 deselected），全绿时恰等于 passed 数。
     跑子集时这个数当然对不上，所以只在完整跑（无 -k、无显式路径）时校验。
     """
-    if request.config.option.keyword or request.config.args != ["tests"]:
-        pytest.skip("只在完整跑 ./test.sh 时对账")
+    # 只认标准入口 `./test.sh`（它带 -m "not llm"）：裸跑 pytest 时那 3 条 llm 测试是
+    # **skipped**（算进 collected），带 marker 时是 **deselected**（不算），两者差 3。
+    # STATUS 记的是 ./test.sh 的数字，所以对账也只在那个口径下做。
+    if (request.config.option.keyword
+            or request.config.args != ["tests"]
+            or request.config.option.markexpr != "not llm"):
+        pytest.skip("只在标准入口 ./test.sh 的口径下对账")
 
     text = (ROOT / "docs" / "dev" / "STATUS.md").read_text(encoding="utf-8")
     m = re.search(r"\*\*(\d+) passed", text)
