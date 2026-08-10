@@ -12,8 +12,8 @@
 | prompt-caching | 阶段 1（D#12/16 拍平 vs 原样发实测时读） | 未读 |
 | interactive-mode | 阶段 2 REPL/TUI | [interactive-mode.md](interactive-mode.md) ✓ |
 | memory | 阶段 3 记忆 | [memory.md](memory.md) ✓ |
-| permissions、permission-modes | 阶段 4 权限 | 未读 |
-| hooks、hooks-guide | 阶段 4 权限 | 未读 |
+| permissions、permission-modes | 阶段 4 权限 | [permissions-hooks.md](permissions-hooks.md) ✓ |
+| hooks、hooks-guide | 阶段 4 权限 | [permissions-hooks.md](permissions-hooks.md) ✓ |
 | skills | 阶段 6 | 未读 |
 | mcp、mcp-quickstart | 阶段 6 | 未读 |
 | sub-agents、agent-teams | **不做**——超精简边界；大输出隔离问题用 read_file 截断提示兜（TODO R#17） | — |

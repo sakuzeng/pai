@@ -59,7 +59,7 @@
 - **参照**：CC `src/utils/permissions/`（规则三态 + 语义下放）；anna `guards/`。
 - **前置精读**：
   - [x] [knowledge/anna/gates.md](../../knowledge/anna/gates.md)（**本地不入库**，R2#1 裁决——克隆者无此文件，测试对 gitignored 目标放行）
-  - [ ] 官方 permissions + hooks 章节（https://code.claude.com/docs/zh-CN/permissions 、 https://code.claude.com/docs/zh-CN/hooks）→ 届时落 knowledge/claude-docs/
+  - [x] [knowledge/claude-docs/permissions-hooks.md](../../knowledge/claude-docs/permissions-hooks.md)（求值顺序 deny→ask→allow、Bash 复合命令/包装器/词边界四坑、「语义下放给工具」的原文、hook 决策优先级）
 - **流程**：superpowers 全链路。
 
 ## 阶段 5 · 流式

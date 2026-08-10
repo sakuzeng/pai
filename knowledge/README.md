@@ -51,6 +51,7 @@ inbox.md         待消化收件箱：看到但还不知道怎么用的工具/�
 | [claude-docs/context-management.md](claude-docs/context-management.md) | 官方上下文窗口与 compact 机制，对照 pai 压缩现状 | 精读 | src/pai/core/compaction.py |
 | [claude-docs/interactive-mode.md](claude-docs/interactive-mode.md) | 官方交互契约（中断两级 / 干活时输入 / `!` shell 模式 / 历史），及 pai REPL 取舍 | 精读 | roadmap 阶段 2 |
 | [claude-docs/memory.md](claude-docs/memory.md) | 官方两套记忆（人写的分层指令 / 模型自写的自动记忆）、加载算法，及压缩重注入这条 pai 尚不存在的 bug | 精读 | roadmap 阶段 3 |
+| [claude-docs/permissions-hooks.md](claude-docs/permissions-hooks.md) | 权限三态求值顺序、Bash 匹配四个坑、「语义下放给工具」的官方原文、hooks 决策协议 | 精读 | roadmap 阶段 4 |
 | [claude-docs/map.md](claude-docs/map.md) | 官方文档章节 → pai 归属/不做 的覆盖图 | 沉淀 | docs/dev/roadmap.md |
 | [source-walks/cc-compaction.md](source-walks/cc-compaction.md) | CC 四级递进压缩策略要点 | 指针 | roadmap 阶段 1 |
 | [source-walks/pi-agentloop.md](source-walks/pi-agentloop.md) | pi 四层分层 + 钩子 + 双队列 | 指针 | roadmap 阶段 2 |
