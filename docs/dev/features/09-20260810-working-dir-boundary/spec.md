@@ -37,7 +37,7 @@ CC 的对应实现里**根本没有「默认决策常量」这个东西**：兜�
 
 | `default_decision` | 兜底行为 |
 |---|---|
-| `workingdir`（**新默认**） | 参与边界的工具：读 → `in_working_dir ? allow : ask`；写 → `ask`。**不参与边界的工具（bash）→ `allow`** |
+| `workingdir`（**新默认**） | 参与边界的工具：读 → `in_working_dir ? allow : ask`；写 → `ask`。**不参与边界的工具（bash）→ `ask`**（2026-08-11 改，见下） |
 | `allow` | 老行为，全放行（**向后兼容**：显式配了的人不受影响） |
 | `ask` / `deny` | 白名单模式，不变 |
 
@@ -52,6 +52,13 @@ CC 的对应实现里**根本没有「默认决策常量」这个东西**：兜�
 - once：越界读、任何写 → **直接 deny + 理由回填**，即 once 被限制在启动 cwd 内**只读**。
 
 这是拍板时明确接受的代价。想恢复老行为的人配 `"defaultDecision": "allow"`。
+
+**2026-08-11 修订：bash 兜底从 `allow` 改为 `ask`（用户改选原问 2 的候选 C）。**
+原先写 allow 的推导是「不做目录边界 ⇒ 兜底 allow」，但这是**两件事**：
+完全可以「不解析 bash 命令里的路径，但兜底仍然 ask」。
+改后与 CC 的 Bash 默认行为一致（CC 默认模式下 Bash 每个命令首次都要确认）。
+**代价**：`once` 模式撞到 ask 会按 D#48 降级 deny ⇒ bash 基本不可用，
+必须配 `allow` 白名单或换模式——这正是下面第 7 节「模式」成为**必需品**而非可选项的原因。
 
 ### 3. 工作目录集合与 `additionalDirectories`
 
@@ -96,12 +103,67 @@ CC 的对应实现里**根本没有「默认决策常量」这个东西**：兜�
 - 退出码非 0 非 2 的「非阻断错误」语义**不变**（那是脚本明确表达的「我没意见」，
   不是失败）。改的只有**异常路径**。
 
+### 7. 权限模式（四态，2026-08-11 拍板）
+
+照 CC 的 UI 名与语义，做**四个**（CC 对外共 5 个，`plan` 不做；`auto` 是 ant-only
+且需分类器，做不了）：
+
+| pai 模式 | CC 界面名 | 语义 |
+|---|---|---|
+| `default` | Default | 第 2 节那套兜底 |
+| `acceptEdits` | Accept edits | **工作目录内的写**自动放行；**仍受边界与危险路径约束** |
+| `dontAsk` | Don't Ask | 一切 `ask` 直接变 `deny`，不问 |
+| `bypassPermissions` | Bypass Permissions | 全放行，**但三条免疫**（见下） |
+
+**模式不是全局开关，是插在求值链特定位置的放行条件**（照 CC，笔记六点五节）。
+完整求值链：
+
+| 步 | 检查 | bypass 免疫？ |
+|---|---|---|
+| 1 | deny 规则 | ✅ 免疫 |
+| 2 | **危险路径写检查**（第 5 节） | ✅ 免疫 |
+| 3 | **用户显式配的 ask 规则** | ✅ 免疫 |
+| 4 | `bypassPermissions` 模式 → allow | — |
+| 5 | `acceptEdits` 且是写 且在界内 → allow | — |
+| 6 | allow 规则 → allow | — |
+| 7 | 兜底（第 2 节：边界判定 / bash → ask） | ❌ **不免疫** |
+
+**第 3 步与第 7 步的区别是本节最容易实现错的地方**：
+用户**显式写下**的 `ask` 规则 bypass 免疫（CC 注释：「must be respected even in
+bypass mode, just as deny rules are respected at step 1d」），
+而**兜底产生**的 ask（界外读、bash）**不免疫**——否则 bypass 模式等于没有。
+两者都是 `kind == "ask"`，区别只在 `Decision.rule` 是不是 None。
+
+**`dontAsk` 不在这条链上**：它是对**最终结果**的后处理（`ask` → `deny`），
+位置就是 `gate.py` 里 D#48 那个降级分支——即 pai 已经实现了它，只是没起名字。
+所以：`asker is None`（once 无真人）**等价于** `mode == "dontAsk"`，两者走同一段代码。
+
+**各模式默认值**：`once` → `dontAsk`；REPL → `default`。
+
+### 8. 模式的设置入口（自主判断，非拍板项，如实标注）
+
+用户拍板「切换 UI 留到 TUI 阶段（TODO）」。但**完全没有设置入口的话，
+`acceptEdits`/`bypassPermissions` 是死代码，且 bash 兜底改 ask 之后 once 模式全被拒**。
+所以本轮做**配置入口**（不是交互切换）：
+
+- `settings.json` 的 `permissions.defaultMode`（两层，项目层覆盖用户层）；
+- CLI：`pai --permission-mode=<mode>`，以及 `--dangerously-skip-permissions`
+  作为 `bypassPermissions` 的别名（**照 CC 同名 flag，名字里带 dangerously 是故意的**）。
+
+**留给 TUI 阶段的**（登记 TODO）：REPL 的 `/mode` 命令、shift+tab 循环切换
+（纯 REPL 的阻塞 `input` 拿不到组合键，与 steering 无输入源是同一个限制）。
+
 ## 非目标（明确不做）
 
 - **`bash` 的目录边界**（拍板问 2 = A）。`bash("cat ../secret")` 会绕过本需求的全部成果。
   **如实写进 STATUS 已知缺陷与 TODO**，不做朴素路径提取——那是「看起来防住了」的错觉。
 - 分类器模型（CC 的 `bashClassifier` / `yoloClassifier`）、沙箱、SSRF 守卫、
   路径 TOCTOU 拒绝、`denialTracking`（3 连拒回落人工）。
+- **`plan` 模式**（拍板：留到 TUI 阶段连交互一起做——它的价值主要在
+  「产出计划 → 用户批准 → 自动转 acceptEdits」那套流程，只做「写都 deny」意义不大）。
+- **`auto` 模式**：CC 源码写死 ant-only（`isExternalPermissionMode` 里
+  `mode !== 'auto' && mode !== 'bubble'`），外部用户拿不到，且需要分类器 + 熔断器。
+- **交互式模式切换**（`/mode` 命令、shift+tab）：留 TUI 阶段。
 - `decisionReason` 结构化审计（pai 的 `Decision.reason` 仍是人话字符串）——
   值得做但不在本轮，登记 TODO。
 - 运行期 `PermissionUpdate`（CC 的「本次会话记住这个选择」）。
@@ -111,8 +173,17 @@ CC 的对应实现里**根本没有「默认决策常量」这个东西**：兜�
 - **用户那句话可复现**：在 `<tmp>/proj` 启动，`read_file("../outside.txt")`
   在 REPL 下弹确认、在 once 下 deny；`read_file("./src/x.py")` 直接放行。
 - **写一律 ask**：`write_file("./就在界内.txt")` 在默认姿态下也要确认。
-- **`bash` 不受影响**：`bash("cat ../secret")` 仍然 allow，**且有一条测试钉住这个洞**
-  （与 07 的 `test_env_runners_...` 同款做法：把承认的洞写成测试）。
+- **bash 兜底 ask**：`bash("ls")` 在 REPL 弹确认、在 once 下 deny（`dontAsk`）。
+- **bash 不参与目录边界，且这个洞有测试钉住**：配了 `allow=["Bash(cat *)"]` 之后，
+  `cat ./界内` 与 `cat ../../etc/passwd` **待遇相同（都放行）**——
+  因为 bash 不声明 `get_path`，边界判定碰不到它。
+  这才是「不做 bash 边界」的准确代价：**它不是默认放行，而是一旦为了可用性配了
+  allow 白名单，白名单内的命令就能越界**。与 07 的 `test_env_runners_...` 同款做法写成测试。
+- **模式四态各有测试**：`acceptEdits` 免写确认但**仍受边界与危险路径**；
+  `bypassPermissions` 放行兜底 ask，但 **deny 规则 / 显式 ask 规则 / 危险路径三条免疫**；
+  `dontAsk` 把 ask 变 deny。
+- **显式 ask 规则与兜底 ask 在 bypass 下待遇不同**（最容易实现错的一条）：
+  `ask=["Bash(git push *)"]` 在 bypass 下仍然问；界外读的兜底 ask 在 bypass 下放行。
 - **向后兼容**：显式 `"defaultDecision": "allow"` 时行为与 feature 07 逐字相同。
 - **符号链接**：07 那条 `test_symlink_double_check_is_not_implemented` 变红并被改写为
   「软链绕不过 deny」。

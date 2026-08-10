@@ -100,6 +100,31 @@ CC 有 `bashClassifier`（分类器模型）来判，而 pai spec 明确不做�
   D#50 当初把后者的先例套到了前者。
 - **候选 B·维持 fail-open**：理由仍是「写错的钩子会让 agent 罢工，人会直接全关掉」。
 
+### 2026-08-11 追加拍板（问 2 改选 + 模式子系统）
+
+**问 2 改选候选 C：bash 兜底从 `allow` 改为 `ask`。**
+起因是用户问「CC 里『不擅自 push』是怎么实现的，我现在能实现吗」——
+实测演示了 pai 现在配 `ask: ["Bash(git push *)"]` 就能拦，
+但也暴露出 **pai 默认不拦而 CC 默认拦**。原先把「不做 bash 目录边界」
+顺手推成了「bash 兜底 allow」，这是两件事：可以不解析路径但仍然 ask。
+
+**问 4（新）：权限模式做几个？→ 四个**：`default` / `acceptEdits` /
+`dontAsk` / `bypassPermissions`。
+- 核实纠正：CC 界面上**没有 `manual`**（用户说的应是 `Default`）；
+  **`auto` 是 ant-only**（源码 `isExternalPermissionMode` 写死排除），
+  外部用户拿不到且需分类器 + 熔断器，pai 做不了。用户感觉的「auto 不弹 ask」
+  很可能是 `Accept edits`——它与 bypass/dontAsk/auto 共用 `⏵⏵` 符号，界面上易混。
+- **`plan` 不做**（拍板）：价值主要在「产出计划 → 用户批准 → 自动转 acceptEdits」
+  那套交互，只做「写都 deny」意义不大，留 TUI 阶段连交互一起做。
+- **关键发现**：pai 的 D#48（once 无真人时 ask→deny）**就是 CC 的 `dontAsk`**，
+  当时只当特例、没起名字。显式化之后 once 的默认模式 = `dontAsk`，整件事自洽。
+
+**问 5（新）：模式怎么切换？→ 功能先实现，切换 UI 留 TUI（TODO）。**
+自主判断（spec §8 如实标注）：本轮仍做**配置入口**
+（`settings.json` 的 `defaultMode` + `--permission-mode` / `--dangerously-skip-permissions`），
+否则 `acceptEdits`/`bypassPermissions` 是死代码、且 bash 改 ask 后 once 全被拒。
+交互式切换（`/mode`、shift+tab）留 TUI。
+
 ## 实施
 
 superpowers 全链路：[spec.md](spec.md) → [plan.md](plan.md) → SDD。

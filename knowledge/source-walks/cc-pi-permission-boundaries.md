@@ -123,6 +123,51 @@ D#50 该复议（已登记 TODO）。
   pai 的 `Decision.reason` 是**一句人话字符串**，机器读不了。
 - SSRF 守卫（DNS 解析层钉死 IP 防 rebinding）、路径 TOCTOU 拒绝（`$ % ~user`）。
 
+## 六点五、权限模式：不是开关，是求值链上的插入点
+
+（2026-08-11 追加，由用户问「auto 模式下就不会弹 ask，这个怎么弄呢」引出）
+
+CC 的模式清单（`src/types/permissions.ts:16`）：
+
+```
+EXTERNAL（用户可选）: acceptEdits | bypassPermissions | default | dontAsk | plan
+INTERNAL（额外）    : auto | bubble
+```
+
+**关键结论一：模式不是「全局开关」，是插在求值链特定位置的放行条件，且都有免疫项。**
+
+`acceptEdits` 的生效点（`filesystem.ts:1366`）：
+
+```ts
+// 3. If in acceptEdits or sandboxBashMode mode, allow all writes in original cwd
+if (toolPermissionContext.mode === 'acceptEdits' && isInWorkingDir) { ... allow }
+```
+
+注意 `&& isInWorkingDir`——**acceptEdits 仍然受工作目录边界约束**，它只免掉「写一律 ask」那条，不免边界。
+
+**关键结论二：`bypassPermissions` 也不是无条件放行。** 它在 `permissions.ts:2a` 才生效，
+而 1a–1g 全部先跑，其中三条**bypass 免疫**：
+
+- `1d` deny 规则；
+- `1f` **用户显式配的内容相关 ask 规则**（如 `Bash(npm publish:*)`）——
+  CC 注释：「must be respected even in bypass mode, just as deny rules are respected at step 1d」；
+- `1g` 安全检查（`.git/`、`.claude/`、`.vscode/`、shell 配置）——
+  「bypass-immune — they must prompt even in bypassPermissions mode」。
+
+即：**再怎么 bypass，用户自己写下的 ask 规则和持久化位点仍然要问。**
+
+**关键结论三：`auto` 是唯一需要模型的模式，pai 做不了。**
+它挂在 `TRANSCRIPT_CLASSIFIER` feature flag 上，要 `isAutoModeGateEnabled()`
++ 启动期 `verifyAutoModeGateAccess` + 熔断器（`getNextPermissionMode.ts` 的注释说
+两者会 diverge，live check 是为了防 shift+tab 处理器静默崩掉）。
+用户想要的「不弹 ask」效果，**由 acceptEdits / bypassPermissions / dontAsk 覆盖，
+这三个都不需要模型**。
+
+**关键结论四（对 pai 最有用的一条）：pai 已经无意中实现了 `dontAsk`。**
+D#48「ask 在 once 模式无真人时降级为 deny」——这正是 CC `dontAsk`
+（未预批准即拒，不问）的语义，只是当时没起这个名字，也没意识到它是一个**模式**
+而不是一个特例。把它显式化，once 的默认模式就是 `dontAsk`，整件事自洽了。
+
 ## 七、给 pai 的结论
 
 pai 现在的位置很尴尬：**学了 pi 的机制（`before_tool_call`）+ CC 的引擎形状
