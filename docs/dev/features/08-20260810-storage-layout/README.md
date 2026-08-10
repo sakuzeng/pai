@@ -1,6 +1,6 @@
 # 08-20260810-storage-layout —— 落盘布局对齐 CC
 
-状态：讨论中（等用户拍板；拍板后改「已拍板」，`.active` 已指向本目录）
+状态：已交付（2026-08-10，4 task TDD，272 passed；待合并 main 后转已验收）
 分支：`feat/08-storage-layout`（自 `main` 开出，不叠在旧分支上；按 2026-08-10 立的命名规约带档案编号，分支名自己指得回本档案）
 
 ## 需求
@@ -58,11 +58,22 @@
 
 ## 结果与测试
 
-<!-- 交付后填 -->
+4 个 task TDD，`259 → 272 passed`，每步数字见 [devlog.md](devlog.md)。
+
+**端到端实测**（整个需求的初衷）：在 `/tmp/othersproject` 里跑完一轮再退出——
+`ls -a` 只有 `.` 与 `..`，**没有被拉一坨 `sessions/`**；会话落在
+`~/.pai/projects/-private-tmp-othersproject/sessions/20260810-221805-36c2fc1a.jsonl`，
+记录里 `cwd = /private/tmp/othersproject`（集中存放后仍分得清在哪跑的）。
+
+顺带关掉旧账 **R#15**（同秒建两个 SessionLog 写同一文件）。
+两条取舍进 decisions：**D#44** slug 用全路径连字符并接受与 CC 同款的碰撞、
+**D#45** 会话文件名保留时间戳前缀而非 CC 的纯 uuid。
 
 ## 遗留问题
 
-<!-- 交付后填，每条同步一行进 TODO -->
+5 条全在 TODO「feature 08（落盘布局）遗留」。其中两条来自[复盘](复盘.md)的质疑节，
+是对**本次做法本身**的质疑：「顺手并入」的判据太松（`sessionId` 是搭便车的）、
+涉及删除的拍板没说清「执行时你能否分辨要删什么」。
 
 ## 用到的知识
 

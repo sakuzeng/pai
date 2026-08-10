@@ -396,3 +396,18 @@ def test_tests_can_never_touch_the_real_home(isolate_home):
     assert isolate_home in Path(HISTORY_BASE).parents, "历史根目录必须在临时 home 下"
     assert isolate_home in history_path_for().parents
     assert Path.home() == isolate_home
+
+
+def test_slash_memory_shows_both_memory_and_session_dirs(tmp_path, monkeypatch):
+    """这次问题的起点就是用户不知道那些文件是什么、在哪——所以两个目录都要列出来。"""
+    monkeypatch.chdir(tmp_path)
+    _, printed = _run(["/memory"], [])
+    assert "自动记忆" in printed and "会话" in printed
+    assert "projects" in printed
+
+
+def test_slash_memory_shows_the_readable_slug(tmp_path, monkeypatch):
+    """显示的必须是可读 slug 而不是 16 位哈希（feature 08 的诉求）。"""
+    monkeypatch.chdir(tmp_path)
+    _, printed = _run(["/memory"], [])
+    assert str(tmp_path.absolute()).replace("/", "-") in printed

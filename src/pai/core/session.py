@@ -1,24 +1,39 @@
-"""会话 JSONL 落盘：每条消息一行，append-only。
+"""会话落盘：append-only JSONL，一次会话一个文件。
 
-这是审计/回放/压缩后原始数据保留的地基（对应面试陷阱题"压缩后原始数据还要吗"）。
-阶段 1 做 compaction 时，被摘要的消息只从发给模型的视图里消失，这里的记录不动。
+落点由 pai.core.paths 决定（`~/.pai/projects/<slug>/sessions/`），**不再写当前工作目录**——
+pai 的立意是在别人的项目里跑，往人家仓库里拉一个 sessions/ 目录是不能接受的（feature 08）。
+
+每条记录带 sessionId 与 cwd：集中存放之后，同一仓库的不同子目录会写进同一个目录，
+不记 cwd 就再也分不出「这次是在哪跑的」。
 """
 
 from __future__ import annotations
 
 import json
 import time
+import uuid
 from pathlib import Path
+from typing import Optional, Union
+
+from pai.core.paths import sessions_dir
 
 
 class SessionLog:
-    def __init__(self, directory: str | Path = "sessions"):
-        d = Path(directory)
+    def __init__(self, directory: Optional[Union[str, Path]] = None):
+        # 默认值必须在函数体里取，不能写成 `directory=sessions_dir()`——
+        # 默认参数在**函数定义时**求值，测试隔离 $HOME 之后就追不回来了
+        # （feature 05 补漏五刚在 history_path_for 上栽过同款）
+        d = Path(directory) if directory is not None else sessions_dir()
         d.mkdir(parents=True, exist_ok=True)
+        self.session_id = uuid.uuid4().hex
+        # 时间戳前缀保留（`ls` 按时间排序），短 id 去碰撞（关掉 R#15：
+        # 原来精确到秒，同秒建两个 SessionLog 会写同一个文件）。
+        # 与 CC 不同：CC 用纯 `<sessionId>.jsonl`，可读性让位于唯一性。
         stamp = time.strftime("%Y%m%d-%H%M%S")
-        self.path = d / f"{stamp}.jsonl"
+        self.path = d / f"{stamp}-{self.session_id[:8]}.jsonl"
+        self.cwd = str(Path.cwd().absolute())
 
     def append(self, record: dict) -> None:
-        record = {"ts": time.time(), **record}
+        record = {"ts": time.time(), "sessionId": self.session_id, "cwd": self.cwd, **record}
         with open(self.path, "a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")

@@ -46,6 +46,7 @@ from pai.core.events import (
 )
 from pai.core.interrupt import InterruptFlag, set_current
 from pai.core.loop import run_agent
+from pai.core.paths import sessions_dir
 from pai.core.memory import (
     LOCAL_FILE,
     MEMORY_INDEX,
@@ -397,6 +398,8 @@ def _show_memory(out: Callable[[str], None]) -> None:
     index = directory / MEMORY_INDEX
     state = "有索引" if index.is_file() else "还没有内容"
     out(f"🧠 自动记忆目录：{directory}（{state}）")
+    # 会话也要列：这次需求的起点就是用户翻到那些文件、不知道它们是什么、在哪（feature 08）
+    out(f"💾 会话记录目录：{sessions_dir()}")
 
 
 def _manual_compact(*, messages, anchors, state, client, model, compaction, out) -> None:

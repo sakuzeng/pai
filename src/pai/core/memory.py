@@ -12,10 +12,11 @@
 
 from __future__ import annotations
 
-import hashlib
 import re
 from pathlib import Path
 from typing import FrozenSet, List, Optional
+
+from pai.core import paths as _paths
 
 PROJECT_FILE = "PAI.md"
 LOCAL_FILE = "PAI.local.md"
@@ -121,24 +122,11 @@ MEMORY_SUBDIR = "memory"
 
 
 def memory_dir(*, cwd: Optional[Path] = None, home: Optional[Path] = None) -> Path:
-    """自动记忆目录：`~/.pai/projects/<key>/memory/`。
+    """自动记忆目录。转调 pai.core.paths——路径规则只此一处（feature 08）。
 
-    key 由 **git 仓库根**决定——同一仓库的所有子目录与 worktree 共享一份记忆
-    （官方语义）。不在 git 仓库里就退回该目录本身，各算各的。
+    对外签名不变，所以 build_context / memory_tool 的调用点不用改。
     """
-    cwd = Path(cwd) if cwd is not None else Path.cwd()
-    home = Path(home) if home is not None else Path.home()
-    root = _git_root(cwd) or cwd
-    key = hashlib.sha1(str(root).encode("utf-8")).hexdigest()[:16]
-    return home / USER_DIR / PROJECTS_DIR / key / MEMORY_SUBDIR
-
-
-def _git_root(start: Path) -> Optional[Path]:
-    """自己往上找 .git，不调 `git rev-parse`——加载指令是启动路径，不该起子进程。"""
-    for directory in [start, *start.parents]:
-        if (directory / ".git").exists():
-            return directory
-    return None
+    return _paths.memory_dir(cwd=cwd, home=home)
 
 
 def load_memory_index(directory: Path) -> str:
