@@ -9,7 +9,11 @@ import pytest
 from fake_llm import FakeClient
 
 from pai.core.compaction import CompactionSettings
+from pai.core.permissions import RuleSet
 from pai.modes.interactive import run_interactive
+
+# 同 test_modes：这些测的是 REPL 接线不是权限，feature 09 的边界兜底会拦住它们
+_OPEN = RuleSet.from_lists(default_decision="allow")
 
 
 def _reader(lines):
@@ -30,6 +34,7 @@ def _reader(lines):
 def _run(lines, script, **kwargs):
     out: list = []
     client = FakeClient(script)
+    kwargs.setdefault("rules", _OPEN)
     run_interactive(client=client, model="fake", reader=_reader(lines),
                     out=out.append, on_event=lambda _: None, no_session=True, **kwargs)
     return client, "\n".join(out)
@@ -233,7 +238,7 @@ def test_repl_shows_memory_writes(tmp_path, monkeypatch):
     ]
     events: list = []
     client = FakeClient(script)
-    run_interactive(client=client, model="fake", reader=_reader(["记一下"]),
+    run_interactive(client=client, model="fake", rules=_OPEN, reader=_reader(["记一下"]),
                     out=lambda _: None, on_event=events.append, no_session=True)
 
     written = [e for e in events if isinstance(e, MemoryWritten)]
@@ -468,7 +473,7 @@ def test_slash_permissions_lists_rules_with_source(tmp_path, monkeypatch):
         json.dumps({"permissions": {"deny": ["Bash(rm *)"], "allow": ["Bash(ls *)"]}}),
         encoding="utf-8")
 
-    _, printed = _run(["/permissions"], [])
+    _, printed = _run(["/permissions"], [], rules=None)   # 本条要的就是从磁盘读
 
     assert "bash(rm *)" in printed
     assert "bash(ls *)" in printed
@@ -477,5 +482,5 @@ def test_slash_permissions_lists_rules_with_source(tmp_path, monkeypatch):
 
 def test_slash_permissions_says_so_when_empty(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    _, printed = _run(["/permissions"], [])
+    _, printed = _run(["/permissions"], [], rules=None)
     assert "没有" in printed or "默认" in printed

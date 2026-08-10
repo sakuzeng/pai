@@ -60,14 +60,14 @@ def test_first_match_in_order_wins_not_most_specific():
 
 
 def test_no_match_falls_back_to_default_decision():
-    rules = RuleSet.from_lists(allow=["Bash(ls *)"])
-    fallback = permissions.decide("bash", {"command": "cat x"}, rules)
-    assert fallback.kind == "allow"
-    assert fallback.rule is None          # 没有规则背这个锅
-
-    for wanted in ("ask", "deny"):
-        strict = RuleSet.from_lists(allow=["Bash(ls *)"], default_decision=wanted)
-        assert permissions.decide("bash", {"command": "cat x"}, strict).kind == wanted
+    # feature 09 起默认是 workingdir（兜底是个函数，见 test_default_is_now_workingdir），
+    # 所以这里**显式**传三种常量取值——本条测的是「没匹配上就走 default_decision」，
+    # 不是「默认值是什么」。
+    for wanted in ("allow", "ask", "deny"):
+        rules = RuleSet.from_lists(allow=["Bash(ls *)"], default_decision=wanted)
+        fallback = permissions.decide("bash", {"command": "cat x"}, rules)
+        assert fallback.kind == wanted
+        assert fallback.rule is None      # 没有规则背这个锅
 
 
 def test_tool_name_glob_matches_whole_name():
@@ -75,7 +75,9 @@ def test_tool_name_glob_matches_whole_name():
     assert permissions.decide("bash", {"command": "x"}, everything).kind == "deny"
     assert permissions.decide("read_file", {"path": "x"}, everything).kind == "deny"
 
-    prefix = RuleSet.from_lists(deny=["read_*"])
+    # default_decision 显式设成 allow：本条测的是工具名 glob 的匹配范围，
+    # 用「没命中 → allow」当信号，与 feature 09 的新兜底无关
+    prefix = RuleSet.from_lists(deny=["read_*"], default_decision="allow")
     assert permissions.decide("read_file", {"path": "x"}, prefix).kind == "deny"
     assert permissions.decide("bash", {"command": "x"}, prefix).kind == "allow"
 
@@ -106,7 +108,7 @@ def test_decision_carries_reason_and_rule():
 def test_default_matcher_globs_first_argument():
     """没挂 matcher 的工具吃默认实现：对第一个参数值做通配符匹配。"""
     tools = {"fake": _fake_tool("fake")}
-    rules = RuleSet.from_lists(deny=["fake(secret*)"])
+    rules = RuleSet.from_lists(deny=["fake(secret*)"], default_decision="allow")
 
     assert permissions.decide("fake", {"path": "secret.txt"}, rules, tools=tools).kind == "deny"
     assert permissions.decide("fake", {"path": "public.txt"}, rules, tools=tools).kind == "allow"
@@ -311,12 +313,12 @@ def test_relative_pattern_anchors_to_cwd(tmp_path):
     assert _fs("read_file", tmp_path / "other" / "src" / "a.py", rules, cwd, home) == "allow"
 
 
-def test_symlink_double_check_is_not_implemented(tmp_path):
-    """**如实记录已知洞**：只看给定路径，不做 realpath 双路径检查。
+def test_symlink_cannot_bypass_deny(tmp_path):
+    """**feature 09 Task 4 改写**：原名 `test_symlink_double_check_is_not_implemented`，
+    钉的是「一条软链就能绕开 deny」这个已知洞的**当时行为**。
 
-    这是 TODO 不是设计——官方的做法是 allow 要求「给定路径与真实路径都干净」、
-    deny 是「任一脏就拦」。pai 这轮没做，于是一条符号链接就能绕开 deny 规则。
-    本测试断言的是**当前行为**，做了双路径检查之后它应该变红并被改写。
+    双路径检查做完之后它按设计变红，于是改写成正向断言：
+    deny 是「**任一**路径脏就拦」（给定路径、realpath 解析后路径各查一次）。
     """
     cwd = tmp_path / "proj"
     home = tmp_path / "home"
@@ -331,7 +333,31 @@ def test_symlink_double_check_is_not_implemented(tmp_path):
     )
 
     assert _fs("read_file", secrets / "k.txt", rules, cwd, home) == "deny"
-    assert _fs("read_file", link, rules, cwd, home) == "allow"       # ← 洞
+    assert _fs("read_file", link, rules, cwd, home) == "deny"        # ← 洞已堵上
+
+
+def test_symlink_allow_requires_both_paths_clean(tmp_path):
+    """与上一条不对称：allow 要求「给定路径**与**真实路径都干净」才放行。
+
+    这个不对称就是 `require_all` 的语义（feature 07 Task 2 铺的路）：
+    allow 传 True、deny/ask 传 False。少了它，指向界外的软链会被界内的 allow 规则放行。
+    """
+    cwd = tmp_path / "proj"
+    home = tmp_path / "home"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.txt").write_text("x", encoding="utf-8")
+    (cwd / "src").mkdir(parents=True)
+    link = cwd / "src" / "looks-local.txt"
+    link.symlink_to(outside / "secret.txt")
+
+    rules = RuleSet.from_lists(
+        allow=["read_file(/src/**)"], anchor=str(cwd), default_decision="deny"
+    )
+
+    assert _fs("read_file", cwd / "src" / "real.txt", rules, cwd, home) == "allow"
+    # 名字在 src/ 下，真身在界外 → allow 规则不该放行
+    assert _fs("read_file", link, rules, cwd, home) == "deny"
 
 
 # ---- Task 5：配置加载与裸名 deny 摘工具 ----
@@ -435,3 +461,249 @@ def test_scoped_deny_keeps_tool_visible(tmp_path):
 
     sent = [t["function"]["name"] for t in client.requests[0]["tools"]]
     assert "bash" in sent
+
+
+# ---- feature 09 Task 1：工具自我声明「碰哪个路径、是读是写」----
+#
+# 延续拍板问 2 的「语义下放给工具」：目录边界要知道这次调用碰的是哪个路径、是读是写，
+# 而这两件事只有工具自己知道。**权限层不许按工具名分支**。
+# bash 两个都不声明，所以它结构上就进不了边界判定——不是靠 if 判掉的。
+
+
+def test_fs_tools_declare_path_and_access():
+    from pai.core.tools import get_tools
+
+    tools = get_tools()
+    assert tools["read_file"].access == "read"
+    assert tools["write_file"].access == "write"
+    assert tools["edit_file"].access == "write"
+    for name in ("read_file", "write_file", "edit_file"):
+        assert tools[name].get_path is not None, name
+
+
+def test_bash_declares_neither():
+    """拍板问 2 的结构性落点：bash 进不了边界判定，因为它没声明，不是因为有个 if。"""
+    from pai.core.tools import get_tools
+
+    bash = get_tools()["bash"]
+    assert bash.access is None
+    assert bash.get_path is None
+    assert not bash.participates_in_boundary()
+
+
+def test_tool_without_declaration_does_not_participate():
+    tools = {"fake": _fake_tool("fake")}
+    assert not tools["fake"].participates_in_boundary()
+
+    from pai.core.tools import get_tools
+
+    assert get_tools()["read_file"].participates_in_boundary()
+
+
+def test_get_path_reads_the_declared_argument():
+    """取的是**声明的那个参数**，不是「第一个参数」——两者碰巧一致时最容易写错。"""
+    from pai.core.tools import get_tools
+
+    tools = get_tools()
+    assert tools["read_file"].get_path({"path": "a.txt"}) == "a.txt"
+    # edit_file 的签名是 (path, old, new)：确认取的是 path 而不是别的
+    assert tools["edit_file"].get_path({"path": "b.txt", "old": "x", "new": "y"}) == "b.txt"
+    # 参数缺失不炸——权限判定期拿到脏输入是常态（模型可能发来任何东西）
+    assert tools["read_file"].get_path({}) == ""
+
+
+def test_path_access_for_rejects_unregistered_tool():
+    from pai.core.tools import path_access_for
+
+    with pytest.raises(ValueError):
+        path_access_for("从来没注册过", "read")(lambda args: "")
+
+
+# ---- feature 09 Task 3：兜底接线（分水岭：行为在此改变）----
+#
+# CC 的「默认」不是常量，是函数：读 → in_working_dir ? allow : ask；写 → ask。
+# bash 不参与边界（拍板问 2），兜底 ask（2026-08-11 改选候选 C）。
+# 本 task 之后 once 模式从「什么都能干」变成「cwd 内只读 + bash 全拒」。
+
+
+def _boundary_rules(**kw):
+    from pai.core.permissions import RuleSet
+
+    return RuleSet.from_lists(**kw)
+
+
+def _decide_in(proj, tool, args, rules=None, **kw):
+    from pai.core.boundary import WorkingDirs
+
+    rules = rules if rules is not None else _boundary_rules()
+    return permissions.decide(
+        tool, args, rules,
+        working_dirs=WorkingDirs(startup_cwd=str(proj)),
+        cwd=str(proj), home=str(proj / "home"), **kw
+    ).kind
+
+
+def test_default_is_now_workingdir():
+    from pai.core.permissions import RuleSet
+
+    assert RuleSet().default_decision == "workingdir"
+
+
+def test_read_inside_cwd_allows(tmp_path):
+    proj = tmp_path / "proj"
+    (proj / "src").mkdir(parents=True)
+
+    assert _decide_in(proj, "read_file", {"path": str(proj / "src" / "a.py")}) == "allow"
+
+
+def test_read_outside_cwd_asks(tmp_path):
+    """**用户那句话的验收点**：上级目录要确认。"""
+    proj = tmp_path / "proj"
+    proj.mkdir()
+
+    assert _decide_in(proj, "read_file", {"path": str(tmp_path / "outside.txt")}) == "ask"
+    assert _decide_in(proj, "read_file", {"path": "/etc/passwd"}) == "ask"
+
+
+def test_write_always_asks_even_inside(tmp_path):
+    """照 CC：写路径的兜底没有「目录放行」那一步，界内界外都要确认。"""
+    proj = tmp_path / "proj"
+    proj.mkdir()
+
+    assert _decide_in(proj, "write_file", {"path": str(proj / "a.py"), "content": "x"}) == "ask"
+    assert _decide_in(proj, "edit_file",
+                      {"path": str(proj / "a.py"), "old": "x", "new": "y"}) == "ask"
+
+
+def test_bash_falls_back_to_ask(tmp_path):
+    proj = tmp_path / "proj"
+    proj.mkdir()
+
+    assert _decide_in(proj, "bash", {"command": "ls"}) == "ask"
+
+
+def test_bash_ignores_the_boundary_and_this_is_the_known_hole(tmp_path):
+    """**把承认的洞钉死**（拍板问 2 = A）。
+
+    洞不是「bash 默认放行」——它默认是 ask。洞在于：一旦为了可用性配了
+    allow 白名单，白名单内的命令就能**越界**，因为 bash 不声明 get_path，
+    边界判定结构上碰不到它。
+    """
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    rules = _boundary_rules(allow=["Bash(cat *)"])
+
+    inside = _decide_in(proj, "bash", {"command": "cat ./在界内.txt"}, rules)
+    outside = _decide_in(proj, "bash", {"command": "cat ../../etc/passwd"}, rules)
+
+    assert inside == outside == "allow"          # 待遇相同 ← 这就是洞
+
+
+def test_explicit_allow_preserves_feature_07_behavior(tmp_path):
+    """向后兼容：显式配 allow 时与 feature 07 逐字相同。"""
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    rules = _boundary_rules(default_decision="allow")
+
+    assert _decide_in(proj, "read_file", {"path": "/etc/passwd"}, rules) == "allow"
+    assert _decide_in(proj, "write_file",
+                      {"path": str(tmp_path / "x"), "content": "y"}, rules) == "allow"
+    assert _decide_in(proj, "bash", {"command": "rm -rf /"}, rules) == "allow"
+
+
+def test_deny_and_ask_rules_still_win(tmp_path):
+    """D#46 的求值顺序不受影响：规则先于兜底。"""
+    proj = tmp_path / "proj"
+    proj.mkdir()
+
+    denied = _boundary_rules(deny=["read_file(*)"])
+    assert _decide_in(proj, "read_file", {"path": str(proj / "a.py")}, denied) == "deny"
+
+    allowed = _boundary_rules(allow=["write_file(*)"])
+    assert _decide_in(proj, "write_file",
+                      {"path": str(proj / "a.py"), "content": "x"}, allowed) == "allow"
+
+
+def test_once_degrades_boundary_ask_to_deny(tmp_path):
+    """与 D#48 的交互——本 task 之后 once 被限制在 cwd 内只读。"""
+    from pai.core.boundary import WorkingDirs
+    from pai.core.gate import make_before_tool_call
+
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    gate = make_before_tool_call(
+        _boundary_rules(), working_dirs=WorkingDirs(startup_cwd=str(proj)),
+        cwd=str(proj), asker=None)
+
+    assert gate("read_file", {"path": str(proj / "a.py")}).kind == "allow"
+    assert gate("read_file", {"path": "/etc/passwd"}).kind == "deny"
+    assert gate("write_file", {"path": str(proj / "a.py"), "content": "x"}).kind == "deny"
+    assert gate("bash", {"command": "ls"}).kind == "deny"
+
+
+# ---- Task 5：危险路径接进求值链（bypass 免疫）----
+
+
+def test_dangerous_write_is_blocked_even_with_allow_rule(tmp_path):
+    """**bypass 免疫的核心**：allow 规则 + default_decision=allow 都翻不过它。"""
+    home = tmp_path / "home"
+    proj = tmp_path / "proj"
+    (home / ".pai").mkdir(parents=True)
+    proj.mkdir()
+
+    rules = RuleSet.from_lists(allow=["write_file(*)"], default_decision="allow")
+    kind = permissions.decide(
+        "write_file", {"path": str(home / ".bashrc"), "content": "evil"},
+        rules, cwd=str(proj), home=str(home),
+    ).kind
+
+    assert kind == "ask"
+
+
+def test_dangerous_read_is_not_blocked(tmp_path):
+    """只挡写，不挡读——挡读会让 agent 连自己的配置都看不了。"""
+    home = tmp_path / "home"
+    proj = tmp_path / "proj"
+    (home / ".pai").mkdir(parents=True)
+    proj.mkdir()
+    (home / ".bashrc").write_text("x", encoding="utf-8")
+
+    rules = RuleSet.from_lists(allow=["read_file(*)"], default_decision="allow")
+    kind = permissions.decide(
+        "read_file", {"path": str(home / ".bashrc")},
+        rules, cwd=str(proj), home=str(home),
+    ).kind
+
+    assert kind == "allow"
+
+
+def test_deny_rule_still_takes_precedence_over_dangerous_check(tmp_path):
+    """内置检查排在 deny 桶**之后**：deny 不能被降级成 ask。"""
+    home = tmp_path / "home"
+    proj = tmp_path / "proj"
+    (home / ".pai").mkdir(parents=True)
+    proj.mkdir()
+
+    rules = RuleSet.from_lists(deny=["write_file(*)"], default_decision="allow")
+    kind = permissions.decide(
+        "write_file", {"path": str(home / ".bashrc"), "content": "x"},
+        rules, cwd=str(proj), home=str(home),
+    ).kind
+
+    assert kind == "deny"
+
+
+def test_dangerous_write_reason_names_the_path(tmp_path):
+    home = tmp_path / "home"
+    proj = tmp_path / "proj"
+    (home / ".pai").mkdir(parents=True)
+    proj.mkdir()
+
+    decision = permissions.decide(
+        "write_file", {"path": str(proj / ".git" / "hooks" / "pre-commit"), "content": "x"},
+        RuleSet.from_lists(allow=["write_file(*)"], default_decision="allow"),
+        cwd=str(proj), home=str(home),
+    )
+
+    assert decision.kind == "ask"
+    assert "持久化" in decision.reason or "危险" in decision.reason

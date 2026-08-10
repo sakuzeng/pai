@@ -14,8 +14,9 @@ from __future__ import annotations
 
 from typing import Callable, List, Optional, Sequence
 
+from pai.core.boundary import WorkingDirs
 from pai.core.hooks import HookSpec, decide_with_hooks
-from pai.core.permissions import Decision, RuleSet
+from pai.core.permissions import DONT_ASK, Decision, RuleSet
 
 # (问题, 候选项) -> 用户选的那项。与 pai.core.tools.ask.Asker 同构，故意不 import：
 # 权限问答与模型发起的 AskUserQuestion 是两条独立的通道，只是长得一样。
@@ -50,21 +51,30 @@ def make_before_tool_call(
     home: Optional[str] = None,
     asker: Optional[Asker] = None,
     warn: Optional[Callable[[str], None]] = None,
+    working_dirs: Optional[WorkingDirs] = None,
+    mode: Optional[str] = None,
 ) -> Callable[[str, dict], Decision]:
     """造一个交给 `run_agent(before_tool_call=...)` 的判定函数。
 
     `asker=None` 表示当前模式没有真人（once）：ask 降级为 deny + 说明。
     降级为 allow 是不行的——自动化正是最危险的场景，那样 ask 规则等于不存在。
+
+    **`asker is None` 与 `mode == "dontAsk"` 是同一件事**（feature 09 Task 6）：
+    D#48 当初把「无真人时降级」当成一个特例实现，其实它就是 CC 的 `dontAsk` 模式。
+    这里让两者走同一段代码，once 的默认模式即 `dontAsk`。
     """
 
     def gate(tool_name: str, args: dict) -> Decision:
         decision = decide_with_hooks(
             tool_name, args, rules, hooks=hooks,
             tools=tools, cwd=cwd, home=home, warn=warn,
+            working_dirs=working_dirs, mode=mode,
         )
         if decision.kind != "ask":
             return decision
-        if asker is None:
+        # dontAsk 不在求值链上：它是对**最终结果**的后处理。
+        # 与「无真人可问」合流——两者对模型是同一件事（拿不到人的确认）。
+        if asker is None or mode == DONT_ASK:
             return Decision(
                 kind="deny",
                 reason=f"{decision.reason}；{NO_HUMAN_REASON}",

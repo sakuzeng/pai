@@ -11,7 +11,8 @@ import re
 import tempfile
 from typing import Annotated
 
-from pai.core.tools import MatchContext, matcher_for, tool
+from pai.core.boundary import get_paths_for_permission_check
+from pai.core.tools import READ, WRITE, MatchContext, matcher_for, path_access_for, tool
 
 MAX_OUTPUT_CHARS = 4000
 
@@ -89,9 +90,9 @@ def edit_file(
 #   path     含 `/` 则相对 cwd；不含 `/` 的裸文件名按 gitignore 语义任意深度匹配
 #            （`read_file(.env)` ≡ `read_file(**/.env)`）。
 #
-# **已知洞**：不做符号链接双路径检查。官方语义是 allow 要求「给定路径与真实路径都干净」、
-# deny 要求「任一脏就拦」，pai 这轮只看给定路径，于是一条软链就能绕开 deny。
-# 这是 TODO 不是设计，test_symlink_double_check_is_not_implemented 钉的是当前行为。
+# **符号链接双路径已实现**（feature 09 Task 4，关掉了 feature 07 的那个洞）：
+# allow 要求「给定路径与真实路径都干净」、deny/ask「任一脏就拦」——
+# 靠的就是 require_all，无需给匹配器加新参数。
 
 
 def _glob_to_regex(pattern: str):
@@ -132,11 +133,7 @@ def expand_pattern(specifier: str, ctx: MatchContext) -> str:
 
 
 def target_path(args: dict, ctx: MatchContext) -> str:
-    """取工具参数里的路径并绝对化。
-
-    **刻意不 realpath**：那是符号链接双路径检查的一半，只做一半比不做更误导
-    （会让人以为软链已经被覆盖了）。要做就 allow/deny 两侧一起做，见上方已知洞。
-    """
+    """取工具参数里的路径并绝对化（**不** realpath——展开成双路径是调用方的事）。"""
     value = str(next(iter(args.values()), ""))
     if not value:
         return ""
@@ -146,15 +143,30 @@ def target_path(args: dict, ctx: MatchContext) -> str:
 
 
 def path_matcher(specifier: str, args: dict, require_all: bool, ctx: MatchContext) -> bool:
-    """fs 三件套共用的路径匹配。
+    """fs 三件套共用的路径匹配，**对符号链接的两条路径分别比对**（feature 09 Task 4）。
 
-    `require_all` 用不上：一次调用只碰一个路径，没有「每个都要匹配」的余地。
+    `require_all` 在这里终于有了意义，且与 bash 那边是同一条不对称：
+    - allow 判定（True）：**两条都干净**才放行——名字在 `src/` 下、真身在界外的软链
+      不该被 `allow=["read_file(/src/**)"]` 放行；
+    - deny/ask 判定（False）：**任一条脏**就拦。
+
+    这正是官方符号链接规则的原话，也是 feature 07 spec 里
+    「与官方符号链接规则的不对称是同一个思想」那句话的兑现。
     """
-    path = target_path(args, ctx)
-    if not path:
+    paths = get_paths_for_permission_check(target_path(args, ctx))
+    if not paths:
         return False
-    return bool(_glob_to_regex(expand_pattern(specifier, ctx)).match(path))
+    pattern = _glob_to_regex(expand_pattern(specifier, ctx))
+    hits = [bool(pattern.match(p)) for p in paths]
+    return all(hits) if require_all else any(hits)
 
 
 for _fs_tool in (read_file, write_file, edit_file):
     matcher_for(_fs_tool)(path_matcher)
+
+
+# 目录边界的两项声明（feature 09 Task 1）。取的是**声明的那个参数**而不是
+# 「第一个参数」——三件套碰巧都是 path 打头，写成「取第一个」在加第四个工具时会静默出错。
+path_access_for(read_file, READ)(lambda args: str(args.get("path") or ""))
+for _writer in (write_file, edit_file):
+    path_access_for(_writer, WRITE)(lambda args: str(args.get("path") or ""))

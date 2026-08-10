@@ -67,6 +67,14 @@
   hook 崩溃不阻断（D#50）。
   **门禁必须带测试**这条 anna 回流已兑现：三条注入反证（翻求值顺序 / require_all 恒 False /
   不拆复合命令）各自打红了不同的测试集，且**自举跑通了 pai 自己的 `guards/design_gate.py`**。
+- **补课档案**：[features/09-20260810-working-dir-boundary/](features/09-20260810-working-dir-boundary/README.md)
+  （2026-08-11，用户实测质疑「上级目录照理不能看」引出）。
+  阶段 4 交付的是**引擎**，策略是空的——默认兜底是常量 `allow`，不配置就等于没有权限层。
+  09 补上策略：工作目录边界（D#51 推翻 D#47）、符号链接双路径、危险路径 bypass 免疫、
+  权限模式四态（D#53）、hook fail-closed（D#54 复议 D#50）。7 task TDD，385 passed。
+  **教训**：本阶段前置精读的 `permissions-hooks.md` 里「工作目录/cwd/边界」grep 零命中，
+  pi 侧只有一句「参照 beforeToolCall」——精读覆盖了文档每一节，却漏掉一整层机制。
+  补 [cc-pi-permission-boundaries.md](../../knowledge/source-walks/cc-pi-permission-boundaries.md)。
 - **范围**：做——三态规则、按 source 分桶（user/project）、bash 前缀匹配与路径匹配。anna 门禁思想回流：ask 只用在必须真人拍板的节点、门禁三种退出码、**门禁必须带测试**（注入已知错误断言真会拦——这是对 anna 短板的修正）。不做——LLM 分类命令危险度、配置硬编码。
 - **参照**：CC `src/utils/permissions/`（规则三态 + 语义下放）；anna `guards/`。
 - **前置精读**：

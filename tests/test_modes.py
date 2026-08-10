@@ -7,7 +7,13 @@ import json
 
 from fake_llm import FakeClient
 
+from pai.core.permissions import RuleSet
 from pai.modes.once import run_once
+
+# 本文件多数测试测的是「装配是否正确」，不是权限。feature 09 把默认兜底改成了
+# 工作目录边界（写一律 ask、bash 一律 ask，once 下再降级为 deny），会把这些
+# e2e 全部拦住。显式注入一个放行的规则集，让它们继续测自己该测的东西。
+_OPEN = RuleSet.from_lists(default_decision="allow")
 
 
 def test_run_once_wires_client_and_returns_answer(tmp_path, monkeypatch):
@@ -70,7 +76,7 @@ def test_once_event_output_is_byte_identical(tmp_path, monkeypatch):
         {"content": "done"},
     ])
     answer = run_once("x", client=client, model="fake", no_session=True,
-                      on_event=events.append)
+                      on_event=events.append, rules=_OPEN)
 
     printed = [text for text in (render_text(e) for e in events) if text is not None]
     assert printed == ["🔧 bash({'command': 'echo hi'}) → hi\n"]
@@ -84,7 +90,7 @@ def test_once_default_event_handler_prints_rendered_text(capsys, tmp_path, monke
         {"tool_calls": [("bash", json.dumps({"command": "echo hi"}))]},
         {"content": "done"},
     ])
-    run_once("x", client=client, model="fake", no_session=True)
+    run_once("x", client=client, model="fake", no_session=True, rules=_OPEN)
     out = capsys.readouterr().out
     assert out == "🔧 bash({'command': 'echo hi'}) → hi\n\n"
     assert "ToolEnd(" not in out

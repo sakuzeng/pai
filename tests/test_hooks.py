@@ -89,25 +89,58 @@ def test_hook_block_beats_allow_rule(tmp_path):
     assert "我不同意" in decision.reason
 
 
-def test_hook_timeout_does_not_block_work(tmp_path):
-    """铁律：超时按非阻断处理。卡住的门禁不该把 agent 一起卡住。"""
+def test_hook_timeout_blocks(tmp_path):
+    """**feature 09 Task 7 改写**（原 `test_hook_timeout_does_not_block_work`）。
+
+    D#50 复议：运行期权限 hook 改 fail-closed。超时 = **没拿到判定**，
+    而「没拿到判定」不能当成放行——pi（钩子抛异常即拦）与 CC（分类器解析失败即
+    block）两个独立实现都选了这个默认值。
+    """
     spec = _hook(tmp_path, "slow.py", "import time\ntime.sleep(30)\n", timeout=0.3)
     warnings = []
 
     decision = hooks.run_pre_tool_use([spec], "bash", {"command": "ls"}, warn=warnings.append)
 
-    assert decision is None
+    assert decision.kind == "deny"
+    assert "超时" in decision.reason
     assert any("超时" in w for w in warnings)
 
 
-def test_hook_crash_does_not_block_work(tmp_path):
+def test_hook_cannot_be_started_blocks(tmp_path):
+    """起不来（命令不存在 / 没权限）同样是「没拿到判定」→ deny。"""
+    spec = hooks.HookSpec(command="/绝对不存在的路径/gate", timeout=2)
+
+    decision = hooks.run_pre_tool_use([spec], "bash", {"command": "ls"})
+
+    assert decision.kind == "deny"
+
+
+def test_nonzero_exit_is_still_non_blocking_and_this_differs_from_pi(tmp_path):
+    """**边界：退出码非 0 非 2 仍是非阻断**，这一条没跟着改，理由要说清。
+
+    子进程语境下分不出「脚本崩了」与「脚本主动 exit 1」——退出码都是 1。
+    而 CC 的协议明确把「其他退出码」定义为**脚本能够表达的一种状态**
+    （我跑完了、有问题、但别拦）。把它一并改成 deny 就是改掉协议本身，
+    且会让任何一个写得不严谨的 hook 变成一道随机的墙。
+
+    **与 pi 的差异如实记**：pi 的钩子是进程内 JS 函数，异常能被 `runner.ts` 捕获并
+    转为拦截，它区分得出「没跑完」；pai 的 hook 是子进程，只有退出码可看。
+    所以 pai 的 fail-closed 只覆盖**pai 侧无法完成调用**的情况（超时、起不来）。
+    """
     spec = _hook(tmp_path, "boom.py", "raise RuntimeError('炸了')\n")
     warnings = []
 
     decision = hooks.run_pre_tool_use([spec], "bash", {"command": "ls"}, warn=warnings.append)
 
-    assert decision is None
+    assert decision is None          # 非阻断：脚本跑完了，只是退出码不为 0
     assert warnings
+
+
+def test_exit_zero_without_a_decision_is_still_no_opinion(tmp_path):
+    """退出码 0 但 stdout 没有有效决策 = 脚本明确表态「我没意见」，不是失败。"""
+    spec = _hook(tmp_path, "quiet.py", "print('随便打点什么')\n")
+
+    assert hooks.run_pre_tool_use([spec], "bash", {"command": "ls"}) is None
 
 
 def test_matcher_filters_by_tool_name(tmp_path):
