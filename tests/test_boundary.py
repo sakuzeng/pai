@@ -205,3 +205,57 @@ def test_broken_symlink_does_not_crash(tmp_path):
     dirs = WorkingDirs(startup_cwd=str(proj))
 
     assert dirs.contains(str(dangling))             # 目标不存在但仍在界内
+
+
+# ---- Task 5：危险路径清单（bypass 免疫）----
+#
+# 照 CC 的 DANGEROUS_FILES / DANGEROUS_DIRECTORIES：**持久化位点**写不进去。
+# 「bypass 免疫」= 即使 default_decision=allow、即使有 allow 规则命中，写这些仍要拦。
+# 只挡写不挡读——挡读会让 agent 连自己的配置都看不了。
+
+
+def _dangerous(path, home=None):
+    from pai.core.boundary import is_dangerous_write
+
+    return is_dangerous_write(str(path), home=str(home) if home else None)
+
+
+def test_shell_configs_are_dangerous(tmp_path):
+    home = tmp_path / "home"
+    for name in (".bashrc", ".zshrc", ".profile"):
+        assert _dangerous(home / name, home), name
+
+
+def test_git_hooks_are_protected(tmp_path):
+    """`.git/hooks/**` 是持久化位点：写进去就是下次 git 操作时任意代码执行。"""
+    proj = tmp_path / "proj"
+
+    assert _dangerous(proj / ".git" / "hooks" / "pre-commit")
+    assert _dangerous(proj / "nested" / ".git" / "hooks" / "post-merge")
+    assert not _dangerous(proj / ".git" / "config")      # 只挡 hooks，不是整个 .git
+
+
+def test_ssh_dir_is_protected(tmp_path):
+    home = tmp_path / "home"
+
+    assert _dangerous(home / ".ssh" / "authorized_keys", home)
+    assert _dangerous(home / ".ssh" / "id_rsa", home)
+
+
+def test_pai_settings_is_protected(tmp_path):
+    """防 agent 改自己的权限规则（CC 的 isClaudeSettingsPath 同款）。
+
+    不挡这个的话，「让 agent 帮我把这条规则加进 settings.json」就成了
+    一条合法的提权路径。
+    """
+    home = tmp_path / "home"
+
+    assert _dangerous(home / ".pai" / "settings.json", home)
+    assert _dangerous(tmp_path / "proj" / ".pai" / "settings.json", home)
+
+
+def test_ordinary_paths_are_not_dangerous(tmp_path):
+    proj = tmp_path / "proj"
+
+    assert not _dangerous(proj / "src" / "main.py")
+    assert not _dangerous(proj / "README.md")

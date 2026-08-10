@@ -22,8 +22,8 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from pai.core import paths
-from pai.core.boundary import WorkingDirs
-from pai.core.tools import READ, MatchContext, all_tools, default_matcher
+from pai.core.boundary import WorkingDirs, is_dangerous_write
+from pai.core.tools import READ, WRITE, MatchContext, all_tools, default_matcher
 
 SETTINGS_FILE = "settings.json"
 
@@ -171,6 +171,27 @@ def _first_match(
     return None
 
 
+def _dangerous_write_check(
+    tool_name: str, args: dict, tools: dict, home: str
+) -> Optional[Decision]:
+    """写持久化位点（shell 配置、`.git/hooks`、`~/.ssh`、pai 自己的 settings）一律要确认。
+
+    返回 `None` 表示「不是危险写入，继续往下判」。
+    **这条 bypass 免疫**：allow 规则与 `default_decision="allow"` 都翻不过它，
+    因为它排在规则命中之后、返回之前。
+    """
+    tool = tools.get(tool_name)
+    if tool is None or tool.access != WRITE or tool.get_path is None:
+        return None
+    path = tool.get_path(args)
+    if not is_dangerous_write(path, home=home):
+        return None
+    return Decision(
+        kind="ask",
+        reason=f"`{path}` 是持久化位点（写进去会在 pai 退出后继续生效），必须确认",
+    )
+
+
 def _boundary_fallback(
     tool_name: str, args: dict, tools: dict, working_dirs: WorkingDirs
 ) -> Decision:
@@ -219,11 +240,20 @@ def decide(
     for kind in KINDS:
         rule = _first_match(kind, tool_name, args, rules, tools, cwd, home)
         if rule is not None:
+            # 危险路径检查排在 **deny 之后、ask/allow 之前**：
+            # deny 不能被降级成 ask，但 allow 翻不过它（bypass 免疫的实现位置）。
+            if kind != "deny":
+                blocked = _dangerous_write_check(tool_name, args, tools, home)
+                if blocked is not None:
+                    return blocked
             return Decision(
                 kind=kind,
                 reason=f"命中 {kind} 规则 `{rule.text()}`（来源：{rule.source}）",
                 rule=rule,
             )
+    blocked = _dangerous_write_check(tool_name, args, tools, home)
+    if blocked is not None:
+        return blocked
     if rules.default_decision == WORKING_DIR:
         dirs = working_dirs if working_dirs is not None else WorkingDirs.from_startup(cwd)
         return _boundary_fallback(tool_name, args, tools, dirs)

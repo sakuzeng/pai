@@ -128,3 +128,48 @@ def paths_all_inside(paths: Iterable[str], dirs: WorkingDirs) -> bool:
     if not checked:
         return False
     return all(dirs.contains(p) for p in checked)
+
+
+# ---- 危险路径清单（Task 5，照 CC 的 DANGEROUS_FILES / DANGEROUS_DIRECTORIES）----
+#
+# 挡的是**持久化位点**：写进去之后，即使 pai 退出、即使权限规则改回来，
+# 那段代码仍会在下一次开 shell / 下一次 git 操作时执行。
+# 所以它必须 **bypass 免疫**——再怎么放行也拦。
+#
+# 只挡**写**不挡读：挡读会让 agent 连自己的配置都看不了，而读走漏的风险
+# 由工作目录边界那层管（`~/.ssh` 本来就在界外）。
+
+# 家目录下的具体文件
+_DANGEROUS_HOME_FILES = (".bashrc", ".zshrc", ".bash_profile", ".zprofile", ".profile")
+# 家目录下整个挡掉的子目录
+_DANGEROUS_HOME_DIRS = (".ssh",)
+# 任意位置只要路径里有这一段就挡（git hooks 在任何仓库里都是执行点）
+_DANGEROUS_ANYWHERE = (os.path.join(".git", "hooks"),)
+
+
+def is_dangerous_write(path: str, home: Optional[str] = None) -> bool:
+    """这个路径是不是「写进去就等于拿到后续执行权」的持久化位点。
+
+    `~/.pai/settings.json` 也在内：不挡的话，「帮我把这条规则加进 settings」
+    就是一条合法的提权路径——agent 改掉自己的权限规则，下一轮就畅通无阻了。
+    项目级 `.pai/settings.json` 同理。
+    """
+    if not path:
+        return False
+    home_dir = _normalize(home) if home else os.path.expanduser("~")
+    # 双路径都查：软链指向 ~/.bashrc 同样要拦（与 deny 规则同款「任一脏就拦」）
+    for candidate in get_paths_for_permission_check(path):
+        if any(seg in candidate for seg in _DANGEROUS_ANYWHERE):
+            return True
+        # pai 自己的设置文件（用户级与项目级）
+        if os.path.basename(candidate) == "settings.json" and \
+                os.path.basename(os.path.dirname(candidate)) == ".pai":
+            return True
+        rel_parts = candidate[len(home_dir):].lstrip(os.sep).split(os.sep) \
+            if candidate.startswith(home_dir) else []
+        if rel_parts:
+            if len(rel_parts) == 1 and rel_parts[0] in _DANGEROUS_HOME_FILES:
+                return True
+            if rel_parts[0] in _DANGEROUS_HOME_DIRS:
+                return True
+    return False

@@ -639,3 +639,71 @@ def test_once_degrades_boundary_ask_to_deny(tmp_path):
     assert gate("read_file", {"path": "/etc/passwd"}).kind == "deny"
     assert gate("write_file", {"path": str(proj / "a.py"), "content": "x"}).kind == "deny"
     assert gate("bash", {"command": "ls"}).kind == "deny"
+
+
+# ---- Task 5：危险路径接进求值链（bypass 免疫）----
+
+
+def test_dangerous_write_is_blocked_even_with_allow_rule(tmp_path):
+    """**bypass 免疫的核心**：allow 规则 + default_decision=allow 都翻不过它。"""
+    home = tmp_path / "home"
+    proj = tmp_path / "proj"
+    (home / ".pai").mkdir(parents=True)
+    proj.mkdir()
+
+    rules = RuleSet.from_lists(allow=["write_file(*)"], default_decision="allow")
+    kind = permissions.decide(
+        "write_file", {"path": str(home / ".bashrc"), "content": "evil"},
+        rules, cwd=str(proj), home=str(home),
+    ).kind
+
+    assert kind == "ask"
+
+
+def test_dangerous_read_is_not_blocked(tmp_path):
+    """只挡写，不挡读——挡读会让 agent 连自己的配置都看不了。"""
+    home = tmp_path / "home"
+    proj = tmp_path / "proj"
+    (home / ".pai").mkdir(parents=True)
+    proj.mkdir()
+    (home / ".bashrc").write_text("x", encoding="utf-8")
+
+    rules = RuleSet.from_lists(allow=["read_file(*)"], default_decision="allow")
+    kind = permissions.decide(
+        "read_file", {"path": str(home / ".bashrc")},
+        rules, cwd=str(proj), home=str(home),
+    ).kind
+
+    assert kind == "allow"
+
+
+def test_deny_rule_still_takes_precedence_over_dangerous_check(tmp_path):
+    """内置检查排在 deny 桶**之后**：deny 不能被降级成 ask。"""
+    home = tmp_path / "home"
+    proj = tmp_path / "proj"
+    (home / ".pai").mkdir(parents=True)
+    proj.mkdir()
+
+    rules = RuleSet.from_lists(deny=["write_file(*)"], default_decision="allow")
+    kind = permissions.decide(
+        "write_file", {"path": str(home / ".bashrc"), "content": "x"},
+        rules, cwd=str(proj), home=str(home),
+    ).kind
+
+    assert kind == "deny"
+
+
+def test_dangerous_write_reason_names_the_path(tmp_path):
+    home = tmp_path / "home"
+    proj = tmp_path / "proj"
+    (home / ".pai").mkdir(parents=True)
+    proj.mkdir()
+
+    decision = permissions.decide(
+        "write_file", {"path": str(proj / ".git" / "hooks" / "pre-commit"), "content": "x"},
+        RuleSet.from_lists(allow=["write_file(*)"], default_decision="allow"),
+        cwd=str(proj), home=str(home),
+    )
+
+    assert decision.kind == "ask"
+    assert "持久化" in decision.reason or "危险" in decision.reason

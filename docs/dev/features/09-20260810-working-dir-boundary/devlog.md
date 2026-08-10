@@ -208,3 +208,45 @@ CC 注释说不这么做是 30 次 syscall）。实际写成了
 **遗留**：
 - 双路径展开每次判定都会做 `realpath`（未缓存）。CC 用 `memoize` 缓存工作目录的
   解析结果，pai 没做——工作目录集合是会话级不变量，值得缓存。登记 TODO（P2，性能）。
+
+## 2026-08-11 · Task 5：危险路径清单（bypass 免疫）
+
+**目标**：写**持久化位点**一律要确认，且 allow 规则与 `default_decision="allow"`
+都翻不过它。挡的不是「重要文件」，是「写进去之后 pai 退出了那段代码还会执行」的位置。
+
+**改动**：
+- `src/pai/core/boundary.py`：新增 `is_dangerous_write()` + 三张清单
+- `src/pai/core/permissions.py`：新增 `_dangerous_write_check()`，
+  插在 **deny 之后、ask/allow 之前**
+- `tests/test_boundary.py`：+5 条；`tests/test_permissions.py`：+4 条
+- `docs/dev/STATUS.md` 测试数字 359 → 368
+
+**测试**：红 `7 failed, 61 passed`，绿 `68 passed in 0.44s`。
+全量：`359 passed, 3 deselected` → **`368 passed, 3 deselected`**。
+
+**插入位置是本 task 唯一需要想清楚的事**：排在 **deny 桶之后**（deny 不能被降级成
+ask，`test_deny_rule_still_takes_precedence_over_dangerous_check` 钉死），
+但排在 **ask/allow 规则命中的返回之前**——这就是「bypass 免疫」的实现位置。
+写成「求值链最后再查一次」是不行的：allow 规则一旦命中就直接返回了，根本走不到。
+
+**清单里最该解释的一条是 `~/.pai/settings.json`**（CC 有对应的 `isClaudeSettingsPath`）。
+不挡它的话，「帮我把这条规则加进 settings.json」就是一条**合法的提权路径**——
+agent 改掉自己的权限规则，下一轮就畅通无阻了。项目级 `.pai/settings.json` 同理。
+
+**`.git/hooks` 用「路径里含这一段就挡」而不是锚定项目根**：
+git hooks 在**任何**仓库里都是执行点，agent 可能在子模块、临时 clone 里写。
+`test_git_hooks_are_protected` 里那条 `nested/.git/hooks/post-merge` 钉的是这个。
+同时只挡 `hooks` 不挡整个 `.git`（`.git/config` 仍可写）。
+
+**只挡写不挡读**（`test_dangerous_read_is_not_blocked`）：挡读会让 agent 连自己的
+配置都看不了，而读走漏的风险归工作目录边界那层管——`~/.ssh` 本来就在界外，
+默认就要确认。两层职责不重叠。
+
+**危险路径也走双路径检查**：软链指向 `~/.bashrc` 同样拦，与 deny 规则同款
+「任一脏就拦」。Task 4 的 `get_paths_for_permission_check` 在这里第三次复用。
+
+**遗留**：
+- 清单是**硬编码**的，用户不能增删。CC 的清单也基本是硬编码，
+  但 pai 连「看一眼当前清单」的入口都没有（`/permissions` 不列它）。登记 TODO。
+- Windows 路径（`AppData`、注册表相关）完全没考虑——pai 目标平台是 macOS/Linux，
+  但清单里 `.bashrc` 这种写法在 Windows 上静默失效，如实记。
