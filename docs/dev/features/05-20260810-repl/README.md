@@ -1,6 +1,7 @@
 # 05-20260810-repl —— 交互模式（纯 REPL 先行）
 
 状态：已交付（2026-08-10，8 task 全部 TDD 跑完，193 passed；待合并 main 后转已验收）
+分支：`feat/repl`（8 task 主体）、`feat/memory`（交付后五个补漏）、`main`（合并后修 conftest 覆盖回归）
 
 ## 需求
 

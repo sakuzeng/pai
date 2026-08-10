@@ -149,3 +149,18 @@ def test_status_reports_the_current_test_count(request):
         f"STATUS 写着 {m.group(1)} passed，实际选中 {request.session.testscollected} 条——"
         "补完漏别忘了回头改 STATUS"
     )
+
+
+def test_feature_archives_declare_their_branches():
+    """一个需求跨多条分支是常态，而事后用 git 推不出「在哪条上做的」——分支线性叠时
+    `git branch --contains` 会把所有分支都列出来。所以必须当时写进档案。
+
+    2026-08-10 的实证：05-repl 的 8 个 task 在 feat/repl、五个补漏在 feat/memory、
+    conftest 回归修在 main，而档案里只写着「分支 feat/repl」——那行字是错的。
+    立项日早于本规矩的档案不追溯（同复盘规矩的处理）。
+    """
+    for d in sorted(p for p in FEATURES.iterdir() if p.is_dir() and p.name != "_template"):
+        text = (d / "README.md").read_text(encoding="utf-8")
+        m = re.search(r"^分支：[^\S\n]*(\S.*)$", text, re.M)
+        assert m, f"{d.name} 的档案缺「分支：」字段（features/README 规矩 2.5）"
+        assert len(m.group(1).strip()) > 4, f"{d.name} 的「分支：」字段太空洞"
