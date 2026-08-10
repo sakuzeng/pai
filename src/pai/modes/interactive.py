@@ -48,7 +48,7 @@ from pai.core.interrupt import InterruptFlag, set_current
 from pai.core.gate import make_before_tool_call
 from pai.core.hooks import load_hooks
 from pai.core.loop import run_agent
-from pai.core.permissions import load_rules, visible_tools
+from pai.core.permissions import RuleSet, load_rules, visible_tools
 from pai.core.paths import sessions_dir
 from pai.core.memory import (
     LOCAL_FILE,
@@ -205,6 +205,7 @@ def run_interactive(
     context_window: Optional[int] = None,
     compaction: Optional[CompactionSettings] = None,
     history_path: Optional[Path] = None,
+    rules: Optional[RuleSet] = None,
 ) -> None:
     on_event = on_event if on_event is not None else make_event_handler()
     client = client or make_client()
@@ -227,7 +228,7 @@ def run_interactive(
     human_asker = _make_asker(reader, out, asker_state)
     ask.set_asker(human_asker)
     # 权限（feature 07）。REPL 有真人，所以 ask 走真人通道而不是降级为 deny（拍板问 1）。
-    rules = load_rules(warn=out)
+    rules = rules if rules is not None else load_rules(warn=out)
     hooks = load_hooks(warn=out)
     tools = visible_tools(tools, rules)            # 裸名 deny 的工具压根不摆给模型
     gate = make_before_tool_call(

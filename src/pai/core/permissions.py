@@ -22,12 +22,21 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from pai.core import paths
-from pai.core.tools import MatchContext, all_tools, default_matcher
+from pai.core.boundary import WorkingDirs
+from pai.core.tools import READ, MatchContext, all_tools, default_matcher
 
 SETTINGS_FILE = "settings.json"
 
 # 三态。顺序即求值顺序，别按字母排。
 KINDS = ("deny", "ask", "allow")
+
+# `default_decision` 的第四种取值（feature 09，**新默认**）：
+# 兜底不是常量而是**一个函数**——读 → 界内 allow / 界外 ask；写 → 一律 ask；
+# 不参与边界的工具（bash）→ ask。照 CC（`filesystem.ts` 第 6 步与第 12 步），
+# 那边根本没有「默认决策常量」这个东西。
+# 配成 "allow" 可退回 feature 07 的老行为（向后兼容）。
+WORKING_DIR = "workingdir"
+DEFAULT_DECISIONS = KINDS + (WORKING_DIR,)
 
 # "Bash" / "Bash(git push *)"：工具名后可选一个括号包起来的 specifier。
 # specifier 内部允许任意字符（含括号，如 Bash(echo (x))），所以贪婪匹配到最后一个 `)`。
@@ -69,7 +78,7 @@ class RuleSet:
     deny: list[Rule] = field(default_factory=list)
     ask: list[Rule] = field(default_factory=list)
     allow: list[Rule] = field(default_factory=list)
-    default_decision: str = "allow"
+    default_decision: str = WORKING_DIR
 
     def bucket(self, kind: str) -> list[Rule]:
         return getattr(self, kind)
@@ -82,11 +91,12 @@ class RuleSet:
         allow: Optional[list[str]] = None,
         source: str = "project",
         anchor: str = "",
-        default_decision: str = "allow",
+        default_decision: str = WORKING_DIR,
     ) -> "RuleSet":
         """从字符串规则建 RuleSet（测试与单层配置用；跨层合并见 Task 5 的 load_rules）。"""
-        if default_decision not in KINDS:
-            raise ValueError(f"default_decision 只能是 {KINDS} 之一，得到 {default_decision!r}")
+        if default_decision not in DEFAULT_DECISIONS:
+            raise ValueError(
+                f"default_decision 只能是 {DEFAULT_DECISIONS} 之一，得到 {default_decision!r}")
         return cls(
             deny=[parse_rule(t, source, anchor) for t in (deny or [])],
             ask=[parse_rule(t, source, anchor) for t in (ask or [])],
@@ -161,6 +171,34 @@ def _first_match(
     return None
 
 
+def _boundary_fallback(
+    tool_name: str, args: dict, tools: dict, working_dirs: WorkingDirs
+) -> Decision:
+    """`workingdir` 兜底：**这就是 CC 那个「默认不是常量而是函数」**。
+
+    读 → 界内 allow / 界外 ask；写 → 一律 ask（CC 的写路径兜底没有目录放行那一步）；
+    **不参与边界的工具（bash）→ ask**——它没声明 `get_path`，边界判定结构上碰不到它，
+    所以只能落到最保守的一档。这是拍板问 2「不做 bash 边界」的直接代价。
+    """
+    tool = tools.get(tool_name)
+    if tool is None or not tool.participates_in_boundary():
+        return Decision(
+            kind="ask",
+            reason=f"`{tool_name}` 不参与工作目录边界判定（未声明路径语义），按最保守处理",
+        )
+
+    path = tool.get_path(args)
+    if tool.access == READ:
+        if working_dirs.contains(path):
+            return Decision(kind="allow", reason="在工作目录内")
+        return Decision(
+            kind="ask",
+            reason=f"`{path}` 在工作目录之外（{working_dirs.startup_cwd}）",
+        )
+    # 写：界内界外都问。照 CC——写没有「目录放行」那一步。
+    return Decision(kind="ask", reason=f"写入 `{path}` 需要确认")
+
+
 def decide(
     tool_name: str,
     args: dict,
@@ -168,11 +206,11 @@ def decide(
     tools: Optional[dict] = None,
     cwd: Optional[str] = None,
     home: Optional[str] = None,
+    working_dirs: Optional[WorkingDirs] = None,
 ) -> Decision:
     """按 deny → ask → allow 求值，第一个匹配决定。顺序不许改，理由见模块 docstring。
 
-    `tools` / `cwd` / `home` 都可注入（离线可测、白盒断言用）：
-    默认分别取全部已注册工具、进程 cwd、真实主目录。
+    `tools` / `cwd` / `home` / `working_dirs` 都可注入（离线可测、白盒断言用）。
     """
     if tools is None:
         tools = all_tools()
@@ -186,6 +224,9 @@ def decide(
                 reason=f"命中 {kind} 规则 `{rule.text()}`（来源：{rule.source}）",
                 rule=rule,
             )
+    if rules.default_decision == WORKING_DIR:
+        dirs = working_dirs if working_dirs is not None else WorkingDirs.from_startup(cwd)
+        return _boundary_fallback(tool_name, args, tools, dirs)
     return Decision(
         kind=rules.default_decision,
         reason=f"没有规则命中，按默认决策 `{rules.default_decision}`",

@@ -60,14 +60,14 @@ def test_first_match_in_order_wins_not_most_specific():
 
 
 def test_no_match_falls_back_to_default_decision():
-    rules = RuleSet.from_lists(allow=["Bash(ls *)"])
-    fallback = permissions.decide("bash", {"command": "cat x"}, rules)
-    assert fallback.kind == "allow"
-    assert fallback.rule is None          # 没有规则背这个锅
-
-    for wanted in ("ask", "deny"):
-        strict = RuleSet.from_lists(allow=["Bash(ls *)"], default_decision=wanted)
-        assert permissions.decide("bash", {"command": "cat x"}, strict).kind == wanted
+    # feature 09 起默认是 workingdir（兜底是个函数，见 test_default_is_now_workingdir），
+    # 所以这里**显式**传三种常量取值——本条测的是「没匹配上就走 default_decision」，
+    # 不是「默认值是什么」。
+    for wanted in ("allow", "ask", "deny"):
+        rules = RuleSet.from_lists(allow=["Bash(ls *)"], default_decision=wanted)
+        fallback = permissions.decide("bash", {"command": "cat x"}, rules)
+        assert fallback.kind == wanted
+        assert fallback.rule is None      # 没有规则背这个锅
 
 
 def test_tool_name_glob_matches_whole_name():
@@ -75,7 +75,9 @@ def test_tool_name_glob_matches_whole_name():
     assert permissions.decide("bash", {"command": "x"}, everything).kind == "deny"
     assert permissions.decide("read_file", {"path": "x"}, everything).kind == "deny"
 
-    prefix = RuleSet.from_lists(deny=["read_*"])
+    # default_decision 显式设成 allow：本条测的是工具名 glob 的匹配范围，
+    # 用「没命中 → allow」当信号，与 feature 09 的新兜底无关
+    prefix = RuleSet.from_lists(deny=["read_*"], default_decision="allow")
     assert permissions.decide("read_file", {"path": "x"}, prefix).kind == "deny"
     assert permissions.decide("bash", {"command": "x"}, prefix).kind == "allow"
 
@@ -106,7 +108,7 @@ def test_decision_carries_reason_and_rule():
 def test_default_matcher_globs_first_argument():
     """没挂 matcher 的工具吃默认实现：对第一个参数值做通配符匹配。"""
     tools = {"fake": _fake_tool("fake")}
-    rules = RuleSet.from_lists(deny=["fake(secret*)"])
+    rules = RuleSet.from_lists(deny=["fake(secret*)"], default_decision="allow")
 
     assert permissions.decide("fake", {"path": "secret.txt"}, rules, tools=tools).kind == "deny"
     assert permissions.decide("fake", {"path": "public.txt"}, rules, tools=tools).kind == "allow"
@@ -491,3 +493,125 @@ def test_path_access_for_rejects_unregistered_tool():
 
     with pytest.raises(ValueError):
         path_access_for("从来没注册过", "read")(lambda args: "")
+
+
+# ---- feature 09 Task 3：兜底接线（分水岭：行为在此改变）----
+#
+# CC 的「默认」不是常量，是函数：读 → in_working_dir ? allow : ask；写 → ask。
+# bash 不参与边界（拍板问 2），兜底 ask（2026-08-11 改选候选 C）。
+# 本 task 之后 once 模式从「什么都能干」变成「cwd 内只读 + bash 全拒」。
+
+
+def _boundary_rules(**kw):
+    from pai.core.permissions import RuleSet
+
+    return RuleSet.from_lists(**kw)
+
+
+def _decide_in(proj, tool, args, rules=None, **kw):
+    from pai.core.boundary import WorkingDirs
+
+    rules = rules if rules is not None else _boundary_rules()
+    return permissions.decide(
+        tool, args, rules,
+        working_dirs=WorkingDirs(startup_cwd=str(proj)),
+        cwd=str(proj), home=str(proj / "home"), **kw
+    ).kind
+
+
+def test_default_is_now_workingdir():
+    from pai.core.permissions import RuleSet
+
+    assert RuleSet().default_decision == "workingdir"
+
+
+def test_read_inside_cwd_allows(tmp_path):
+    proj = tmp_path / "proj"
+    (proj / "src").mkdir(parents=True)
+
+    assert _decide_in(proj, "read_file", {"path": str(proj / "src" / "a.py")}) == "allow"
+
+
+def test_read_outside_cwd_asks(tmp_path):
+    """**用户那句话的验收点**：上级目录要确认。"""
+    proj = tmp_path / "proj"
+    proj.mkdir()
+
+    assert _decide_in(proj, "read_file", {"path": str(tmp_path / "outside.txt")}) == "ask"
+    assert _decide_in(proj, "read_file", {"path": "/etc/passwd"}) == "ask"
+
+
+def test_write_always_asks_even_inside(tmp_path):
+    """照 CC：写路径的兜底没有「目录放行」那一步，界内界外都要确认。"""
+    proj = tmp_path / "proj"
+    proj.mkdir()
+
+    assert _decide_in(proj, "write_file", {"path": str(proj / "a.py"), "content": "x"}) == "ask"
+    assert _decide_in(proj, "edit_file",
+                      {"path": str(proj / "a.py"), "old": "x", "new": "y"}) == "ask"
+
+
+def test_bash_falls_back_to_ask(tmp_path):
+    proj = tmp_path / "proj"
+    proj.mkdir()
+
+    assert _decide_in(proj, "bash", {"command": "ls"}) == "ask"
+
+
+def test_bash_ignores_the_boundary_and_this_is_the_known_hole(tmp_path):
+    """**把承认的洞钉死**（拍板问 2 = A）。
+
+    洞不是「bash 默认放行」——它默认是 ask。洞在于：一旦为了可用性配了
+    allow 白名单，白名单内的命令就能**越界**，因为 bash 不声明 get_path，
+    边界判定结构上碰不到它。
+    """
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    rules = _boundary_rules(allow=["Bash(cat *)"])
+
+    inside = _decide_in(proj, "bash", {"command": "cat ./在界内.txt"}, rules)
+    outside = _decide_in(proj, "bash", {"command": "cat ../../etc/passwd"}, rules)
+
+    assert inside == outside == "allow"          # 待遇相同 ← 这就是洞
+
+
+def test_explicit_allow_preserves_feature_07_behavior(tmp_path):
+    """向后兼容：显式配 allow 时与 feature 07 逐字相同。"""
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    rules = _boundary_rules(default_decision="allow")
+
+    assert _decide_in(proj, "read_file", {"path": "/etc/passwd"}, rules) == "allow"
+    assert _decide_in(proj, "write_file",
+                      {"path": str(tmp_path / "x"), "content": "y"}, rules) == "allow"
+    assert _decide_in(proj, "bash", {"command": "rm -rf /"}, rules) == "allow"
+
+
+def test_deny_and_ask_rules_still_win(tmp_path):
+    """D#46 的求值顺序不受影响：规则先于兜底。"""
+    proj = tmp_path / "proj"
+    proj.mkdir()
+
+    denied = _boundary_rules(deny=["read_file(*)"])
+    assert _decide_in(proj, "read_file", {"path": str(proj / "a.py")}, denied) == "deny"
+
+    allowed = _boundary_rules(allow=["write_file(*)"])
+    assert _decide_in(proj, "write_file",
+                      {"path": str(proj / "a.py"), "content": "x"}, allowed) == "allow"
+
+
+def test_once_degrades_boundary_ask_to_deny(tmp_path):
+    """与 D#48 的交互——本 task 之后 once 被限制在 cwd 内只读。"""
+    from pai.core.boundary import WorkingDirs
+    from pai.core.gate import make_before_tool_call
+
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    gate = make_before_tool_call(
+        _boundary_rules(), working_dirs=WorkingDirs(startup_cwd=str(proj)),
+        cwd=str(proj), asker=None)
+
+    assert gate("read_file", {"path": str(proj / "a.py")}).kind == "allow"
+    assert gate("read_file", {"path": "/etc/passwd"}).kind == "deny"
+    assert gate("write_file", {"path": str(proj / "a.py"), "content": "x"}).kind == "deny"
+    assert gate("bash", {"command": "ls"}).kind == "deny"

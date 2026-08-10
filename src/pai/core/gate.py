@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from typing import Callable, List, Optional, Sequence
 
+from pai.core.boundary import WorkingDirs
 from pai.core.hooks import HookSpec, decide_with_hooks
 from pai.core.permissions import Decision, RuleSet
 
@@ -50,6 +51,7 @@ def make_before_tool_call(
     home: Optional[str] = None,
     asker: Optional[Asker] = None,
     warn: Optional[Callable[[str], None]] = None,
+    working_dirs: Optional[WorkingDirs] = None,
 ) -> Callable[[str, dict], Decision]:
     """造一个交给 `run_agent(before_tool_call=...)` 的判定函数。
 
@@ -61,6 +63,7 @@ def make_before_tool_call(
         decision = decide_with_hooks(
             tool_name, args, rules, hooks=hooks,
             tools=tools, cwd=cwd, home=home, warn=warn,
+            working_dirs=working_dirs,
         )
         if decision.kind != "ask":
             return decision

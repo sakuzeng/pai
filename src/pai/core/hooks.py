@@ -137,9 +137,11 @@ def decide_with_hooks(
     cwd: Optional[str] = None,
     home: Optional[str] = None,
     warn: Optional[Callable[[str], None]] = None,
+    working_dirs=None,
 ) -> Decision:
     """规则判定 + hook 判定，取最严的那个。Task 7 的 `before_tool_call` 就装配自这里。"""
-    base = permissions.decide(tool_name, args, rules, tools=tools, cwd=cwd, home=home)
+    base = permissions.decide(tool_name, args, rules, tools=tools, cwd=cwd, home=home,
+                              working_dirs=working_dirs)
     hooked = run_pre_tool_use(hooks, tool_name, args, cwd=cwd, warn=warn)
     return _strictest(base, hooked) or base
 

@@ -85,3 +85,75 @@ Task 4 的符号链接双路径会依赖这条。
 
 **遗留**：本模块刻意不 realpath（符号链接双路径是 Task 4）。
 现在只看给定路径，与 feature 07 的 `fs.target_path` 同款边界。
+
+## 2026-08-11 · Task 3：兜底接线（**分水岭：行为在此改变**）
+
+**目标**：把 `default_decision` 从常量变成**函数**——读 → 界内 allow / 界外 ask；
+写 → 一律 ask；bash → ask。这一步之后 pai 的默认姿态才真正不同于 feature 07。
+
+**改动**：
+- `src/pai/core/permissions.py`：新增 `WORKING_DIR` 取值与 `_boundary_fallback()`；
+  `RuleSet.default_decision` 默认值 `allow` → `workingdir`；`decide()` 加 `working_dirs` 注入点
+- `src/pai/core/hooks.py`、`src/pai/core/gate.py`：透传 `working_dirs`
+- `src/pai/modes/{once,interactive}.py`：**新增 `rules` 注入点**（见下）
+- `tests/test_permissions.py`：+9 条，**另改了 feature 07 的 3 条**
+- `tests/test_modes.py`、`tests/test_interactive.py`：**改了 6 条**（见下）
+- `docs/dev/STATUS.md` 测试数字 344 → 353
+
+**测试**：红 `9 failed, 34 passed`（`TypeError: decide() got an unexpected keyword
+argument 'working_dirs'`）。绿之后全量跑出**两波预期外的红**，两波都值得记。
+
+**行为变化已生效**（`test_once_degrades_boundary_ask_to_deny` 钉死）：
+
+```
+once 模式：  read_file(<proj>/a.py)  → allow
+            read_file(/etc/passwd)   → deny
+            write_file(<proj>/a.py)  → deny
+            bash("ls")               → deny
+```
+
+即 **once 从「什么都能干」变成「启动 cwd 内只读」**。这是拍板时明确接受的代价。
+
+### 第一波红：feature 07 的 3 条测试（预期内，但 plan 没预告）
+
+`test_no_match_falls_back_to_default_decision`、`test_tool_name_glob_matches_whole_name`、
+`test_default_matcher_globs_first_argument` 变红。原因不是它们测错了，而是它们
+**拿「没匹配上 → allow」当信号**——而默认值刚被我改掉。
+
+改法是**显式化前提**而非改断言：给它们传 `default_decision="allow"`。
+这三条测的是规则匹配逻辑（glob 范围、第一个参数匹配、没命中就走兜底），
+不是「默认值是什么」；后者由新的 `test_default_is_now_workingdir` 单独钉。
+
+### 第二波红：6 条 e2e（**这波暴露了一个 plan 没想到的接线缺口**）
+
+`test_once_event_output_is_byte_identical`、`test_repl_shows_memory_writes`、
+`test_asker_*` 等 6 条全红，报错都是同一个形状：
+
+```
+🔧 bash({'command': 'echo hi'}) → 权限被拒绝，该工具调用未执行。原因：`bash` 不参与
+工作目录边界判定（未声明路径语义），按最保守处理；这条规则要求人工确认，而当前模式无人可问
+```
+
+它们测的是**事件流渲染与 asker 接线**，跟权限无关，却被新兜底整体拦住了。
+根因是 `run_once` / `run_interactive` **没有权限注入点**——权限规则是装配层
+从磁盘 `load_rules()` 硬读的，测试无从旁路。
+
+处置：给两个 modes 加 `rules` 注入点（`None` = 从磁盘读），受影响的测试注入
+`RuleSet.from_lists(default_decision="allow")` 并在注释里写明「本测试不关心权限」。
+合「依赖注入优先」的架构约束，Task 6 的模式注入也会复用这个位置。
+
+**其中一条的修法是反的，值得单记**：`test_slash_permissions_lists_rules_with_source`
+测的**正是**「从磁盘读到的规则要显示出来」，被 `_run` helper 里
+`kwargs.setdefault("rules", _OPEN)` 一并覆盖后反而失败了。它必须**显式传 `rules=None`**
+才能走回磁盘读取路径。同一个注入点，一半测试用它旁路、一半测试要绕开它——
+这种地方最容易在将来被人「统一一下」改坏。
+
+**一处实现取舍**：`_boundary_fallback` 对**没注册/没声明**的工具返回 `ask` 而不是 `allow`。
+CC 在这种情况返回 ask（后面有 bashClassifier 兜），pai 没有分类器但仍选 ask——
+「判不出来」应该落到最保守的一档，与 `paths_all_inside([]) == False` 是同一条原则。
+
+**遗留**：
+- `visible_tools` 与边界无关，裸名 deny 仍照旧工作，未受影响。
+- 模式（`acceptEdits` 等）还没有，所以现在**没有任何办法让 once 跑 bash**——
+  只能配 allow 白名单。Task 6 补 `bypassPermissions` 与 CLI flag 之前，
+  这是个真实的可用性缺口，不要在此状态下宣告交付。

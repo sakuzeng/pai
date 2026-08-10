@@ -15,7 +15,7 @@ from pai.core.hooks import load_hooks
 from pai.core.loop import print_event, run_agent
 from pai.core.events import AgentEvent, MemoryWritten
 from pai.core.memory import build_context, memory_dir
-from pai.core.permissions import load_rules, visible_tools
+from pai.core.permissions import RuleSet, load_rules, visible_tools
 from pai.core.tools import memory_tool
 from pai.core.session import SessionLog
 from pai.core.tools import get_tools
@@ -30,12 +30,15 @@ def run_once(
     client=None,
     model: str | None = None,
     on_event: Callable[[AgentEvent], None] = print_event,
+    rules: RuleSet | None = None,
 ) -> str:
     memory_tool.set_memory_dir(memory_dir())
     memory_tool.set_notifier(
         lambda topic, path: on_event(MemoryWritten(topic=topic, path=str(path))))
     # 权限（feature 07）。once 没有真人可问，asker 不传 = ask 降级为 deny（拍板问 1）。
-    rules = load_rules(warn=print)
+    # rules 可注入（依赖注入优先）：不传时从两层 settings.json 读。
+    # 测事件流/asker 那类 e2e 用它把权限调宽，免得被边界兜底拦住。
+    rules = rules if rules is not None else load_rules(warn=print)
     hooks = load_hooks(warn=print)
     tools = visible_tools(get_tools(), rules)      # 裸名 deny 的工具压根不摆给模型
     return run_agent(
