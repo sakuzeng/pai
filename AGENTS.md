@@ -56,3 +56,20 @@
 - 类型注解必写；不用 Any 除非确有必要。注意：目标运行期是 Python 3.9.6（`pyproject` 写 >=3.9；本项目环境用 mkvirtualenv 的 `~/.virtualenvs/pai`，不激活时系统 `python3` 也是 3.9.6）。`./test.sh` 用**当前激活的** python3，pytest 头一行会打印实际版本，跑之前扫一眼。`dict[str, X]`、`list[int]` 这类内置泛型在 3.9 运行期就合法（PEP 585），可直接用；真正需要 `from __future__ import annotations` 的是 `int | None` 这类联合类型语法（PEP 604，3.10 才进运行期）。
 - 中文注释只写"代码本身说不出的约束"，不写"下一行在干什么"。
 - 提交信息格式：`{feat,fix,docs,test}(module): message`。永远不要未经要求就 commit。
+- **分支命名：`<类型>/<NN>-<小写连字符描述>`，且新需求一律开新分支，不在 main 上做。**
+  类型**复用提交类型**，不另立一套（参照 [Conventional Branch](https://conventionalbranch.org/)
+  的 `<type>/<description>` 形状，但词汇表用本仓库已有的，避免同一件事两套说法）：
+
+  | 类型 | 用于 | 例 |
+  |---|---|---|
+  | `feat/` | 新需求、新能力（路线图阶段模块、需求池升格的需求） | `feat/08-storage-layout` |
+  | `fix/` | 修 bug | `fix/12-repl-crash-on-eof` |
+  | `docs/` | 只动文档与知识沉淀 | `docs/knowledge-permissions` |
+  | `refactor/` | 不改外部行为的重构 | `refactor/split-compaction` |
+  | `chore/` | 杂务（依赖、配置、构建） | `chore/bump-openai` |
+
+  `<NN>` 是对应的 features 档案编号——**分支名自己就能指回档案**，档案的「分支：」字段指回分支，
+  两头都能查。没有档案的小改动（走 `!小修` 通道的）可以省略编号。
+  不做 `release/` 与 `hotfix/`：没有发布流程也没有生产环境，立了也是空词。
+  **在 main 上直接提交只允许一种情况：紧急回归修复**（如 2026-08-10 那次恢复被覆盖的
+  花钱守卫），且必须在提交信息里说明为什么不走分支。
