@@ -341,3 +341,43 @@ w= 24 列宽= 24 | ◐ bash: echo "=== impro…
 
 至此四个补漏（readline / Ctrl+C 炸 REPL / 后台进程不收割 / write-edit 非原子）
 全部**既有测试覆盖、又有真人实测**。`255 passed, 3 deselected`。
+
+## 2026-08-10 · 补漏五（最严重）：测试把数据写进了用户真实的 ~/.pai
+
+**怎么发现的**：用户自己去翻 `~/.pai/history/e4887ef95b86e3ee`，问「这里面只有最后
+可能是我自己测试时加的，别的这些是什么」。**这类污染不会让任何测试变红**——
+靠的是用户起了疑心。
+
+**规模**：687 行里**只有 3 行是用户自己的**，其余是测试数据累积了约 40 轮
+（每跑一次 `./test.sh` 追加一批）。`~/.pai/history/` 下另有几十个垃圾文件——
+pytest 每个 `monkeypatch.chdir(tmp_path)` 都是一个新 cwd，于是一个哈希一个文件。
+`~/.pai/projects/<hash>/memory/` 也有我冒烟测试写进去的 `MEMORY.md` 与 `构建.md`。
+
+**根因**：`tests/test_interactive.py` 里 **20 处 `_run(...)` 没传 `history_path`**，
+于是 `history_path_for()` 落到真实 `$HOME`。这不是「某个测试写错了」——
+20 个调用点意味着第 21 个还会忘。
+
+**修法（结构上做不到，而不是靠记性）**：新建 `tests/conftest.py`，autouse fixture
+把每个测试的 `$HOME` 指向临时目录。另加一条**防护的防护**
+（`test_tests_can_never_touch_the_real_home`）——否则哪天 conftest 被改坏了没人知道。
+
+**这一路又炸出三个连锁问题**，每个都值得记：
+
+1. **假 home 不能建在 `tmp_path` 里**——好几个测试在断言「`tmp_path` 下只有我写的那个
+   文件」，塞个 `fake-home` 进去当场误伤 3 条。改用 `tmp_path_factory` 另开目录。
+2. **`history_path_for(*, base=HISTORY_BASE)` 的默认参数在函数定义时就求值了**，
+   改模块常量追不回来。**防护测试第一次跑就抓到了它**——这正是「导入期 vs 运行期」
+   的同款陷阱（`HISTORY_BASE` 本身也是导入期常量，所以两处都要打）。
+3. **换 `$HOME` 会让子进程连第三方包都 import 不到**——用户 site 目录由 `$HOME` 推导，
+   于是 viz 的 `python -m pai.viz.collect` 既找不到 `pai` 也找不到 `dotenv`。
+   修在测试环境（把 `src` 与**真实的** user-site 一起给 `PYTHONPATH`），不动生产代码。
+
+**测试**：`256 passed, 3 deselected`（255 → 256，+1 防护测试；conftest 不计）。
+
+**数据清理**：全量备份到 `~/.pai.bak-213818`，保留用户真实的 3 行输入，
+删掉其余历史文件与冒烟测试写出的 `projects/`。
+
+**教训（够格进复盘）**：今天四个补漏都是「功能没做对」，这一个是**「测试本身伤害了用户」**——
+性质更严重。而且它绕开了所有防线：测试全绿、评审看代码看不出来、
+唯一的发现途径是用户去翻自己的文件。**凡是会写 `$HOME` 的代码，测试必须在结构上隔离**，
+这条应该在写第一个写盘功能时就立，而不是等被抓。

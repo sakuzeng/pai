@@ -74,8 +74,14 @@ HELP = """可用命令：
 其他输入直接发给模型；`!命令` 直接跑 shell 且不打模型；行尾 `\\` 续行。"""
 
 
-def history_path_for(*, base: Path = HISTORY_BASE, cwd: Optional[str] = None) -> Path:
-    """历史按工作目录分文件（官方语义）：不同项目的输入历史不该互相污染。"""
+def history_path_for(*, base: Optional[Path] = None, cwd: Optional[str] = None) -> Path:
+    """历史按工作目录分文件（官方语义）：不同项目的输入历史不该互相污染。
+
+    base 默认 None 再在函数体里取 HISTORY_BASE，**不能**写成 `base=HISTORY_BASE`——
+    默认参数在**函数定义时**求值，之后再改模块常量就追不回来了
+    （2026-08-10 被测试隔离的防护测试当场抓到）。
+    """
+    base = base if base is not None else HISTORY_BASE
     key = hashlib.sha1((cwd or os.getcwd()).encode("utf-8")).hexdigest()[:16]
     return base / key
 

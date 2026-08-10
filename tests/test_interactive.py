@@ -381,3 +381,18 @@ def test_cli_reaps_background_process_groups_on_exit(monkeypatch):
     except RuntimeError:
         pass
     assert calls == ["reaped", "reaped"], "即使跑挂了也要收割"
+
+
+def test_tests_can_never_touch_the_real_home(isolate_home):
+    """防护本身要有测试，否则哪天 conftest 被改坏了没人知道。
+
+    2026-08-10：测试把 `!sleep 300` 这类数据写进了用户真实的输入历史
+    （~/.pai/history/<cwd 哈希>），是靠用户翻文件才发现的——这种污染不会让任何测试变红。
+    """
+    from pathlib import Path
+
+    from pai.modes.interactive import HISTORY_BASE, history_path_for
+
+    assert isolate_home in Path(HISTORY_BASE).parents, "历史根目录必须在临时 home 下"
+    assert isolate_home in history_path_for().parents
+    assert Path.home() == isolate_home
