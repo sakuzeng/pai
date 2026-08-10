@@ -166,7 +166,9 @@ def test_feature_archives_declare_their_branches():
         assert len(m.group(1).strip()) > 4, f"{d.name} 的「分支：」字段太空洞"
 
 
-BRANCH_PREFIXES = ("feat", "fix", "docs", "refactor", "chore")
+# 与提交类型共用一套词汇表（AGENTS.md「代码」一节）——两边分家就会出现
+# 「feat 还是 feature」这种每次都要想一下的问题
+BRANCH_PREFIXES = ("feat", "fix", "perf", "refactor", "docs", "test", "chore")
 
 
 def test_declared_branches_follow_the_naming_convention():
