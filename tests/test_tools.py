@@ -384,3 +384,68 @@ def test_reap_does_not_raise_on_already_dead_groups():
 
     shell.bash(command="true")            # 秒退的命令，进程组早没了
     shell.reap_spawned()                  # 不该因 ProcessLookupError 崩掉
+
+
+# ---- 原子写：进程中途死掉不该留下半截文件（2026-08-10 用户追问引出） ----
+
+
+def test_write_failure_leaves_the_original_file_intact(tmp_path, monkeypatch):
+    """`open(path,"w")` 是先截断后写——中途死掉就是空文件或半截文件。
+    原子写（临时文件 + os.replace）让任何时刻的中断都只有两种结果：旧的完好、或新的完整。
+    """
+    from pai.core.tools import fs
+
+    target = tmp_path / "重要文件.txt"
+    target.write_text("原始内容不能丢", encoding="utf-8")
+
+    def boom(*a, **k):
+        raise OSError("模拟：改名前进程死了")
+
+    monkeypatch.setattr(fs.os, "replace", boom)
+    # 走 Tool.run 而不是裸函数：「工具错误不 throw」的契约在**边界上**（D#1），
+    # 不在函数内部——裸调当然会抛，那测的不是系统真实行为
+    result = get_tools()["write_file"].run(path=str(target), content="新内容")
+
+    assert "错误" in result
+    assert target.read_text(encoding="utf-8") == "原始内容不能丢"
+
+
+def test_edit_failure_leaves_the_original_file_intact(tmp_path, monkeypatch):
+    """edit 比 write 更险：原内容此刻只在内存里，截断之后进程一死就彻底没了。"""
+    from pai.core.tools import fs
+
+    target = tmp_path / "code.py"
+    target.write_text("def a():\n    return 1\n", encoding="utf-8")
+
+    monkeypatch.setattr(fs.os, "replace", lambda *a, **k: (_ for _ in ()).throw(OSError("死了")))
+    result = get_tools()["edit_file"].run(path=str(target), old="return 1", new="return 2")
+
+    assert "错误" in result
+    assert target.read_text(encoding="utf-8") == "def a():\n    return 1\n"
+
+
+def test_no_temp_files_left_behind(tmp_path, monkeypatch):
+    from pai.core.tools import fs
+
+    target = tmp_path / "a.txt"
+    fs.write_file(path=str(target), content="x")
+    fs.edit_file(path=str(target), old="x", new="y")
+    assert [p.name for p in tmp_path.iterdir()] == ["a.txt"]
+
+    monkeypatch.setattr(fs.os, "replace", lambda *a, **k: (_ for _ in ()).throw(OSError("死了")))
+    get_tools()["write_file"].run(path=str(target), content="z")
+    assert [p.name for p in tmp_path.iterdir()] == ["a.txt"], "失败路径也不该留垃圾"
+
+
+def test_write_preserves_file_mode(tmp_path):
+    """临时文件默认权限比原文件严，改名之后不该把可执行位/权限弄丢。"""
+    import stat
+
+    from pai.core.tools import fs
+
+    target = tmp_path / "run.sh"
+    target.write_text("echo hi\n", encoding="utf-8")
+    target.chmod(0o755)
+
+    fs.write_file(path=str(target), content="echo bye\n")
+    assert stat.S_IMODE(target.stat().st_mode) == 0o755
