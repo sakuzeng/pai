@@ -357,3 +357,27 @@ def test_shell_mode_runs_under_the_interrupt_flag(monkeypatch):
     assert callable(handler), "跑 `!命令` 期间必须装着自定义 SIGINT 处理器"
     assert handler is not signal.default_int_handler, \
         "还是默认处理器 = Ctrl+C 仍会抛 KeyboardInterrupt 掀掉 REPL"
+
+
+def test_cli_reaps_background_process_groups_on_exit(monkeypatch):
+    """收割必须挂在 cli 的出口上：REPL 与单次模式共用一个 finally，
+    正常退出、Ctrl+D、甚至抛异常都会走到。`kill -9` 救不了——任何进程内方案都不行。
+    """
+    import sys
+
+    from pai import cli
+
+    calls: list = []
+    monkeypatch.setattr(cli, "run_interactive", lambda **kw: None)
+    monkeypatch.setattr(cli.shell, "reap_spawned", lambda: calls.append("reaped"))
+    monkeypatch.setattr(sys, "argv", ["pai"])
+    cli.main()
+    assert calls == ["reaped"]
+
+    monkeypatch.setattr(cli, "run_once", lambda task, **kw: (_ for _ in ()).throw(RuntimeError("炸")))
+    monkeypatch.setattr(sys, "argv", ["pai", "任务"])
+    try:
+        cli.main()
+    except RuntimeError:
+        pass
+    assert calls == ["reaped", "reaped"], "即使跑挂了也要收割"

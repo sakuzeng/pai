@@ -7,6 +7,7 @@ interactive 的分岔点。
 
 import argparse
 
+from pai.core.tools import shell
 from pai.modes.interactive import run_interactive
 from pai.modes.once import run_once
 
@@ -27,21 +28,26 @@ def main() -> None:
     if args.max_tokens < 0:
         parser.error("--max-tokens 不能为负（0 = 不限）")
 
-    if args.task is None:
-        run_interactive(
+    try:
+        if args.task is None:
+            run_interactive(
+                max_steps=args.max_steps,
+                max_total_tokens=args.max_tokens or None,
+                no_session=args.no_session,
+            )
+            return
+
+        answer = run_once(
+            args.task,
             max_steps=args.max_steps,
             max_total_tokens=args.max_tokens or None,
             no_session=args.no_session,
         )
-        return
-
-    answer = run_once(
-        args.task,
-        max_steps=args.max_steps,
-        max_total_tokens=args.max_tokens or None,
-        no_session=args.no_session,
-    )
-    print(f"\n🤖 {answer}")
+        print(f"\n🤖 {answer}")
+    finally:
+        # 关掉 pai 就该停掉它起过的一切（官方语义：退出时后台任务自动清理）。
+        # 放在 cli 出口而不是各 mode 里：两种模式共用一条出路，异常路径也覆盖到。
+        shell.reap_spawned()
 
 
 if __name__ == "__main__":

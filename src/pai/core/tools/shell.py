@@ -19,6 +19,15 @@ MAX_OUTPUT_CHARS = 4000
 TIMEOUT_SECONDS = 60
 POLL_SECONDS = 0.1          # 中断响应粒度；再小只是空转，再大用户会觉得 Ctrl+C 没反应
 
+# 我们起过的进程组，退出时统一收割。
+# 为什么需要它：start_new_session 让命令脱离 pai 的进程组（那是能整组 killpg 的前提），
+# 代价就是 pai 死了它们不跟着死——`!sleep 300 &` 会在你关掉 pai 之后继续占着机器。
+# 对齐官方行为：「当 Claude Code 退出时，后台任务会自动清理」。
+# 诚实边界：① `kill -9 pai` 时这段代码没机会跑，任何进程内方案都救不了；
+# ② 登记的是 pgid，理论上存在「组早已结束、pgid 被系统重用」后误杀的窗口——
+# 真实风险低（macOS pid 空间大、回绕慢）但不为零，记 TODO 而不是假装没有。
+_SPAWNED_GROUPS: set = set()
+
 
 def _text(x) -> str:
     # TimeoutExpired 挂载的输出在部分 Python 版本里是 bytes，text=True 也不例外
@@ -86,6 +95,10 @@ def bash(command: Annotated[str, "要执行的 shell 命令"]) -> str:
         text=True, start_new_session=True,
     )
     try:
+        _SPAWNED_GROUPS.add(os.getpgid(proc.pid))
+    except ProcessLookupError:
+        pass                    # 秒退的命令，组已经没了，本来也不用收割
+    try:
         out, err = _wait(proc)
     except _Killed as killed:
         return killed.message
@@ -96,3 +109,17 @@ def bash(command: Annotated[str, "要执行的 shell 命令"]) -> str:
     if len(output) > MAX_OUTPUT_CHARS:
         return output[:MAX_OUTPUT_CHARS] + f"\n\n[... 截断，共 {len(output)} 字符]"
     return output
+
+
+def reap_spawned() -> None:
+    """收割本进程起过的所有命令进程组。装配层在退出时调用（见 pai.cli）。
+
+    不在**命令返回时**收割，因为「命令返回」与「它派生的后台进程结束」是两件事——
+    `sleep 300 &` 的父 shell 立刻就退了，要留到进程真的走人时才清。
+    """
+    while _SPAWNED_GROUPS:
+        pgid = _SPAWNED_GROUPS.pop()
+        try:
+            os.killpg(pgid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass                # 组早没了 / 没权限：收割是尽力而为，绝不因此报错

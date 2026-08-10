@@ -339,3 +339,48 @@ def test_remember_notifies_the_assembly_layer(tmp_path):
 
     assert [topic for topic, _ in seen] == ["构建"]
     assert seen[0][1] == tmp_path / "构建.md"
+
+
+# ---- 退出时收割后台进程组（2026-08-10 用户指出） ----
+
+
+def test_spawned_process_groups_are_reaped_on_exit():
+    """`!sleep 300 &` 起的后台进程在 pai 退出后仍然活着——因为 start_new_session
+    让它脱离了 pai 的进程组（那正是能整组 killpg 的前提）。所以退出时必须主动收割，
+    对齐官方行为「当 Claude Code 退出时，后台任务会自动清理」。
+    """
+    from pai.core.tools import shell
+
+    # 后台进程必须**不占 stdout 管道**，否则 bash() 会一直等到它结束才返回
+    # （管道不 EOF，communicate 收不到流结束）——那样就复现不出「命令已返回、
+    # 后台进程仍存活」这个真实场景。重定向掉之后父 shell 立刻退出，命令秒回。
+    result = shell.bash(command="sleep 30 >/dev/null 2>&1 & echo PID=$!")
+    m = re.search(r"PID=(\d+)", result)
+    assert m, f"没拿到后台进程 pid：{result!r}"
+    pid = int(m.group(1))
+    os.kill(pid, 0)                       # 命令已返回，但它还活着——这就是问题本身
+
+    shell.reap_spawned()
+
+    for _ in range(40):
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return
+        time.sleep(0.05)
+    os.kill(pid, signal.SIGKILL)
+    raise AssertionError(f"后台进程 {pid} 在收割后仍然存活")
+
+
+def test_reap_is_idempotent_and_safe_when_empty():
+    from pai.core.tools import shell
+
+    shell.reap_spawned()
+    shell.reap_spawned()                  # 收割已经空了的登记表不该抛
+
+
+def test_reap_does_not_raise_on_already_dead_groups():
+    from pai.core.tools import shell
+
+    shell.bash(command="true")            # 秒退的命令，进程组早没了
+    shell.reap_spawned()                  # 不该因 ProcessLookupError 崩掉
