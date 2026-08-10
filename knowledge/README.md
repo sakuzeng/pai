@@ -86,6 +86,7 @@ inbox.md         还写不出锚点的：新工具/想法一行一项待消化
 | [concepts/mutation-testing-pitfalls.md](concepts/mutation-testing-pitfalls.md) | 注入反证的坑：**注错了和没测住现象一样（全绿）**；正交防线要分别注；红阶段就绿的测试不具本次鉴别力 | 沉淀 | features/07、features/09 的 devlog |
 | [concepts/process-groups-and-interrupts.md](concepts/process-groups-and-interrupts.md) | 独立进程组 + killpg 才杀得干净；杀不净的第一个症状是**输出丢失**不是资源泄漏 | 沉淀 | src/pai/core/tools/shell.py |
 | [concepts/terminal-width.md](concepts/terminal-width.md) | 中文占两列、ANSI 不占列；必须先按可见文本截断再上色 | 沉淀 | src/pai/modes/statusline.py |
+| [concepts/reasoning-models-max-tokens.md](concepts/reasoning-models-max-tokens.md) | 推理模型的 reasoning 计进 `max_tokens`：上限设小不省钱，只会让 content **静默变空串**（实测同 query 思考量差 17 倍） | 沉淀 | src/pai/core/recall.py |
 | [concepts/context-management.md](concepts/context-management.md) | 上下文管理全梯度 + 「窗口用不满≠不用管」的实测认知 | 沉淀 | src/pai/core/compaction.py |
 | [inbox.md](inbox.md) | 待消化收件箱（准入豁免区，一行一项） | 常驻 | 升格前豁免 |
 | [anna/gates.md](anna/gates.md) | anna 确定性门禁方法论（含短板教训）。**本地不入库**（R2#1 裁决，.gitignore 排除）——克隆本仓库的读者看不到此文件 | 沉淀 | roadmap 阶段 4 |

@@ -209,17 +209,19 @@
       **悬案裁决：属实**——CC 的召回是**框架主动做的**（便宜模型按 header manifest
       选 ≤5 篇塞进上下文），不是「模型自己想起来 read_file」。pai 少的是一整层机制。
       衍生出下面三条。
-- [ ] **`remember` 写入时带 `description` frontmatter**（K cc-memdir 第五节，零成本）：
-      CC 的召回全靠它（只读文件前 30 行拿 description 拼 manifest）。
-      即使暂不做召回层，不写就是给未来挖坑——届时现存记忆文件都要回填。
-- [ ] **记忆的新鲜度提示**（K cc-memdir 第四节，零成本，写入日期 pai 已经有了）：
+- [x] ~~**`remember` 写入时带 `description` frontmatter**~~ **已做 2026-08-11**，
+      见 [10-memory-recall](features/10-20260811-memory-recall/README.md)。
+      连带把粒度改成一事一文件（`remember(name, description, fact, type)`）。
+- [x] ~~**记忆的新鲜度提示**~~ **已做 2026-08-11**（同上档案）：`memory_age` 相对时间 +
+      `freshness_note`（≥2 天才提示，点名 `file:line` 引用会显得更权威）。原条目留档：
+      （K cc-memdir 第四节，零成本，写入日期 pai 已经有了）：
       CC 用「47 days ago」而非 ISO 时间戳，注释直说**模型不擅长日期算术，
       原始时间戳不会触发陈旧性推理**；>1 天的记忆附一句「记忆是时间点观察不是实时状态，
       file:line 引用可能已过期」。动机是真实事故：**带 file:line 的引用会让过期声明
       听起来更权威而不是更不权威**。pai 迟早会踩，CC 已替我们踩过。
-- [ ] **记忆召回层做不做**（K cc-memdir 第五节，**要拍板**）：CC 每次查询多打一次模型
-      （Sonnet 档、max_tokens 256、JSON schema 约束）。pai 有预算熔断文化，这是实打实的钱。
-      选项：不做 / 做 / 只在 MEMORY.md 索引放不下时才召回。建议单独立档案，别塞进阶段 4。
+- [x] ~~**记忆召回层做不做**~~ **已拍板并交付 2026-08-11**（用户原话「按cc的来」）：
+      照 CC 做框架侧查询，另加空目录短路 / usage 计进熔断 / 连续 3 次失败停用（D#56）。
+      见 [10-memory-recall](features/10-20260811-memory-recall/README.md)。
 - [x] ~~**建档案时不要删模板的 `复盘.md`**~~ **已升级为硬规矩 2026-08-10**（用户裁决）：
       「交付即复盘」写进 features/README 规矩 7 与 AGENTS.md，
       `tests/test_docs_consistency.py::test_delivered_features_have_a_retrospective` 强制
@@ -253,6 +255,37 @@
 - [ ] **key 解析可注入**（学 pi 的 `getApiKey` 钩子）：`make_client` 收可选回调，core 不碰 env。
 - [ ] **apiKeyHelper（key 来自一条命令）**：价值在密钥轮转/企业网关，pai 暂无此场景；
       带 TTL 缓存 + stale-while-revalidate + 并发去重一整套复杂度，等真需要再做。
+
+### feature 10（记忆召回）遗留 —— 2026-08-11
+
+- [x] ~~**召回的 `json_object` 一次都没真验过**~~ **已验证并修复 2026-08-11**（用户授权花钱）。
+      真跑抓到两个离线测不出的 bug（`max_tokens=256` 被推理 token 吃光、模型抄回
+      `[type]` 装饰被白名单全丢），召回当时在真实环境 100% 失效且完全静默。
+      已加 `RecallFailed` 事件、解析层区分「没说话/明确选空」、
+      沉淀 [K concepts/reasoning-models-max-tokens.md](../../knowledge/concepts/reasoning-models-max-tokens.md)。
+- [ ] **给「照抄来的常数」建一条检查习惯**（10 冒烟教训，与 06 复盘质疑四同类）：
+      `max_tokens=256`（CC 的 Sonnet 档）、`MEMORY.md` 200 行/25KB（英文调的）、
+      `reserve_tokens=16384`（从 pi 借的）——三条都是**抄来的数字带着它原本的模型/语言假设**。
+      至少在常量旁强制写「这个数从哪来、依赖什么前提」，让下一个人看得见前提。
+- [ ] **召回块被压缩摘掉后不会重来，召回在长会话里单调衰减到零**（10 遗留 6，**复盘质疑四**）：
+      指令消息有重注入兜底（D#42），召回块没有；而 `RecallState.surfaced` 还记着
+      「已经注入过」，于是那几篇再也不会被选中。`surfaced` 的语义（「已经在上下文里」）
+      被压缩证伪了。**这条比一般遗留严重**。
+- [ ] **一事一文件让索引膨胀变快，而本次没引入任何收缩机制**（10 遗留 4，**复盘质疑二**）：
+      索引行数从「主题数」变成「记忆条数」，200 行上限撞得早得多。CC 靠写入侧提示词
+      让模型查重/删除，pai 抄了「更新而不是新建」（做进工具了）**但没抄「删」**——
+      `remember` 结构上只能增和改。与 06 遗留的「MEMORY.md 无自动剪枝」是同一条账，
+      但触发条件已经从「等它长起来」提前了。
+- [ ] **`recentTools` 去噪未做**（10 遗留 2，K cc-memdir 第三节）：CC 区分得很细——
+      正在用的工具，其用法/API 文档不选，但**关于它的警告与坑仍要选**
+      （「active use is exactly when those matter」）。要给 loop 加一条
+      「最近用了哪些工具」的管线，记忆量还没到需要它的规模。
+- [ ] **召回没有开关**（10 遗留 3）：唯一的「关」是记忆目录为空。真要开关应落在
+      `.pai/settings.json`（feature 07 的两层配置），不该再加一个 env。
+- [ ] **`description` 一个字段兼任 CC 的两份文案，代价未知**（10 **复盘质疑三**）：
+      CC 的 frontmatter `description`（给召回器）与索引行钩子（给主模型）是两个不同字符串，
+      本机样本实测确实不同。pai 合并成一份省了字段，但两处读者与用途不同。
+      建议**等有数据再复议**，别忘了这是个*选择*而不是自然结果。
 
 ### feature 06（记忆）遗留 —— 2026-08-10
 
@@ -290,7 +323,8 @@
 - [ ] **指令消息作为普通 user 消息参与压缩切点计算**（06 task 5）：它可能被切掉——
       现在靠重注入兜住了，但切点算法并不知道这条消息「特殊」。若将来指令很长，
       值得让 `find_cut_point` 显式跳过它。
-- [ ] **`set_memory_dir` / `set_notifier` 是进程级全局**（06 task 6，同 D#40 的老问题）：
+- [ ] **`set_memory_dir` / `set_notifier` / `set_origin_session` 是进程级全局**
+      （06 task 6 + **feature 10 又加了第三个**，同 D#40 的老问题）：
       测试靠 contextmanager 复位；一旦有并发（阶段 5）就要重新考虑。
 
 ### feature 05（REPL）遗留 —— 2026-08-10
