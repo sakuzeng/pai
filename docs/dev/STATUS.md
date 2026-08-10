@@ -1,7 +1,8 @@
 # 当前状态快照
 
 最后更新：2026-08-10（阶段 2 REPL + 阶段 3 记忆交付；交付后五个补漏，见 features/05 devlog）。
-**数字由机器对账**：`test_status_reports_the_current_test_count` 会在完整跑时校验本页的 passed 数——漂了三次之后不再靠人肉。给接手者（人或 AI）一页看清现状。
+**数字由机器对账**：`test_status_reports_the_current_test_count` 会在完整跑时校验本页的 passed 数——漂了三次之后不再靠人肉。
+给接手者（人或 AI）一页看清现状。
 「做了什么」的时间线见 [devlog.md](devlog.md)，「为什么这么选」见 [decisions.md](decisions.md)，
 功能级故事线见 [features/](features/README.md)，阶段地图见 [roadmap.md](roadmap.md)。
 
@@ -21,7 +22,6 @@ AskUserQuestion、工具状态行。`pai` 不带参数即进 REPL。
 |---|---|---|
 | `core/loop.py` | 可用 | agent loop：依赖注入、max_steps 兜底、每条消息落盘、usage 落盘、用量预算熔断、自动压缩触发/熔断 |
 | `core/tools/` | 可用 | `@tool` 从签名生成 schema；bash / read_file / write_file / edit_file |
-| `core/session.py` | 可用 | append-only JSONL |
 | `core/compaction.py` | 可用 | 见下——阶段 1 主线（触发→切→摘→重建→熔断）全部接进 loop |
 | `modes/once.py` | 可用 | 单次任务，跑完即退出（对应 pi 的 print-mode）。client/model 可注入故可离线测；`context_window()` + `CompactionSettings()` 默认透传 |
 | `viz/` | 可用 | `pai-viz` 本地架构可视化：工具自省自动上图，阶段状态解析本表 |
@@ -32,6 +32,8 @@ AskUserQuestion、工具状态行。`pai` 不带参数即进 REPL。
 | `core/interrupt.py` | 可用 | 进程级中断标志（D#40）。loop 在步边界与每个 tool_call 前查，bash 在轮询里查 |
 | `modes/statusline.py` | 可用 | `render_tool_line(events, width)` 纯函数（按终端列宽算中文宽度）+ `\r` 原地刷新；真 tty 才启用，非 tty 退回滚动行 |
 | `core/tools/ask.py` | 可用 | AskUserQuestion，asker 装配期注入；**默认工具集不含它**（once 无真人可问） |
+| `core/paths.py` | 可用 | pai 用户级路径唯一事实源：`~/.pai/projects/<可读 slug>/{memory,sessions}/`，slug 用全路径连字符（D#44，对齐 CC） |
+| `core/session.py` | 可用 | append-only JSONL，落**用户目录**不再写当前工作目录；每条带 `sessionId`/`cwd`；文件名带短 id（D#45，关掉 R#15） |
 | `core/memory.py` | 可用 | 分层指令发现（用户级→根→cwd，local 在后，**不读 AGENTS.md** D#43）、`@path` 导入（相对基准/4 跳/环检测/代码块内不算）、自动记忆索引（git 根定 key，200 行 + 25KB 双上限，截断留提示） |
 | `core/tools/memory_tool.py` | 可用 | `remember(topic, fact)` 写主题文件 + 维护索引；topic 白名单校验挡路径穿越；目录与通知回调走注入点 |
 | permissions / streaming / skills / mcp_client / evals | 未开始 | 路线图后续阶段，见 [roadmap.md](roadmap.md)。阶段 2 后半程 TUI 亦未开始 |
@@ -61,9 +63,9 @@ AskUserQuestion、工具状态行。`pai` 不带参数即进 REPL。
 
 ## 测试
 
-共收集 **261 项**（阶段 2 REPL 8 task + 阶段 3 记忆 7 task + 交付后五个补漏 + 文档一致性）：
+共收集 **279 项**（阶段 2 REPL 8 task + 阶段 3 记忆 7 task + 交付后五个补漏 + 文档一致性）：
 
-- `./test.sh` → **258 passed, 3 deselected**，全部离线（`tests/fake_llm.py` 假 provider）。**这是默认路径。**
+- `./test.sh` → **276 passed, 3 deselected**，全部离线（`tests/fake_llm.py` 假 provider）。**这是默认路径。**
 - `./test.sh --llm` → 额外跑打真实 API 的冒烟测试，**会产生费用**。
   需同时满足有 `DEEPSEEK_API_KEY` 且 `PAI_RUN_LLM_TESTS=1`——花钱的副作用不能是默认行为。
 

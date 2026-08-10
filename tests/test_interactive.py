@@ -396,3 +396,62 @@ def test_tests_can_never_touch_the_real_home(isolate_home):
     assert isolate_home in Path(HISTORY_BASE).parents, "历史根目录必须在临时 home 下"
     assert isolate_home in history_path_for().parents
     assert Path.home() == isolate_home
+
+
+def test_slash_memory_shows_both_memory_and_session_dirs(tmp_path, monkeypatch):
+    """这次问题的起点就是用户不知道那些文件是什么、在哪——所以两个目录都要列出来。"""
+    monkeypatch.chdir(tmp_path)
+    _, printed = _run(["/memory"], [])
+    assert "自动记忆" in printed and "会话" in printed
+    assert "projects" in printed
+
+
+def test_slash_memory_shows_the_readable_slug(tmp_path, monkeypatch):
+    """显示的必须是可读 slug 而不是 16 位哈希（feature 08 的诉求）。"""
+    monkeypatch.chdir(tmp_path)
+    _, printed = _run(["/memory"], [])
+    assert str(tmp_path.absolute()).replace("/", "-") in printed
+
+
+# ---- asker 抢走 REPL 输入（2026-08-10 演示 08 时意外照出）----
+
+
+def test_asker_offers_a_way_to_skip(tmp_path, monkeypatch):
+    """模型提问时 asker 和 REPL 共用同一个 reader——用户被问住就出不来。
+    空行必须是明确的逃生口，而不是被当成一个空答案交回去。"""
+    monkeypatch.chdir(tmp_path)
+    script = [
+        {"tool_calls": [("ask_user_question",
+                         json.dumps({"question": "用哪个？", "options": '["A", "B"]'}))]},
+        {"content": "好"},
+    ]
+    client, printed = _run(["帮我选", ""], script)
+    tool_msg = [m for m in client.requests[1]["messages"] if m["role"] == "tool"][0]
+    assert "跳过" in tool_msg["content"]
+    assert "跳过" in printed or "回车" in printed          # 提示语要写出来，别让人猜
+
+
+def test_asker_does_not_swallow_slash_commands(tmp_path, monkeypatch):
+    """`/status` 这类命令在提问期间被静默当成答案交给模型，是最坏的一种吞。"""
+    monkeypatch.chdir(tmp_path)
+    script = [
+        {"tool_calls": [("ask_user_question",
+                         json.dumps({"question": "用哪个？", "options": '["A", "B"]'}))]},
+        {"content": "好"},
+    ]
+    client, printed = _run(["帮我选", "/status", "2"], script)
+    tool_msg = [m for m in client.requests[1]["messages"] if m["role"] == "tool"][0]
+    assert tool_msg["content"] == "B", "命令不该被当成答案；应重新读一次"
+    assert "不支持" in printed
+
+
+def test_asker_lets_the_user_exit(tmp_path, monkeypatch):
+    """被提问时用户必须能退出——否则 /exit 变成答案，人被困在问题里。"""
+    monkeypatch.chdir(tmp_path)
+    script = [
+        {"tool_calls": [("ask_user_question",
+                         json.dumps({"question": "用哪个？", "options": '["A", "B"]'}))]},
+        {"content": "好"},
+    ]
+    client, printed = _run(["帮我选", "/exit", "不该读到这一行"], script)
+    assert "再见" in printed

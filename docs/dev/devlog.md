@@ -32,3 +32,4 @@
 - 2026-08-10 05-repl 交付后五个补漏——readline 没读回/Ctrl+C 炸 REPL/后台进程不收割/write-edit 非原子/**测试污染用户 ~/.pai**，257 passed → [devlog](features/05-20260810-repl/devlog.md)
 - 2026-08-10 立需求池——用户想法先记原话再定出路（升格立档案/降格进 TODO/划掉不做），playground 定为手工沙盒 → [需求池](需求池.md)
 - 2026-08-10 STATUS 数字改由机器对账——同一处漂了三次（R#2 旧账），加 test_status_reports_the_current_test_count → [STATUS](STATUS.md)
+- 2026-08-10 08-storage-layout 立项→交付——落盘布局对齐 CC：可读 slug、会话不再写当前工作目录、每条带 sessionId/cwd，顺带关掉 R#15，272 passed → [档案](features/08-20260810-storage-layout/README.md)

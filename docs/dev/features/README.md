@@ -34,6 +34,10 @@
    而当时档案里只写着「分支 feat/repl」，是错的。每条分支注明它承担了什么；
    已合并的分支照留（`git branch --contains` 因为分支线性叠会把所有分支都列出来，
    答不出「在哪条上做的」，所以这个字段不能靠事后 git 推断，必须当时写）。
+   **分支命名规约见 AGENTS.md「代码」一节**：`<类型>/<NN>-<描述>`，类型复用提交类型
+   （`feat`/`fix`/`docs`/`refactor`/`chore`），`<NN>` 是本档案编号——
+   于是分支名指回档案、档案的「分支：」字段指回分支，两头可查。
+   `tests/test_docs_consistency.py::test_declared_branches_follow_the_naming_convention` 强制前缀。
 3. 候选方案 ≥2 个 + 「确认」记录用户选择（收编 anna 方案门禁的过程产物要求）。
 4. 指针优先：能一行链接（D#n、TODO、knowledge 笔记）的绝不抄正文。
 5. **硬约束**：`.active` 写当前需求的目录名；其档案状态未到「已拍板」时，

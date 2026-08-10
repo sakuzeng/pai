@@ -164,3 +164,26 @@ def test_feature_archives_declare_their_branches():
         m = re.search(r"^分支：[^\S\n]*(\S.*)$", text, re.M)
         assert m, f"{d.name} 的档案缺「分支：」字段（features/README 规矩 2.5）"
         assert len(m.group(1).strip()) > 4, f"{d.name} 的「分支：」字段太空洞"
+
+
+# 与提交类型共用一套词汇表（AGENTS.md「代码」一节）——两边分家就会出现
+# 「feat 还是 feature」这种每次都要想一下的问题
+BRANCH_PREFIXES = ("feat", "fix", "perf", "refactor", "docs", "test", "chore")
+
+
+def test_declared_branches_follow_the_naming_convention():
+    """分支前缀**复用提交类型**（AGENTS.md「代码」一节），不另立一套词汇表。
+
+    只校验形状（前缀在允许集合内、全小写连字符），不校验 `<NN>` 编号——
+    走 `!小修` 通道的改动没有档案，编号无从谈起。`main` 显式放行。
+    """
+    for d in sorted(p for p in FEATURES.iterdir() if p.is_dir() and p.name != "_template"):
+        text = (d / "README.md").read_text(encoding="utf-8")
+        line = re.search(r"^分支：[^\S\n]*(.*)$", text, re.M).group(1)
+        for name in re.findall(r"`([^`]+)`", line):
+            if name == "main":
+                continue
+            assert re.match(r"^(%s)/[a-z0-9][a-z0-9-]*$" % "|".join(BRANCH_PREFIXES), name), (
+                f"{d.name} 声明的分支 {name!r} 不合规约：应为 <类型>/<描述>，"
+                f"类型取 {list(BRANCH_PREFIXES)}，描述全小写连字符"
+            )

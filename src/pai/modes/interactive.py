@@ -46,6 +46,7 @@ from pai.core.events import (
 )
 from pai.core.interrupt import InterruptFlag, set_current
 from pai.core.loop import run_agent
+from pai.core.paths import sessions_dir
 from pai.core.memory import (
     LOCAL_FILE,
     MEMORY_INDEX,
@@ -131,15 +132,34 @@ def _read_line(reader: Callable[..., str]) -> str:
     return line
 
 
-def _make_asker(reader: Callable[..., str], out: Callable[[str], None]):
+def _make_asker(reader: Callable[..., str], out: Callable[[str], None], state: dict):
+    """真人问答通道。
+
+    asker 与 REPL 主循环**共用同一个 reader**——模型一提问，它就去读下一行 stdin，
+    而用户此刻敲的可能是 `/exit` 或别的命令。不处理的话那行会被静默当成答案交给模型
+    （2026-08-10 演示时实际发生过：`!echo 我是命令` 被当成了对问题的回答）。
+    所以给三条出路：空行跳过、`/exit` 退出、其他 `/命令` 提示后重读。
+    """
     def ask_human(question: str, options: List[str]) -> str:
         out(f"❓ {question}")
         for i, option in enumerate(options, 1):
             out(f"  {i}. {option}")
-        answer = reader(PROMPT).strip()
-        if answer.isdigit() and 1 <= int(answer) <= len(options):
-            return options[int(answer) - 1]
-        return answer            # 用户想说别的就让他说，别把真人锁进选项里
+        out("  （输入序号或自己的话；直接回车 = 跳过不答；/exit 退出）")
+        while True:
+            answer = reader(PROMPT).strip()
+            if answer in ("/exit", "/quit"):
+                # 不能抛异常：EOFError 会被 Tool.run 的 except Exception 吞成错误字符串，
+                # KeyboardInterrupt 又会一路掀出 run_interactive。用标志让主循环收尾。
+                state["exit"] = True
+                return "用户选择退出，本次提问未作答。"
+            if not answer:
+                return "用户跳过了这个问题（没有作答），请自行判断或换个方式推进。"
+            if answer.startswith("/"):
+                out("  （提问期间不支持 / 命令；请作答、直接回车跳过，或 /exit 退出）")
+                continue
+            if answer.isdigit() and 1 <= int(answer) <= len(options):
+                return options[int(answer) - 1]
+            return answer        # 用户想说别的就让他说，别把真人锁进选项里
     return ask_human
 
 
@@ -199,7 +219,8 @@ def run_interactive(
     follow_up = PendingMessageQueue("single")
     flag = InterruptFlag()
     set_current(flag)                      # bash 工具从这里看见中断
-    ask.set_asker(_make_asker(reader, out))
+    asker_state = {"exit": False}
+    ask.set_asker(_make_asker(reader, out, asker_state))
     memory_tool.set_memory_dir(memory_dir())
     memory_tool.set_notifier(
         lambda topic, path: on_event(MemoryWritten(topic=topic, path=str(path))))
@@ -254,6 +275,9 @@ def run_interactive(
                   session=session, on_event=on_event, out=out, max_steps=max_steps,
                   max_total_tokens=max_total_tokens, context_window=context_window,
                   compaction=compaction)
+
+        if asker_state["exit"]:      # 用户在模型提问时选了 /exit——本轮收尾后再退
+            break
 
     out("再见。")
 
@@ -397,6 +421,8 @@ def _show_memory(out: Callable[[str], None]) -> None:
     index = directory / MEMORY_INDEX
     state = "有索引" if index.is_file() else "还没有内容"
     out(f"🧠 自动记忆目录：{directory}（{state}）")
+    # 会话也要列：这次需求的起点就是用户翻到那些文件、不知道它们是什么、在哪（feature 08）
+    out(f"💾 会话记录目录：{sessions_dir()}")
 
 
 def _manual_compact(*, messages, anchors, state, client, model, compaction, out) -> None:
