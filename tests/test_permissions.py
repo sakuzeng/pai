@@ -313,12 +313,12 @@ def test_relative_pattern_anchors_to_cwd(tmp_path):
     assert _fs("read_file", tmp_path / "other" / "src" / "a.py", rules, cwd, home) == "allow"
 
 
-def test_symlink_double_check_is_not_implemented(tmp_path):
-    """**如实记录已知洞**：只看给定路径，不做 realpath 双路径检查。
+def test_symlink_cannot_bypass_deny(tmp_path):
+    """**feature 09 Task 4 改写**：原名 `test_symlink_double_check_is_not_implemented`，
+    钉的是「一条软链就能绕开 deny」这个已知洞的**当时行为**。
 
-    这是 TODO 不是设计——官方的做法是 allow 要求「给定路径与真实路径都干净」、
-    deny 是「任一脏就拦」。pai 这轮没做，于是一条符号链接就能绕开 deny 规则。
-    本测试断言的是**当前行为**，做了双路径检查之后它应该变红并被改写。
+    双路径检查做完之后它按设计变红，于是改写成正向断言：
+    deny 是「**任一**路径脏就拦」（给定路径、realpath 解析后路径各查一次）。
     """
     cwd = tmp_path / "proj"
     home = tmp_path / "home"
@@ -333,7 +333,31 @@ def test_symlink_double_check_is_not_implemented(tmp_path):
     )
 
     assert _fs("read_file", secrets / "k.txt", rules, cwd, home) == "deny"
-    assert _fs("read_file", link, rules, cwd, home) == "allow"       # ← 洞
+    assert _fs("read_file", link, rules, cwd, home) == "deny"        # ← 洞已堵上
+
+
+def test_symlink_allow_requires_both_paths_clean(tmp_path):
+    """与上一条不对称：allow 要求「给定路径**与**真实路径都干净」才放行。
+
+    这个不对称就是 `require_all` 的语义（feature 07 Task 2 铺的路）：
+    allow 传 True、deny/ask 传 False。少了它，指向界外的软链会被界内的 allow 规则放行。
+    """
+    cwd = tmp_path / "proj"
+    home = tmp_path / "home"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.txt").write_text("x", encoding="utf-8")
+    (cwd / "src").mkdir(parents=True)
+    link = cwd / "src" / "looks-local.txt"
+    link.symlink_to(outside / "secret.txt")
+
+    rules = RuleSet.from_lists(
+        allow=["read_file(/src/**)"], anchor=str(cwd), default_decision="deny"
+    )
+
+    assert _fs("read_file", cwd / "src" / "real.txt", rules, cwd, home) == "allow"
+    # 名字在 src/ 下，真身在界外 → allow 规则不该放行
+    assert _fs("read_file", link, rules, cwd, home) == "deny"
 
 
 # ---- Task 5：配置加载与裸名 deny 摘工具 ----

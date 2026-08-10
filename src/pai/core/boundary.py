@@ -16,8 +16,15 @@ CC 的对应实现里根本没有「默认决策常量」：兜底是 `in_workin
      `cd /etc` 后 `read_file("passwd")` 会被算成 `<proj>/passwd`（界内、放行），
      而实际读到 `/etc/passwd`——一条 cd 逃逸。
 
+**符号链接双路径**（Task 4，照 CC 的 `getPathsForPermissionCheck`）：
+一次算出「原始路径 + realpath 解析后路径」两条，全链共用。
+- 边界判定要求**两条都在界内**（名字在界内不算数，真身也得在）；
+- deny/ask 规则是**任一脏就拦**、allow 要求**两条都干净**（在 permissions 侧，
+  正好是 feature 07 那个 `require_all` 的语义）。
+- **工作目录本身也要用同一个函数解析**，否则误拒：工作目录给的是软链时，
+  待查路径解析后永远匹配不上未解析的工作目录。
+
 纯函数，不 import permissions（反向依赖：permissions 用它）。
-符号链接双路径在 Task 4 补——本模块此刻只看给定路径。
 """
 
 from __future__ import annotations
@@ -30,9 +37,26 @@ from typing import Iterable, Optional, Sequence
 def _normalize(path: str) -> str:
     """绝对化 + 归一化。相对路径按**进程当前 cwd** 解析，理由见模块 docstring。
 
-    刻意不 realpath：符号链接双路径是 Task 4 的事，只做一半比不做更误导。
+    这一步刻意**不** realpath：解析交给 `get_paths_for_permission_check`，
+    它要同时留住原始路径与解析后路径两条。在这里就 realpath 会把原始路径弄丢。
     """
     return os.path.normpath(os.path.abspath(path))
+
+
+def get_paths_for_permission_check(path: str) -> tuple:
+    """一条路径展开成「原始 + realpath 解析后」两条，相同则去重成一条。
+
+    照 CC：算一次、全链共用（CC 注释说不这么做是每次检查 30 次 syscall）。
+    悬空软链、权限不足都不能炸——判定期拿到脏输入是常态，退回只用原始路径。
+    """
+    if not path:
+        return ()
+    norm = _normalize(path)
+    try:
+        real = os.path.realpath(norm)
+    except OSError:
+        return (norm,)
+    return (norm,) if real == norm else (norm, real)
 
 
 def path_in_working_path(path: str, working_path: str) -> bool:
@@ -73,8 +97,24 @@ class WorkingDirs:
     def all(self) -> tuple:
         return (self.startup_cwd,) + tuple(self.additional)
 
+    def all_resolved(self) -> tuple:
+        """工作目录也展开成双路径。不这么做会**误拒**：
+        工作目录是软链时，待查路径 realpath 之后匹配不上未解析的工作目录
+        （CC 注释举的例子是 macOS 的 `/System/Volumes/Data/...`）。"""
+        out: list = []
+        for base in self.all():
+            out.extend(get_paths_for_permission_check(base))
+        return tuple(dict.fromkeys(out))          # 去重且保序
+
+    def _contains_one(self, path: str) -> bool:
+        return any(path_in_working_path(path, base) for base in self.all_resolved())
+
     def contains(self, path: str) -> bool:
-        return any(path_in_working_path(path, base) for base in self.all())
+        """**两条路径都必须在界内**——名字在界内不算数，软链的真身也得在。"""
+        candidates = get_paths_for_permission_check(path)
+        if not candidates:
+            return False
+        return all(self._contains_one(p) for p in candidates)
 
 
 def paths_all_inside(paths: Iterable[str], dirs: WorkingDirs) -> bool:

@@ -157,3 +157,54 @@ CC 在这种情况返回 ask（后面有 bashClassifier 兜），pai 没有分�
 - 模式（`acceptEdits` 等）还没有，所以现在**没有任何办法让 once 跑 bash**——
   只能配 allow 白名单。Task 6 补 `bypassPermissions` 与 CLI flag 之前，
   这是个真实的可用性缺口，不要在此状态下宣告交付。
+
+## 2026-08-11 · Task 4：符号链接双路径（关掉 feature 07 TODO#3）
+
+**目标**：一条路径展开成「原始 + realpath 解析后」两条，全链共用。
+关掉 07 留下的洞：一条软链就能绕开 deny 规则。
+
+**改动**：
+- `src/pai/core/boundary.py`：新增 `get_paths_for_permission_check()`；
+  `WorkingDirs` 加 `all_resolved()` / `_contains_one()`，`contains()` 改为双路径
+- `src/pai/core/tools/fs.py`：`path_matcher` 对两条路径分别比对；
+  删掉「已知洞」那段注释
+- `tests/test_boundary.py`：+5 条
+- `tests/test_permissions.py`：**改写 1 条**（07 那条）+ **新增 1 条**
+- `docs/dev/STATUS.md` 测试数字 353 → 359
+
+**测试**：红 `6 failed, 53 passed`，绿 `59 passed in 0.42s`。
+全量：`353 passed, 3 deselected` → **`359 passed, 3 deselected`**。
+
+**预期内的改写（plan 就是这么写的）**：
+`test_symlink_double_check_is_not_implemented` → `test_symlink_cannot_bypass_deny`。
+07 那条钉的是「软链能绕开 deny」的**当时行为**，本 task 做完它按设计变红，
+于是改写成正向断言。**这是「把已知洞写成测试」这个做法的完整闭环**——
+洞被堵上时，那条测试会主动告诉你「该改我了」，而不是悄悄地继续绿着。
+
+**`require_all` 在这里第二次派上用场，而且不用加任何新参数**：
+- allow 判定（`require_all=True`）：**两条路径都干净**才放行；
+- deny/ask 判定（`False`）：**任一条脏**就拦。
+
+feature 07 spec 里那句「与官方符号链接规则的不对称是同一个思想」，
+到这一步才真正兑现。新增的 `test_symlink_allow_requires_both_paths_clean` 钉死它：
+名字在 `src/` 下、真身在界外的软链，**不该**被 `allow=["read_file(/src/**)"]` 放行。
+
+**一条 CC 注释救了我一次误拒**：`test_working_dirs_are_resolved_the_same_way`。
+工作目录本身若是软链（`/tmp/link-proj` → `/tmp/real-proj`），
+待查路径 realpath 之后是 `/tmp/real-proj/...`，拿它跟未解析的 `/tmp/link-proj`
+比就永远不匹配——**把本该放行的全拒了**。CC 的注释专门标了这个坑
+（举的例子是 macOS 的 `/System/Volumes/Data/...`）。
+所以 `all_resolved()` 对工作目录用的是同一个展开函数，两边对称。
+
+**替换了 plan 的一条测试，如实记**：plan 写的是
+`test_paths_to_check_computed_once`（白盒断言 realpath 只算一次，
+CC 注释说不这么做是 30 次 syscall）。实际写成了
+`test_paths_for_permission_check_returns_both` +
+`test_paths_for_permission_check_dedups_when_not_a_symlink` 两条**语义测试**。
+理由：调用次数是性能特征，用 monkeypatch 计数去钉它，测试会随任何一次无害重构
+（多一层缓存、换个调用点）变红，属于典型的脆测试。
+**性能这条只在 docstring 里记了理由，没有测试保护**——如实说明，不假装覆盖了。
+
+**遗留**：
+- 双路径展开每次判定都会做 `realpath`（未缓存）。CC 用 `memoize` 缓存工作目录的
+  解析结果，pai 没做——工作目录集合是会话级不变量，值得缓存。登记 TODO（P2，性能）。

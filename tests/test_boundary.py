@@ -129,3 +129,79 @@ def test_dotdot_traversal_is_normalized(tmp_path):
 
     assert dirs.contains(str(proj / "src" / ".." / "a.py"))          # 归一化后仍在界内
     assert not dirs.contains(str(proj / ".." / "outside.txt"))       # 归一化后跑到界外
+
+
+# ---- Task 4：符号链接双路径 ----
+#
+# CC 一次算出「原始路径 + realpath 解析后路径」两条，全链共用。
+# 边界判定要求**两条都在界内**；deny/ask 规则是**任一脏就拦**（在 permissions 侧）。
+
+
+def test_paths_for_permission_check_returns_both(tmp_path):
+    from pai.core.boundary import get_paths_for_permission_check
+
+    real = tmp_path / "real.txt"
+    real.write_text("x", encoding="utf-8")
+    link = tmp_path / "link.txt"
+    link.symlink_to(real)
+
+    paths = get_paths_for_permission_check(str(link))
+
+    assert str(link) in paths
+    assert os.path.realpath(str(link)) in paths
+
+
+def test_paths_for_permission_check_dedups_when_not_a_symlink(tmp_path):
+    """不是软链时两条相同，去重成一条——省掉一半无谓的比较。"""
+    from pai.core.boundary import get_paths_for_permission_check
+
+    plain = tmp_path / "plain.txt"
+    plain.write_text("x", encoding="utf-8")
+
+    assert len(get_paths_for_permission_check(str(plain))) == 1
+
+
+def test_symlink_out_of_boundary_is_outside(tmp_path):
+    """界内的软链指向界外 → 越界。名字在界内不算数，真身也得在。"""
+    proj = tmp_path / "proj"
+    outside = tmp_path / "outside"
+    proj.mkdir()
+    outside.mkdir()
+    (outside / "secret.txt").write_text("x", encoding="utf-8")
+    link = proj / "looks-local.txt"
+    link.symlink_to(outside / "secret.txt")
+
+    dirs = WorkingDirs(startup_cwd=str(proj))
+
+    assert not dirs.contains(str(link))
+    assert dirs.contains(str(proj / "genuine.txt"))
+
+
+def test_working_dirs_are_resolved_the_same_way(tmp_path):
+    """CC 注释标的坑：工作目录本身也要解析，否则**误拒**。
+
+    工作目录给的是一条软链（`/tmp/link-proj` → `/tmp/real-proj`）时，
+    待查路径 realpath 之后是 `/tmp/real-proj/...`，若拿它跟未解析的
+    `/tmp/link-proj` 比就永远不匹配——把本该放行的全拒了。
+    """
+    real = tmp_path / "real-proj"
+    real.mkdir()
+    link = tmp_path / "link-proj"
+    link.symlink_to(real)
+
+    dirs = WorkingDirs.from_startup(cwd=str(link))
+
+    assert dirs.contains(str(link / "a.py"))
+    assert dirs.contains(str(real / "a.py"))        # 解析后的形式同样算界内
+
+
+def test_broken_symlink_does_not_crash(tmp_path):
+    """悬空软链不能把判定链炸掉——权限判定期拿到脏输入是常态。"""
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    dangling = proj / "dangling.txt"
+    dangling.symlink_to(proj / "不存在的目标.txt")
+
+    dirs = WorkingDirs(startup_cwd=str(proj))
+
+    assert dirs.contains(str(dangling))             # 目标不存在但仍在界内
