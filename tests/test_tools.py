@@ -1,3 +1,11 @@
+import contextlib
+import os
+import re
+import signal
+import threading
+import time
+
+from pai.core import interrupt
 from pai.core.tools import get_tools
 
 
@@ -91,3 +99,150 @@ def test_bash_timeout_returns_partial_output(monkeypatch):
     result = shell.bash(command="sleep 5 & echo hi")
     assert "hi" in result
     assert "超时" in result
+
+
+# ---- feature 05 task 4：bash 可中断（进程组级） ----
+
+@contextlib.contextmanager
+def _injected_flag():
+    """进程级注入点必须能干净复位，否则一个测试的中断标志会毒死后面所有测试。"""
+    flag = interrupt.InterruptFlag()
+    interrupt.set_current(flag)
+    try:
+        yield flag
+    finally:
+        interrupt.set_current(None)
+
+
+def test_bash_normal_path_unchanged():
+    """起独立会话（start_new_session）之后，普通命令的三条行为不变。"""
+    from pai.core.tools import shell
+
+    assert "hello" in shell.bash(command="echo hello")
+    assert "到标准错误" in shell.bash(command="echo 到标准错误 1>&2")   # stdout+stderr 合并
+    assert "没有输出" in shell.bash(command="exit 3")                   # 无输出带退出码
+    assert "[... 截断" in shell.bash(command="head -c 5000 /dev/zero | tr '\\0' 'x'")
+
+
+def test_bash_skips_execution_when_already_interrupted():
+    from pai.core.tools import shell
+
+    with _injected_flag() as flag:
+        flag.set()
+        result = shell.bash(command="echo 不该跑到")
+    assert "已中断" in result
+    assert "不该跑到" not in result
+
+
+def test_bash_kills_running_command_and_returns_fast():
+    from pai.core.tools import shell
+
+    with _injected_flag() as flag:
+        timer = threading.Timer(0.5, flag.set)
+        timer.start()
+        start = time.monotonic()
+        try:
+            result = shell.bash(command="sleep 30")
+        finally:
+            timer.cancel()
+        elapsed = time.monotonic() - start
+    assert "已中断" in result
+    assert elapsed < 5, f"中断后没有立刻返回，耗时 {elapsed:.1f}s"
+
+
+def test_bash_kills_whole_process_group_not_just_the_child():
+    """本 task 的核心断言：杀 proc 只杀 shell 本身，后台孙进程会活下来继续烧机器。
+
+    注入反证：把实现里的 killpg 换成 proc.kill()，本测试必红。
+    """
+    from pai.core.tools import shell
+
+    with _injected_flag() as flag:
+        timer = threading.Timer(0.5, flag.set)
+        timer.start()
+        try:
+            result = shell.bash(command="sleep 30 & echo PID=$!; sleep 30")
+        finally:
+            timer.cancel()
+
+    assert "已中断" in result
+    m = re.search(r"PID=(\d+)", result)
+    assert m, f"没拿到后台子进程 pid，输出：{result!r}"
+    pid = int(m.group(1))
+    for _ in range(40):
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return
+        time.sleep(0.05)
+    os.kill(pid, signal.SIGKILL)          # 别把跑飞的进程留给这台机器
+    raise AssertionError(f"后台孙进程 {pid} 仍存活：杀的是子进程而不是进程组")
+
+
+def test_bash_keeps_partial_output_on_interrupt():
+    """与超时分支同一条教训（R3#3）：抹掉已产出的输出，模型必然误判重试。"""
+    from pai.core.tools import shell
+
+    with _injected_flag() as flag:
+        timer = threading.Timer(0.5, flag.set)
+        timer.start()
+        try:
+            result = shell.bash(command="echo 已经产出这行; sleep 30")
+        finally:
+            timer.cancel()
+    assert "已经产出这行" in result
+    assert "已中断" in result
+
+
+# ---- feature 05 task 6：AskUserQuestion ----
+
+
+@contextlib.contextmanager
+def _injected_asker(fn):
+    from pai.core.tools import ask
+
+    ask.set_asker(fn)
+    try:
+        yield
+    finally:
+        ask.set_asker(None)
+
+
+def test_ask_returns_asker_answer():
+    from pai.core.tools import ask
+
+    with _injected_asker(lambda question, options: f"选了 {options[1]}"):
+        result = ask.ask_user_question(question="用哪个？", options='["A", "B"]')
+    assert result == "选了 B"
+
+
+def test_ask_without_asker_returns_error_string():
+    """没有真人可问时返回错误字符串而不是抛——工具错误不 throw（架构约束）。"""
+    from pai.core.tools import ask
+
+    result = ask.ask_user_question(question="在吗", options='["A", "B"]')
+    assert "错误" in result and "没有" in result
+
+
+def test_ask_rejects_malformed_options():
+    from pai.core.tools import ask
+
+    with _injected_asker(lambda question, options: "不该走到这"):
+        assert "错误" in ask.ask_user_question(question="q", options="不是 JSON")
+        assert "错误" in ask.ask_user_question(question="q", options='{"a": 1}')
+        assert "错误" in ask.ask_user_question(question="q", options='["只有一个"]')
+
+
+def test_ask_schema_is_generated_from_signature():
+    from pai.core.tools import REGISTRY, ask   # noqa: F401 - import 即注册
+
+    fn = REGISTRY["ask_user_question"].schema()["function"]
+    assert set(fn["parameters"]["properties"]) == {"question", "options"}
+    # @tool 只认标量类型，选项列表只能以 JSON 字符串过来——描述里必须讲清楚
+    assert "JSON" in fn["parameters"]["properties"]["options"]["description"]
+
+
+def test_get_tools_excludes_ask_by_default():
+    """once 模式没有真人可问，注册了就是让模型撞空——默认工具集必须不含它。"""
+    assert "ask_user_question" not in get_tools()
+    assert "ask_user_question" in get_tools(["bash", "ask_user_question"])

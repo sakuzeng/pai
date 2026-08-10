@@ -83,10 +83,15 @@ def tool(func: Callable) -> Callable:
     return func
 
 
+# 需要真人在场的工具：注册着但不进默认集合，得显式点名要（get_tools([...])）。
+# once 模式没有真人可问，把它摆给模型看就是让模型撞空。
+INTERACTIVE_ONLY = ("ask_user_question",)
+
+
 def get_tools(names: list[str] | None = None) -> dict[str, Tool]:
-    """默认全量；传 names 取子集（未来子 agent 的受限工具集用）。"""
-    from pai.core.tools import fs, shell  # noqa: F401 - import 即注册
+    """默认全量（除需真人在场的）；传 names 取子集（受限工具集 / 交互模式加料用）。"""
+    from pai.core.tools import ask, fs, shell  # noqa: F401 - import 即注册
 
     if names is None:
-        return dict(REGISTRY)
+        return {n: t for n, t in REGISTRY.items() if n not in INTERACTIVE_ONLY}
     return {n: REGISTRY[n] for n in names}

@@ -10,7 +10,8 @@ from typing import Callable
 
 from pai.config import context_window, make_client, model_name
 from pai.core.compaction import CompactionSettings
-from pai.core.loop import run_agent
+from pai.core.events import AgentEvent
+from pai.core.loop import print_event, run_agent
 from pai.core.session import SessionLog
 from pai.core.tools import get_tools
 
@@ -23,7 +24,7 @@ def run_once(
     no_session: bool = False,
     client=None,
     model: str | None = None,
-    on_event: Callable[[str], None] = print,
+    on_event: Callable[[AgentEvent], None] = print_event,
 ) -> str:
     return run_agent(
         task,

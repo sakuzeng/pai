@@ -2,8 +2,19 @@ import json
 
 from fake_llm import FakeClient
 
+from pai.core.events import (
+    AgentEnd,
+    AgentStart,
+    AssistantMessage,
+    Compacted,
+    CompactionSkipped,
+    Interrupted,
+    ToolEnd,
+    ToolStart,
+)
+from pai.core.interrupt import InterruptFlag
 from pai.core.loop import run_agent
-from pai.core.tools import get_tools
+from pai.core.tools import Tool, get_tools
 
 
 def test_loop_tool_then_answer(tmp_path):
@@ -401,7 +412,7 @@ def test_loop_warns_not_compacts_when_no_cut_available(tmp_path, monkeypatch):
     from pai.core.loop import run_agent
     from pai.core.tools import get_tools
 
-    events: list[str] = []
+    events: list = []
     script = [
         {"tool_calls": [("bash", json.dumps({"command": "true"}))], "usage": _usage(900)},
         {"content": "done"},
@@ -410,8 +421,9 @@ def test_loop_warns_not_compacts_when_no_cut_available(tmp_path, monkeypatch):
     run_agent("x", client=client, model="fake", tools=get_tools(),
               context_window=1000, compaction=CompactionSettings(reserve_tokens=200),
               on_event=events.append)
-    assert any("锚点不足" in e for e in events)            # 只有 1 个锚，不是真无可压
-    assert not any("⚠️" in e for e in events)             # 不该带警告前缀
+    skipped = [e for e in events if isinstance(e, CompactionSkipped)]
+    assert [e.reason for e in skipped] == ["anchors_pending"]   # 只有 1 个锚，不是真无可压
+    assert not any(isinstance(e, Compacted) for e in events)
     assert all("tools" in r for r in client.requests)    # 没发生摘要请求（摘要请求不带 tools）
 
 
@@ -507,7 +519,7 @@ def test_loop_warns_when_truly_uncompactable(tmp_path, monkeypatch):
     from pai.core.loop import run_agent
     from pai.core.tools import get_tools
 
-    events: list[str] = []
+    events: list = []
     script = [
         {"tool_calls": [("bash", json.dumps({"command": "true"}))], "usage": _usage(100)},
         {"tool_calls": [("bash", json.dumps({"command": "true"}))], "usage": _usage(850)},
@@ -519,6 +531,228 @@ def test_loop_warns_when_truly_uncompactable(tmp_path, monkeypatch):
                        context_window=1000, compaction=settings, on_event=events.append)
 
     assert answer == "done"
-    assert any("⚠️" in e for e in events)
-    assert any("靠预算熔断兜底" in e for e in events)
+    assert any(isinstance(e, CompactionSkipped) and e.reason == "nothing_to_cut"
+               for e in events)
     assert all("tools" in r for r in client.requests)   # 没有摘要请求（摘要请求不带 tools）
+
+
+# ---------- feature 05 task 5：事件流 / 双队列 / 中断 ----------
+
+
+def _user(text):
+    return {"role": "user", "content": text}
+
+
+def _noop_tool(name="noop", func=None):
+    """直接造 Tool 而不过 @tool 注册表：避免测试互相污染全局 REGISTRY。"""
+    return Tool(name=name, description="测试用工具", func=func or (lambda: "ok"),
+                parameters={"type": "object", "properties": {}, "required": []})
+
+
+def test_events_cover_the_whole_lifecycle(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    events: list = []
+    client = FakeClient([
+        {"tool_calls": [("noop", "{}")]},
+        {"content": "done"},
+    ])
+    run_agent("任务", client=client, model="fake", tools={"noop": _noop_tool()},
+              on_event=events.append)
+
+    kinds = [type(e) for e in events]
+    assert kinds[0] is AgentStart and events[0].task == "任务"
+    assert kinds[-1] is AgentEnd and events[-1].reason == "final"
+    assert kinds.count(AssistantMessage) == 2
+    # ToolStart 必须在 ToolEnd 之前：状态行靠这个顺序显示「进行中」
+    assert kinds.index(ToolStart) < kinds.index(ToolEnd)
+
+
+def test_tool_end_marks_loop_generated_errors():
+    events: list = []
+    client = FakeClient([
+        {"tool_calls": [("不存在的工具", "{}")]},
+        {"content": "done"},
+    ])
+    run_agent("x", client=client, model="fake", tools={"noop": _noop_tool()},
+              on_event=events.append)
+    ends = [e for e in events if isinstance(e, ToolEnd)]
+    assert [e.is_error for e in ends] == [True]
+
+
+def test_steering_injected_after_all_tool_results():
+    """steering 的注入点是「本轮所有工具结果都回填之后」，不是某一个工具之后。"""
+    events: list = []
+    client = FakeClient([
+        {"tool_calls": [("noop", "{}"), ("noop", "{}")]},
+        {"content": "done"},
+    ])
+    pending = [[_user("改用 python 写")]]
+
+    run_agent("x", client=client, model="fake", tools={"noop": _noop_tool()},
+              on_event=events.append,
+              get_steering_messages=lambda: pending.pop(0) if pending else [])
+
+    sent = client.requests[1]["messages"]
+    assert sent[-1] == _user("改用 python 写")
+    assert [m["role"] for m in sent[-3:]] == ["tool", "tool", "user"]
+
+
+def test_steering_not_called_when_model_gives_final_answer():
+    """语义边界：steering 是「工具执行后」的挂点，没有工具调用就不该问它。"""
+    calls = []
+    client = FakeClient([{"content": "done"}])
+    run_agent("x", client=client, model="fake", tools={"noop": _noop_tool()},
+              on_event=lambda _: None,
+              get_steering_messages=lambda: calls.append(1) or [])
+    assert calls == []
+
+
+def test_follow_up_keeps_loop_running():
+    """模型本该停下（无 tool_calls），followUp 有货就再跑一轮。"""
+    client = FakeClient([{"content": "第一轮"}, {"content": "第二轮"}])
+    pending = [[_user("再补一句")]]
+    answer = run_agent("x", client=client, model="fake", tools={"noop": _noop_tool()},
+                       on_event=lambda _: None,
+                       get_follow_up_messages=lambda: pending.pop(0) if pending else [])
+    assert answer == "第二轮"
+    assert client.requests[1]["messages"][-1] == _user("再补一句")
+
+
+def test_no_queues_preserves_old_request_sequence():
+    """不传两个队列参数时，请求序列与接线前完全一致（默认 None = 行为不变）。"""
+    client = FakeClient([{"tool_calls": [("noop", "{}")]}, {"content": "done"}])
+    answer = run_agent("x", client=client, model="fake", tools={"noop": _noop_tool()},
+                       on_event=lambda _: None)
+    assert answer == "done"
+    assert len(client.requests) == 2
+    assert [m["role"] for m in client.requests[1]["messages"]] == \
+        ["system", "user", "assistant", "tool"]
+
+
+def test_interrupt_backfills_remaining_tool_calls():
+    """配对不变量：中断也必须每个 tool_call 各回一条，否则下一轮请求就是 400（R#11）。"""
+    flag = InterruptFlag()
+    events: list = []
+    client = FakeClient([{"tool_calls": [("trip", "{}"), ("noop", "{}"), ("noop", "{}")]}])
+    tools = {
+        "trip": _noop_tool("trip", func=lambda: (flag.set(), "跑完了才中断")[1]),
+        "noop": _noop_tool(),
+    }
+    run_agent("x", client=client, model="fake", tools=tools,
+              on_event=events.append, interrupt_flag=flag)
+
+    # FakeClient 脚本只有一轮：loop 若再发一次请求会直接 AssertionError（脚本耗尽）
+    tool_msgs = [e for e in events if isinstance(e, ToolEnd)]
+    assert len(tool_msgs) == 3, "三个 tool_call 必须各有一条结果，缺一条下轮就 400"
+    assert tool_msgs[0].result == "跑完了才中断"
+    assert all("已取消" in e.result for e in tool_msgs[1:])
+    assert [e.tool_call_id for e in tool_msgs] == ["call_1", "call_2", "call_3"]
+
+
+def test_interrupt_emits_interrupted_and_agent_end():
+    flag = InterruptFlag()
+    events: list = []
+    client = FakeClient([{"tool_calls": [("trip", "{}")]}])
+    tools = {"trip": _noop_tool("trip", func=lambda: (flag.set(), "x")[1])}
+    answer = run_agent("x", client=client, model="fake", tools=tools,
+                       on_event=events.append, interrupt_flag=flag)
+
+    assert any(isinstance(e, Interrupted) and e.where == "tool" for e in events)
+    assert isinstance(events[-1], AgentEnd) and events[-1].reason == "interrupted"
+    assert "中断" in answer
+
+
+def test_interrupt_before_step_stops_without_calling_model():
+    flag = InterruptFlag()
+    flag.set()
+    client = FakeClient([])          # 一次请求都不该发，发了就是脚本耗尽 AssertionError
+    answer = run_agent("x", client=client, model="fake", tools={"noop": _noop_tool()},
+                       on_event=lambda _: None, interrupt_flag=flag)
+    assert client.requests == []
+    assert "中断" in answer
+
+
+def test_interrupted_conversation_is_preserved_for_next_turn():
+    """官方对 Esc 的承诺是「保留迄今完成的工作」——中断后 messages 必须留在调用方手里。"""
+    flag = InterruptFlag()
+    conversation: list = []
+    client = FakeClient([{"tool_calls": [("trip", "{}")]}])
+    tools = {"trip": _noop_tool("trip", func=lambda: (flag.set(), "干了一半")[1])}
+    run_agent("x", client=client, model="fake", tools=tools, messages=conversation,
+              on_event=lambda _: None, interrupt_flag=flag)
+
+    assert [m["role"] for m in conversation] == ["system", "user", "assistant", "tool"]
+    assert conversation[-1]["content"] == "干了一半"
+
+
+def test_messages_param_continues_existing_conversation():
+    """REPL 的多轮对话共享一份 messages：传入即续用，不重建 system。"""
+    conversation = [
+        {"role": "system", "content": "旧的 system"},
+        {"role": "user", "content": "第一问"},
+        {"role": "assistant", "content": "第一答"},
+    ]
+    client = FakeClient([{"content": "第二答"}])
+    run_agent("第二问", client=client, model="fake", tools={"noop": _noop_tool()},
+              messages=conversation, on_event=lambda _: None)
+
+    sent = client.requests[0]["messages"]
+    assert sent[0]["content"] == "旧的 system"          # 没被重建
+    assert [m["content"] for m in sent] == ["旧的 system", "第一问", "第一答", "第二问"]
+    assert conversation[-1]["content"] == "第二答"       # 新回复也留在调用方的列表里
+
+
+def test_anchor_book_can_be_shared_across_runs():
+    """REPL 每轮调一次 run_agent。锚点簿不跨轮持有的话，每轮的第一次请求都退回
+    纯字符估算（已知 -33% 误差），压缩触发判断当场失准——所以它必须能注入。
+    """
+    from pai.core.compaction import AnchorBook
+
+    anchors = AnchorBook()
+    conversation: list = []
+    client = FakeClient([{"content": "一", "usage": _usage(100)},
+                         {"content": "二", "usage": _usage(300)}])
+    for task in ("a", "b"):
+        run_agent(task, client=client, model="fake", tools={"noop": _noop_tool()},
+                  messages=conversation, anchors=anchors, on_event=lambda _: None)
+
+    assert [tokens for _, tokens in anchors.entries] == [110, 310]
+
+
+def test_compaction_state_can_be_shared_across_runs():
+    """熔断状态同理：每轮新建就等于每轮把熔断器清零，连续失败永远数不到 3。"""
+    from pai.core.compaction import CompactionSettings, CompactionState
+
+    state = CompactionState()
+    state.tripped = True
+    conversation: list = []
+    client = FakeClient([{"content": "done", "usage": _usage(900)}])
+    run_agent("x", client=client, model="fake", tools={"noop": _noop_tool()},
+              messages=conversation, compaction_state=state,
+              context_window=1000, compaction=CompactionSettings(reserve_tokens=200),
+              on_event=lambda _: None)
+    assert len(client.requests) == 1        # tripped 已生效：没发摘要请求
+
+
+def test_compaction_state_updates_propagate_to_caller(tmp_path, monkeypatch):
+    """verify_compaction 返回的是**新对象**：loop 若只换绑局部变量，注入方永远看不到
+    失败计数，熔断器在 REPL 里等于不存在（每轮清零，连续失败数不到 3）。
+    """
+    monkeypatch.chdir(tmp_path)
+    from pai.core.compaction import CompactionSettings, CompactionState
+
+    state = CompactionState()
+    script = [
+        {"tool_calls": [("bash", json.dumps({"command": "true"}))], "usage": _usage(100)},
+        {"tool_calls": [("bash", json.dumps({"command": "true"}))], "usage": _usage(850)},
+        {"content": "这是摘要"},                                  # 摘要请求
+        {"content": "done", "usage": _usage(900)},                # 压缩后仍超线 → 记一次失败
+    ]
+    client = FakeClient(script)
+    settings = CompactionSettings(reserve_tokens=200, keep_recent_tokens=500)
+    run_agent("x", client=client, model="fake", tools=get_tools(),
+              context_window=1000, compaction=settings, compaction_state=state,
+              on_event=lambda _: None)
+
+    assert state.failures == 1, "压缩后仍超线，失败计数必须落到调用方持有的那个对象上"
+    assert state.awaiting_verify is False
