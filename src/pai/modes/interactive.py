@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Callable, List, Optional
 
 from pai.config import context_window as default_context_window
-from pai.config import make_client, model_name
+from pai.config import make_client, model_name, recall_model
 from pai.core.compaction import (
     AnchorBook,
     CompactionSettings,
@@ -40,6 +40,7 @@ from pai.core.events import (
     AgentEnd,
     AgentEvent,
     MemoryWritten,
+    RecallFailed,
     ToolEnd,
     ToolStart,
     render_text,
@@ -60,6 +61,7 @@ from pai.core.memory import (
     memory_dir,
 )
 from pai.core.queue import PendingMessageQueue
+from pai.core.recall import RecallState, make_recall
 from pai.core.session import SessionLog
 from pai.core.tools import Tool, ask, get_tools, memory_tool
 from pai.modes.statusline import StatusLinePrinter
@@ -210,6 +212,9 @@ def run_interactive(
 ) -> None:
     on_event = on_event if on_event is not None else make_event_handler()
     client = client or make_client()
+    # 必须在 model 被兜底成主模型**之前**算：否则注入的 model 永远非空，
+    # PAI_RECALL_MODEL 就成了一条永远走不到的分支
+    recall_model_name = model or recall_model()
     model = model or model_name()
     # ask_user_question 不在默认工具集里（once 没真人可问），交互模式显式加回来
     tools = tools if tools is not None else get_tools(
@@ -234,9 +239,17 @@ def run_interactive(
     tools = visible_tools(tools, rules)            # 裸名 deny 的工具压根不摆给模型
     gate = make_before_tool_call(
         rules, hooks=hooks, tools=tools, asker=human_asker, warn=out, mode=mode)
-    memory_tool.set_memory_dir(memory_dir())
+    directory = memory_dir()
+    memory_tool.set_memory_dir(directory)
     memory_tool.set_notifier(
         lambda topic, path: on_event(MemoryWritten(topic=topic, path=str(path))))
+    memory_tool.set_origin_session(session.session_id if session is not None else None)
+    # 召回状态**跨轮持有**（同 anchors / state）：REPL 每轮调一次 run_agent，
+    # 状态不由这一层拿着，去重与失败熔断都会每轮清零。
+    recall = make_recall(client=client, model=recall_model_name,
+                         directory=directory, state=RecallState(),
+                         on_failure=lambda f: on_event(RecallFailed(
+                             reason=f.reason, detail=f.detail, disabled=f.disabled)))
 
     if _is_real_terminal_input(reader):
         _read_history_into_readline(history)
@@ -288,7 +301,7 @@ def run_interactive(
                   anchors=anchors, state=state, follow_up=follow_up, flag=flag,
                   session=session, on_event=on_event, out=out, max_steps=max_steps,
                   max_total_tokens=max_total_tokens, context_window=context_window,
-                  compaction=compaction, before_tool_call=gate)
+                  compaction=compaction, before_tool_call=gate, recall=recall)
 
         if asker_state["exit"]:      # 用户在模型提问时选了 /exit——本轮收尾后再退
             break
@@ -313,7 +326,7 @@ def _interruptible(flag: InterruptFlag):
 
 def _run_turn(task: str, *, client, model, tools, messages, anchors, state, follow_up,
               flag, session, on_event, out, max_steps, max_total_tokens,
-              context_window, compaction, before_tool_call=None) -> None:
+              context_window, compaction, before_tool_call=None, recall=None) -> None:
     with _interruptible(flag):
         answer = _guarded_run(
             out,
@@ -323,6 +336,7 @@ def _run_turn(task: str, *, client, model, tools, messages, anchors, state, foll
             max_total_tokens=max_total_tokens, context_window=context_window,
             compaction=compaction,
             before_tool_call=before_tool_call,
+            recall=recall,
             # steering 在纯 REPL 无输入源（阻塞的 input 拿不到「干活时打字」），
             # 只接 followUp；注入点已在 loop 里备好，等 TUI/流式通电
             instructions=build_context,

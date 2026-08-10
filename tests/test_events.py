@@ -81,3 +81,17 @@ def test_events_are_frozen_dataclasses():
     event = TurnStart(step=1)
     with pytest.raises(dataclasses.FrozenInstanceError):
         event.step = 2
+
+
+def test_recall_failed_renders_reason_and_says_when_it_stops_trying():
+    """召回失败原本全静默——用户只看到「召回好像不生效」，看不到原因（2026-08-11 真跑撞到）。"""
+    from pai.core.events import RecallFailed, render_text
+
+    once = render_text(RecallFailed(reason="unparseable", detail="(空回复)", disabled=False))
+    assert "召回" in once and "(空回复)" in once
+    assert "不再" not in once
+
+    tripped = render_text(RecallFailed(reason="request_failed", detail="RuntimeError: 超时",
+                                       disabled=True))
+    assert "超时" in tripped
+    assert "不再" in tripped              # 熔断跳闸这件事必须说出来

@@ -87,6 +87,17 @@ class BreakerTripped:
 
 
 @dataclass(frozen=True)
+class RecallFailed:
+    """记忆召回失败。CC 是「失败返回空、不阻断」且全静默；pai 要说出来——
+    否则用户看到的只是「召回好像不生效」，而真实原因（provider 报错 / 回复没法解析）
+    一点痕迹都不留（2026-08-11 真跑冒烟撞到的正是这个）。"""
+
+    reason: Literal["request_failed", "unparseable"]
+    detail: str
+    disabled: bool          # 熔断是否已跳闸（本会话不再尝试）
+
+
+@dataclass(frozen=True)
 class MemoryWritten:
     topic: str
     path: str
@@ -113,6 +124,7 @@ AgentEvent = Union[
     Compacted,
     CompactionSkipped,
     BreakerTripped,
+    RecallFailed,
     MemoryWritten,
     Interrupted,
     AgentEnd,
@@ -135,6 +147,9 @@ def render_text(event: AgentEvent) -> Optional[str]:
         return f"🚫 权限拒绝 {event.name}：{event.reason}"
     if isinstance(event, Compacted):
         return f"🗜️ 压缩：切于 {event.cut}，估算 {event.before} → {event.after}"
+    if isinstance(event, RecallFailed):
+        tail = "，本会话不再尝试召回" if event.disabled else ""
+        return f"⚠️ 记忆召回失败（{event.reason}）：{event.detail}{tail}"
     if isinstance(event, CompactionSkipped):
         if event.reason == "anchors_pending":
             return f"🗜️ 锚点不足（<2）无法定真实切点，本步暂缓压缩（估算 {event.estimated}）"

@@ -13,6 +13,9 @@ agent loop + 工具系统 + 会话落盘 + 阶段 1 压缩闭环已跑通；阶�
 AskUserQuestion、工具状态行。`pai` 不带参数即进 REPL。
 阶段 3 **记忆已交付**——`PAI.md` 三层加载 + `@` 导入 + 自动记忆索引 + `remember` 写回，
 且**压缩后从磁盘重读重注入**（不做就是长会话里指令静默失效）。
+随后 feature 10 补上**召回层**（06 复盘悬案的落点）：记忆改一事一文件带 frontmatter、
+`MEMORY.md` 由扫描结果**重建**（投影而非账本）、相对时间与陈旧警告、
+每轮一次侧查询选 ≤5 篇注入 `<system-reminder>`（usage 计进预算熔断，连续失败即停用）。
 阶段 4 **权限已交付**——allow/ask/deny 三态（求值顺序 deny → ask → allow）、
 匹配语义下放给工具（bash 拆复合命令、fs 认路径锚点）、两层 `settings.json`、
 外部命令 hook（三种退出码），**pai 已能跑自己的 `guards/design_gate.py`**。
@@ -42,8 +45,9 @@ AskUserQuestion、工具状态行。`pai` 不带参数即进 REPL。
 | `core/tools/ask.py` | 可用 | AskUserQuestion，asker 装配期注入；**默认工具集不含它**（once 无真人可问） |
 | `core/paths.py` | 可用 | pai 用户级路径唯一事实源：`~/.pai/projects/<可读 slug>/{memory,sessions}/`，slug 用全路径连字符（D#44，对齐 CC） |
 | `core/session.py` | 可用 | append-only JSONL，落**用户目录**不再写当前工作目录；每条带 `sessionId`/`cwd`；文件名带短 id（D#45，关掉 R#15） |
-| `core/memory.py` | 可用 | 分层指令发现（用户级→根→cwd，local 在后，**不读 AGENTS.md** D#43）、`@path` 导入（相对基准/4 跳/环检测/代码块内不算）、自动记忆索引（git 根定 key，200 行 + 25KB 双上限，截断留提示） |
-| `core/tools/memory_tool.py` | 可用 | `remember(topic, fact)` 写主题文件 + 维护索引；topic 白名单校验挡路径穿越；目录与通知回调走注入点 |
+| `core/memory.py` | 可用 | 分层指令发现（用户级→根→cwd，local 在后，**不读 AGENTS.md** D#43）、`@path` 导入（相对基准/4 跳/环检测/代码块内不算）、记忆扫描（每文件前 30 行取 frontmatter、mtime 新→旧、截 200）、索引**投影**（`render_index`，200 行 + 25KB 双上限，截断留提示）、相对时间与陈旧警告（`memory_age` / `freshness_note`） |
+| `core/recall.py` | 可用 | 按查询召回：manifest → 侧查询（`max_tokens=4096`——**推理模型的 reasoning 计进该上限**，实测 256 会静默截断）→ 防御式 JSON 解析（分得清「没说话」与「明确不选」）→ 白名单（容忍 `[type]` 装饰、取最长匹配）→ ≤5 篇 → `<system-reminder>` 注入块；空目录短路、`alreadySurfaced` 去重、连续 3 次失败停用并发 `RecallFailed` |
+| `core/tools/memory_tool.py` | 可用 | `remember(name, description, fact, type)` 一事一文件带 frontmatter，同名即更新；写完重建 `MEMORY.md`（原子写）；name 白名单校验挡路径穿越；目录/通知/会话 id 走注入点 |
 | `core/permissions.py` | 可用 | 规则解析 + **七步求值链**（deny → 危险路径 → 显式 ask → bypass → acceptEdits → allow → 兜底；顺序不许改 D#46）；兜底是**工作目录边界函数**不是常量（D#51）；权限模式四态（D#53）；两层 `settings.json` |
 | `core/boundary.py` | 可用 | 工作目录边界：启动 cwd 锚点 + `additionalDirectories`；**前缀比到分隔符**（`/tmp/proj-evil` 不算界内）；符号链接双路径；危险路径清单（shell 配置 / `.git/hooks` / `~/.ssh` / pai 自己的 settings） |
 | `core/hooks.py` | 可用 | 外部命令 hook：退出码 0/2/其他 三态、多 hook 取最严；**超时/起不来 → deny（fail-closed，D#54）**，其他退出码维持非阻断；`load_hooks` 读两层配置 |
@@ -76,10 +80,10 @@ AskUserQuestion、工具状态行。`pai` 不带参数即进 REPL。
 
 ## 测试
 
-共收集 **388 项**（阶段 2 REPL 8 task + 阶段 3 记忆 7 task + 交付后五个补漏 + 文档一致性
-+ **阶段 4 权限 task 1-7**）：
+共收集 **461 项**（阶段 2 REPL 8 task + 阶段 3 记忆 7 task + 交付后五个补漏 + 文档一致性
++ **阶段 4 权限 task 1-7** + **feature 10 记忆召回 7 task**）：
 
-- `./test.sh` → **385 passed, 3 deselected**，全部离线（`tests/fake_llm.py` 假 provider）。**这是默认路径。**
+- `./test.sh` → **458 passed, 3 deselected**，全部离线（`tests/fake_llm.py` 假 provider）。**这是默认路径。**
 - `./test.sh --llm` → 额外跑打真实 API 的冒烟测试，**会产生费用**。
   需同时满足有 `DEEPSEEK_API_KEY` 且 `PAI_RUN_LLM_TESTS=1`——花钱的副作用不能是默认行为。
 

@@ -1,0 +1,14 @@
+模型：deepseek-v4-flash
+目录：/var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pai-recall-smoke-hmtl7x7f
+manifest:
+- [project] 压缩阈值.md (今天): 压缩触发点按 reserve_tokens=16384 算，当前约 983616 token
+- [user] 用户偏好.md (今天): 用户偏好中文回复，喜欢先给结论再给理由
+- [feedback] 构建约定.md (今天): 怎么跑测试与提交：./test.sh 跑全量，提交格式 <类型>(module): message
+
+① response_format=json_object 被接受，原样回复： ''
+② query='测试怎么跑？'
+   选中=['构建约定']  失败计数=0  usage={'completion_tokens': 89, 'prompt_tokens': 352, 'total_tokens': 441, 'completion_tokens_details': {'accepted_prediction_tokens': None, 'audio_tokens': None, 'reasoning_tokens': 79, 'rejected_prediction_tokens': None}, 'prompt_tokens_details': {'audio_tokens': None, 'cache_write_tokens': None, 'cached_tokens': 256}, 'prompt_cache_hit_tokens': 256, 'prompt_cache_miss_tokens': 96}
+② query='帮我看看 loop.py 有没有 bug'
+   选中=[]  失败计数=0  usage={'completion_tokens': 146, 'prompt_tokens': 356, 'total_tokens': 502, 'completion_tokens_details': {'accepted_prediction_tokens': None, 'audio_tokens': None, 'reasoning_tokens': 140, 'rejected_prediction_tokens': None}, 'prompt_tokens_details': {'audio_tokens': None, 'cache_write_tokens': None, 'cached_tokens': 256}, 'prompt_cache_hit_tokens': 256, 'prompt_cache_miss_tokens': 100}
+② query='压缩什么时候触发'
+   选中=['压缩阈值']  失败计数=0  usage={'completion_tokens': 110, 'prompt_tokens': 352, 'total_tokens': 462, 'completion_tokens_details': {'accepted_prediction_tokens': None, 'audio_tokens': None, 'reasoning_tokens': 100, 'rejected_prediction_tokens': None}, 'prompt_tokens_details': {'audio_tokens': None, 'cache_write_tokens': None, 'cached_tokens': 256}, 'prompt_cache_hit_tokens': 256, 'prompt_cache_miss_tokens': 96}

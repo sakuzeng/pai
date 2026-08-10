@@ -17,7 +17,7 @@ from pai.core.tools import READ, WRITE, MatchContext, matcher_for, path_access_f
 MAX_OUTPUT_CHARS = 4000
 
 
-def _atomic_write(path: str, content: str) -> None:
+def atomic_write(path: str, content: str) -> None:
     """同目录临时文件 + os.replace（POSIX 上是原子改名）。
 
     临时文件必须与目标**同目录**：跨文件系统 rename 不是原子的，会退化成拷贝。
@@ -57,7 +57,7 @@ def write_file(
     content: Annotated[str, "写入的完整内容（会覆盖原文件）"],
 ) -> str:
     """把内容写入文件（覆盖式，文件不存在则创建）。"""
-    _atomic_write(path, content)
+    atomic_write(path, content)
     return f"已写入 {path}（{len(content)} 字符）"
 
 
@@ -75,7 +75,7 @@ def edit_file(
         return f"错误：在 {path} 中找不到要替换的文本。请先 read_file 确认原文。"
     if count > 1:
         return f"错误：该文本在 {path} 中出现了 {count} 次，不唯一。请把 old 加长、带上下文以保证唯一。"
-    _atomic_write(path, content.replace(old, new))
+    atomic_write(path, content.replace(old, new))
     return f"已在 {path} 中完成 1 处替换。"
 
 

@@ -1,0 +1,4 @@
+max_tokens=  256  completion=  61  reasoning=51  content='{"selected": ["构建约定.md"]}'
+max_tokens=  512  completion= 512  reasoning=512  content=''
+max_tokens= 1024  completion=  65  reasoning=55  content='{"selected": ["构建约定.md"]}'
+max_tokens= 2048  completion=  48  reasoning=38  content='{"selected": ["构建约定.md"]}'
