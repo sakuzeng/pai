@@ -411,3 +411,47 @@ def test_slash_memory_shows_the_readable_slug(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _, printed = _run(["/memory"], [])
     assert str(tmp_path.absolute()).replace("/", "-") in printed
+
+
+# ---- asker 抢走 REPL 输入（2026-08-10 演示 08 时意外照出）----
+
+
+def test_asker_offers_a_way_to_skip(tmp_path, monkeypatch):
+    """模型提问时 asker 和 REPL 共用同一个 reader——用户被问住就出不来。
+    空行必须是明确的逃生口，而不是被当成一个空答案交回去。"""
+    monkeypatch.chdir(tmp_path)
+    script = [
+        {"tool_calls": [("ask_user_question",
+                         json.dumps({"question": "用哪个？", "options": '["A", "B"]'}))]},
+        {"content": "好"},
+    ]
+    client, printed = _run(["帮我选", ""], script)
+    tool_msg = [m for m in client.requests[1]["messages"] if m["role"] == "tool"][0]
+    assert "跳过" in tool_msg["content"]
+    assert "跳过" in printed or "回车" in printed          # 提示语要写出来，别让人猜
+
+
+def test_asker_does_not_swallow_slash_commands(tmp_path, monkeypatch):
+    """`/status` 这类命令在提问期间被静默当成答案交给模型，是最坏的一种吞。"""
+    monkeypatch.chdir(tmp_path)
+    script = [
+        {"tool_calls": [("ask_user_question",
+                         json.dumps({"question": "用哪个？", "options": '["A", "B"]'}))]},
+        {"content": "好"},
+    ]
+    client, printed = _run(["帮我选", "/status", "2"], script)
+    tool_msg = [m for m in client.requests[1]["messages"] if m["role"] == "tool"][0]
+    assert tool_msg["content"] == "B", "命令不该被当成答案；应重新读一次"
+    assert "不支持" in printed
+
+
+def test_asker_lets_the_user_exit(tmp_path, monkeypatch):
+    """被提问时用户必须能退出——否则 /exit 变成答案，人被困在问题里。"""
+    monkeypatch.chdir(tmp_path)
+    script = [
+        {"tool_calls": [("ask_user_question",
+                         json.dumps({"question": "用哪个？", "options": '["A", "B"]'}))]},
+        {"content": "好"},
+    ]
+    client, printed = _run(["帮我选", "/exit", "不该读到这一行"], script)
+    assert "再见" in printed
