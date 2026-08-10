@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 from typing import Annotated, Callable, List, Optional
 
-from pai.core.tools import tool
+from pai.core.tools import capabilities_for, tool
 
 # (问题, 候选项列表) -> 用户选择的答案
 Asker = Callable[[str, List[str]], str]
@@ -47,3 +47,8 @@ def ask_user_question(
         # 只有一个选项的「提问」不是提问，是通知——那用不着打断真人
         return "错误：options 至少要有两个候选项，只有一个就不必问了"
     return _ASKER(question, parsed)
+
+
+# 要真人回答（feature 11 Task 3）。**并发问两个问题就是抢同一个输入流**——
+# 那正是 TODO 里「asker 与 REPL 抢输入流」那条已知缺陷的同款根因，别自己再造一个。
+capabilities_for(ask_user_question, read_only=False, concurrency_safe=False)

@@ -39,7 +39,14 @@ PathGetter = Callable[[dict], str]
 
 # 工具对文件系统的访问性质。目录边界对读写不对称（照 CC）：
 # 读在工作目录内放行、界外问；写一律问。所以判定必须分得清这次是读还是写。
-READ, WRITE = "read", "write" 
+READ, WRITE = "read", "write"
+
+# 工具能力标志（feature 11，调度用）。与 matcher / get_path / access 同一个模式：
+# 框架问问题，工具用自己的领域知识回答，权限层与调度器都不认识具体工具。
+# **收 input 而不是静态布尔**（照 CC 的 `Tool.isReadOnly(input)`）：
+# 一个命令是不是只读取决于这次跑的是 `ls` 还是 `rm`，静态布尔表达不了。
+# pai 今天还没有这样的工具，但签名现在就留对，将来不用改第二次。
+Capability = Callable[[dict], bool]
 
 
 def default_matcher(
@@ -70,6 +77,31 @@ class Tool:
     # 这是拍板问 2「bash 不做目录边界」的落点，不是权限层里的一个 if。
     get_path: Optional[PathGetter] = None
     access: Optional[str] = None
+
+    # 调度用的两项能力声明（feature 11）。`None` = 没声明 = False，见 `_ask`。
+    is_read_only: Optional[Capability] = None
+    is_concurrency_safe: Optional[Capability] = None
+
+    def _ask(self, cap: Optional[Capability], args) -> bool:
+        """未声明 / 参数不是 dict / 判定器抛异常，一律 False。
+
+        三条退化路径都指向同一个方向：**判不出来就当不安全**。
+        代价是那次调用退回串行——慢，不是错。反过来（判不出来就当安全）
+        才会让「加了个新工具忘了声明」变成一个并发数据竞争。
+        参数脏是常态：模型发来的 arguments 可能是 `null` / `[1,2]` / 字符串。
+        """
+        if cap is None or not isinstance(args, dict):
+            return False
+        try:
+            return bool(cap(args))
+        except Exception:  # noqa: BLE001 - 照 CC：判定器自己炸了就当不安全
+            return False
+
+    def read_only(self, args) -> bool:
+        return self._ask(self.is_read_only, args)
+
+    def concurrency_safe(self, args) -> bool:
+        return self._ask(self.is_concurrency_safe, args)
 
     def participates_in_boundary(self) -> bool:
         """两项都声明了才参与目录边界判定。缺一不可：
@@ -191,6 +223,28 @@ def path_access_for(tool_func, access: str) -> Callable[[PathGetter], PathGetter
         return fn
 
     return attach
+
+
+def capabilities_for(tool_func, *, read_only=False, concurrency_safe=False) -> None:
+    """给已注册的工具挂能力标志。取值可以是 `bool`，也可以是 `(args) -> bool`。
+
+    **刻意不做成装饰器**（与 `path_access_for` / `matcher_for` 不同）：那两个装饰的是
+    真的 getter 函数，而能力标志绝大多数是常量——装饰一个 `lambda args: True` 只是噪音。
+    保留 callable 形态是给 bash 这类「取值依赖参数」的工具留的签名口子。
+
+    没注册就抛：静默不生效意味着调度**静默退回串行**，比报错难查得多（同 matcher_for）。
+    """
+    name = tool_func if isinstance(tool_func, str) else getattr(tool_func, "__name__", "")
+    if name not in REGISTRY:
+        raise ValueError(f"capabilities_for：工具 {name!r} 没注册，先用 @tool 注册再挂能力标志")
+
+    def as_capability(value) -> Capability:
+        if callable(value):
+            return value
+        return lambda _args, _v=value: bool(_v)
+
+    REGISTRY[name].is_read_only = as_capability(read_only)
+    REGISTRY[name].is_concurrency_safe = as_capability(concurrency_safe)
 
 
 def matcher_for(tool_func) -> Callable[[Matcher], Matcher]:

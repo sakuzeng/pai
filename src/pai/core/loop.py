@@ -11,7 +11,8 @@
 两个注入点（pai.core.queue 说明了两者的语义差别）、中断（pai.core.interrupt）。
 权限已接线（feature 07）：`before_tool_call` 返回非 allow 就不执行、把理由回填。
 所有新参数都是 keyword-only 且默认 None——不传时行为与接线前逐字相同。
-刻意还没有的（路线图阶段任务）：流式。
+流式已接线（feature 11）：主循环走 `stream=True` + `streaming.assemble`，
+增量以 MessageDelta 发出；**侧查询（摘要/召回）刻意仍是非流式**。
 """
 
 from __future__ import annotations
@@ -41,13 +42,16 @@ from pai.core.events import (
     Compacted,
     CompactionSkipped,
     Interrupted,
+    MessageDelta,
     PermissionDecided,
     ToolEnd,
     ToolStart,
     render_text,
 )
 from pai.core.interrupt import InterruptFlag
+from pai.core.scheduler import execute, partition
 from pai.core.session import SessionLog
+from pai.core.streaming import assemble
 from pai.core.tools import Tool
 
 if TYPE_CHECKING:                       # loop 只需要 .kind / .reason，不该运行期依赖权限层
@@ -211,12 +215,28 @@ def run_agent(
                                     "estimated_after": after, "usage": s_usage})
                 estimated = after
 
-        response = client.chat.completions.create(
-            model=model, messages=messages, tools=tool_schemas
+        # 主循环走流式（feature 11）。**侧查询不走**——摘要（compaction.summarize）与
+        # 召回（recall）的输出没人看，流式只会把装配成本白花一遍。
+        stream = client.chat.completions.create(
+            model=model, messages=messages, tools=tool_schemas, stream=True
         )
-        msg = response.choices[0].message
+        msg = assemble(stream, on_delta=lambda t: on_event(MessageDelta(text=t)), flag=flag)
 
-        usage = usage_fields(response)
+        if msg.interrupted:
+            # 掐在模型输出中途：**拿不到 usage**（它在末块，而我们没读到末块）。
+            # 服务端照样计费，本地永远少算——偏差方向是恒定的，所以必须留痕，
+            # 不能让「这一步没数」跟「这一步没花钱」长得一样。
+            if session:
+                session.append({"type": USAGE_RECORD_TYPE, "step": step,
+                                "model": model, "unmetered": True})
+            on_event(Interrupted(where="stream"))
+            # 刻意**不把那半条 assistant 消息追加进 messages**：它从来不是一次完整的
+            # 模型回合，且它的 token 数无从得知（没有 usage），追加进去会让锚点与估算
+            # 凭空多出一段没有真实读数的历史。
+            return finish("interrupted",
+                          f"已中断：第 {step} 步的模型输出被打断，已完成的工作保留在会话里。")
+
+        usage = usage_fields(msg)
         if compaction_on and state.awaiting_verify and usage.get("prompt_tokens") is not None:
             # verify_compaction 返回新对象；这里必须**写回同一个 state**而不是换绑，
             # 否则注入方（REPL 跨轮持有）看不到失败计数，熔断器等于每轮清零
@@ -269,40 +289,60 @@ def run_agent(
             return finish("final", msg.content or "")
 
         interrupted = False
-        for tc in msg.tool_calls:
-            if flag.is_set():
-                # 配对是硬约束：每个 tool_call 都得有结果，缺一条下一轮就是 400（R#11
-                # 有真实复现）。所以中断不是「跳过剩下的」，是「剩下的各回一条已取消」。
-                interrupted = True
-                args, result, is_error = {}, CANCELLED_RESULT, False
-            else:
-                decision = None
+        # 保序贪心分批（feature 11）：连续的并发安全工具合成一批并行，其余各自成批串行。
+        # 非并发批结构上恒为单个调用，`execute` 对单调用不起线程池——
+        # 于是 bash 这类要装信号、要管进程组的工具**永远在主线程跑**。
+        for batch in partition(msg.tool_calls, tools):
+            # ① 本批权限**串行判完再派发**（与 CC 的主要偏离，见 features/11 spec）。
+            #    CC 在 runToolUse 内部判，那样同批的两个并行工具会同时要求问真人，
+            #    正好撞上「asker 与 REPL 抢同一个输入流」那条已知缺陷。
+            #    批与批之间仍是「先执行前一批、再判后一批」，所以
+            #    「工具 A 建了目录、B 才写得进去」这类依赖不受影响。
+            decisions: dict = {}
+            for tc in batch.calls:
+                if flag.is_set():
+                    continue                     # 交给 ② 统一回「已取消」
                 if before_tool_call is not None:
                     decision = before_tool_call(
                         tc.function.name, _safe_args(tc.function.arguments))
+                    decisions[tc.id] = decision
                     on_event(PermissionDecided(
                         tool_call_id=tc.id, name=tc.function.name,
                         kind=decision.kind, reason=decision.reason))
-                if decision is not None and decision.kind != "allow":
-                    # 不执行，但**必须**回一条结果：tool_call_id 配对是硬约束，
-                    # 缺一条下一轮就是 400（D#41 同款不变量，中断路径已有先例）。
-                    # is_error=False：这不是出错，是按规矩拒绝，模型该据此换做法而非重试。
-                    args = _safe_args(tc.function.arguments)
-                    result = f"{DENIED_PREFIX}{decision.reason}"
-                    is_error = False
-                else:
+
+            # ② 派发。**所有事件都在主线程发**——不把「事件处理器必须线程安全」
+            #    这条隐性要求强加给 modes 层（状态行会往同一个流写 `\r`）。
+            #    工作线程里只跑工具本身。
+            for tc in batch.calls:
+                if not flag.is_set() and _allowed(decisions.get(tc.id)):
                     on_event(ToolStart(tool_call_id=tc.id, name=tc.function.name,
                                        args=_safe_args(tc.function.arguments)))
-                    args, result, is_error = _run_tool(tools, tc)
-                    if flag.is_set():
-                        interrupted = True      # 工具自己跑到一半被中断（bash 被杀）
 
-            on_event(ToolEnd(tool_call_id=tc.id, name=tc.function.name, args=args,
-                             result=result, is_error=is_error))
-            tool_entry = {"role": "tool", "tool_call_id": tc.id, "content": result}
-            messages.append(tool_entry)
-            if session:
-                session.append(tool_entry)
+            def run_one(tc):
+                if flag.is_set():
+                    # 配对是硬约束：每个 tool_call 都得有结果，缺一条下一轮就是 400
+                    # （R#11 有真实复现）。中断不是「跳过剩下的」，是「剩下的各回一条已取消」。
+                    return {}, CANCELLED_RESULT, False
+                decision = decisions.get(tc.id)
+                if not _allowed(decision):
+                    # 不执行，但**必须**回一条结果（D#41 同款不变量）。
+                    # is_error=False：这不是出错，是按规矩拒绝，模型该据此换做法而非重试。
+                    return (_safe_args(tc.function.arguments),
+                            f"{DENIED_PREFIX}{decision.reason}", False)
+                return _run_tool(tools, tc)
+
+            results = execute(batch, run_one)
+            if flag.is_set():
+                interrupted = True               # 工具跑到一半被中断（bash 被杀）或批前已置位
+
+            # ③ 按**原顺序**回填：并发的是执行，不是交付
+            for tc, (args, result, is_error) in zip(batch.calls, results):
+                on_event(ToolEnd(tool_call_id=tc.id, name=tc.function.name, args=args,
+                                 result=result, is_error=is_error))
+                tool_entry = {"role": "tool", "tool_call_id": tc.id, "content": result}
+                messages.append(tool_entry)
+                if session:
+                    session.append(tool_entry)
 
         if interrupted:
             on_event(Interrupted(where="tool"))
@@ -357,6 +397,11 @@ def _extend(messages: List[dict], extra: List[dict], session: SessionLog | None)
         messages.append(m)
         if session:
             session.append(m)
+
+
+def _allowed(decision) -> bool:
+    """没有权限层（decision is None）= 放行。这是 `before_tool_call` 默认不传时的既有语义。"""
+    return decision is None or decision.kind == "allow"
 
 
 def _safe_args(raw: str) -> dict:

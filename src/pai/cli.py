@@ -54,14 +54,15 @@ def main() -> None:
             )
             return
 
-        answer = run_once(
+        # 不在这里打答案：流式已经逐字打过了（feature 11）。
+        # 非 final 的结尾语（预算/步数/中断）由 modes.echo 按 AgentEnd.reason 负责打。
+        run_once(
             args.task,
             max_steps=args.max_steps,
             max_total_tokens=args.max_tokens or None,
             no_session=args.no_session,
             mode=mode,
         )
-        print(f"\n🤖 {answer}")
     finally:
         # 关掉 pai 就该停掉它起过的一切（官方语义：退出时后台任务自动清理）。
         # 放在 cli 出口而不是各 mode 里：两种模式共用一条出路，异常路径也覆盖到。

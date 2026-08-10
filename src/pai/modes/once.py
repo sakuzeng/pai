@@ -6,13 +6,14 @@ client 与 model 可注入，因此这层也能离线测（否则接线错了要
 
 from __future__ import annotations
 
-from typing import Callable
+from typing import Callable, Optional
 
 from pai.config import context_window, make_client, model_name, recall_model
 from pai.core.compaction import CompactionSettings
 from pai.core.gate import make_before_tool_call
 from pai.core.hooks import load_hooks
-from pai.core.loop import print_event, run_agent
+from pai.core.loop import run_agent
+from pai.modes.echo import make_stream_echo
 from pai.core.events import AgentEvent, MemoryWritten, RecallFailed
 from pai.core.memory import build_context, memory_dir
 from pai.core.permissions import DONT_ASK, RuleSet, load_rules, visible_tools
@@ -30,10 +31,12 @@ def run_once(
     no_session: bool = False,
     client=None,
     model: str | None = None,
-    on_event: Callable[[AgentEvent], None] = print_event,
+    on_event: Optional[Callable[[AgentEvent], None]] = None,
     rules: RuleSet | None = None,
     mode: str | None = None,
 ) -> str:
+    # 默认值在函数体里取：模块导入时 sys.stdout 可能还没被测试替换掉
+    on_event = on_event if on_event is not None else make_stream_echo()
     directory = memory_dir()
     memory_tool.set_memory_dir(directory)
     memory_tool.set_notifier(

@@ -1,4 +1,5 @@
 import json
+import threading
 
 from fake_llm import FakeClient
 
@@ -9,11 +10,13 @@ from pai.core.events import (
     Compacted,
     CompactionSkipped,
     Interrupted,
+    MessageDelta,
     ToolEnd,
     ToolStart,
 )
 from pai.core.interrupt import InterruptFlag
 from pai.core.loop import run_agent
+from pai.core.session import SessionLog
 from pai.core.tools import Tool, get_tools
 
 
@@ -1055,3 +1058,301 @@ def test_recall_failure_does_not_break_the_turn():
     answer = run_agent("我的问题", client=client, model="fake", tools=get_tools(),
                        recall=boom, on_event=lambda _: None)
     assert answer == "好"
+
+
+# ---------------------------------------------------------------------------
+# feature 11 task 2：loop 改用流式
+# ---------------------------------------------------------------------------
+
+
+def test_request_actually_asks_for_streaming():
+    """钉死真的走了流式——否则下面那些「行为不变」的断言全都在测非流式路径。"""
+    client = FakeClient([{"content": "ok"}])
+    run_agent("x", client=client, model="fake", tools=get_tools(), on_event=lambda _: None)
+    assert client.requests[0]["stream"] is True
+
+
+def test_streaming_keeps_messages_and_session_records_identical(tmp_path):
+    """本 task 的主断言：流式是**传输方式**的改变，不是语义的改变。
+
+    期望值写死而不是「与非流式跑一遍对照」——改完之后 loop 里已经没有非流式路径了，
+    对照组不存在。写死才是真正的回归钉子。
+    """
+    target = tmp_path / "a.txt"
+    script = [
+        {"tool_calls": [("write_file", json.dumps({"path": str(target), "content": "hi"}))],
+         "usage": {"prompt_tokens": 90, "completion_tokens": 10, "total_tokens": 100}},
+        {"content": "写好了",
+         "usage": {"prompt_tokens": 95, "completion_tokens": 5, "total_tokens": 100}},
+    ]
+    session = SessionLog(tmp_path)
+    messages = []
+    answer = run_agent("写文件", client=FakeClient(script), model="fake", tools=get_tools(),
+                       messages=messages, session=session, on_event=lambda _: None)
+
+    assert answer == "写好了"
+    assert [m["role"] for m in messages] == ["system", "user", "assistant", "tool", "assistant"]
+    assert messages[2]["content"] is None                 # 只发工具、没说话
+    assert messages[2]["tool_calls"][0]["function"]["name"] == "write_file"
+    assert messages[3]["tool_call_id"] == messages[2]["tool_calls"][0]["id"]
+    assert messages[4]["content"] == "写好了"
+
+    records = [json.loads(line) for line in
+               session.path.read_text(encoding="utf-8").splitlines()]
+    kinds = [r.get("type", r.get("role")) for r in records]
+    assert kinds == ["system", "user", "usage", "assistant", "tool", "usage", "assistant"]
+    assert [r["total_tokens"] for r in records if r.get("type") == "usage"] == [100, 100]
+
+
+def test_message_delta_events_are_emitted_in_order():
+    """MessageDelta 是 events.py 开头承诺补的那个事件
+    （「砍掉 message_update…等阶段 5 真有『一轮内多次增量』再补」）。"""
+    events = []
+    run_agent("x", client=FakeClient([{"content": "你好世界"}]), model="fake",
+              tools=get_tools(), on_event=events.append)
+
+    deltas = [e for e in events if isinstance(e, MessageDelta)]
+    assert deltas, "流式应当发出增量事件"
+    assert "".join(d.text for d in deltas) == "你好世界"
+    # 增量必须**先于**该条消息的 AssistantMessage 事件
+    assert events.index(deltas[-1]) < next(
+        i for i, e in enumerate(events) if isinstance(e, AssistantMessage))
+
+
+def test_interrupt_mid_stream_stops_the_turn(tmp_path):
+    """中断掐在流中途：不追加 assistant 消息、不记锚、reason == interrupted。
+
+    为什么不追加：那半条消息从来不是一次完整的模型回合，且**它的 token 数无从得知**
+    （没有 usage），追加进去会让锚点与估算凭空多出一段没有真实读数的历史。
+    """
+    flag = InterruptFlag()
+    events = []
+
+    def on_event(e):
+        events.append(e)
+        if isinstance(e, MessageDelta):
+            flag.set()                     # 第一块一到就按下 Ctrl+C
+
+    messages = []
+    answer = run_agent("x", client=FakeClient([{"content": "一二三四五六"}]), model="fake",
+                       tools=get_tools(), messages=messages, interrupt_flag=flag,
+                       on_event=on_event)
+
+    assert "已中断" in answer
+    assert [m["role"] for m in messages] == ["system", "user"]      # 没有 assistant
+    assert any(isinstance(e, Interrupted) and e.where == "stream" for e in events)
+
+
+def test_interrupted_stream_is_unmetered_and_leaves_a_trace(tmp_path):
+    """中断没有 usage → 预算不增，但**必须留痕**。
+
+    偏差方向是恒定的（服务端照样计费，本地永远少算），
+    静默的恒定偏差比随机误差危险得多——所以宁可落一条「这次没数」。
+    """
+    flag = InterruptFlag()
+
+    def on_event(e):
+        if isinstance(e, MessageDelta):
+            flag.set()
+
+    session = SessionLog(tmp_path)
+    run_agent("x", client=FakeClient([{"content": "一二三四", "usage": {"total_tokens": 999}}]),
+              model="fake", tools=get_tools(), session=session,
+              interrupt_flag=flag, on_event=on_event)
+
+    records = [json.loads(line) for line in
+               session.path.read_text(encoding="utf-8").splitlines()]
+    usage_records = [r for r in records if r.get("type") == "usage"]
+    assert len(usage_records) == 1
+    assert usage_records[0]["unmetered"] is True
+    assert "total_tokens" not in usage_records[0]      # 没拿到就是没拿到，不许编
+
+
+def test_side_queries_stay_non_streaming():
+    """摘要是侧查询：它的输出没人看，流式只会把装配成本白花一遍。
+
+    顺带钉死一件事——`stream` 这个 kwarg 只该出现在主循环的请求上。
+    夹具沿用 test_loop_compacts_when_over_threshold 的数字（那组数是调过的，
+    保证第 3 次 create 真的被摘要请求命中，不是编号凑巧）。
+    """
+    from pai.core.compaction import CompactionSettings
+
+    script = [
+        {"tool_calls": [("bash", json.dumps({"command": "true"}))], "usage": _usage(100)},
+        {"tool_calls": [("bash", json.dumps({"command": "true"}))], "usage": _usage(850)},
+        {"content": "这是摘要"},                                   # ← 压缩触发的摘要请求
+        {"content": "done", "usage": _usage(300)},
+    ]
+    client = FakeClient(script)
+    run_agent("x", client=client, model="fake", tools=get_tools(), context_window=1000,
+              compaction=CompactionSettings(reserve_tokens=200, keep_recent_tokens=500),
+              on_event=lambda _: None)
+
+    summary_req = client.requests[2]
+    assert "tools" not in summary_req, "第 3 次 create 应当是摘要请求"
+    assert not summary_req.get("stream"), "侧查询不该走流式"
+    # 反面：主循环的请求必须是流式的
+    assert client.requests[0]["stream"] is True
+
+
+# ---------------------------------------------------------------------------
+# feature 11 task 5：调度器接线（保序并发 + 权限按批前置）
+# ---------------------------------------------------------------------------
+
+
+def _read_calls(tmp_path, n):
+    """造 n 个 read_file 调用——pai 目前唯一的并发安全工具。"""
+    files = []
+    for i in range(n):
+        f = tmp_path / f"f{i}.txt"
+        f.write_text(f"内容{i}", encoding="utf-8")
+        files.append(f)
+    return [("read_file", json.dumps({"path": str(f)})) for f in files]
+
+
+def test_pairing_survives_parallel_execution(tmp_path):
+    """配对是硬约束：每个 tool_call 有且只有一条结果，顺序与 tool_calls 一致。
+    缺一条下一轮就是 400（R#11 有真实复现路径）。"""
+    client = FakeClient([{"tool_calls": _read_calls(tmp_path, 3)}, {"content": "ok"}])
+    run_agent("x", client=client, model="fake", tools=get_tools(), on_event=lambda _: None)
+
+    sent = client.requests[1]["messages"]
+    assistant = [m for m in sent if m["role"] == "assistant"][0]
+    tool_msgs = [m for m in sent if m["role"] == "tool"]
+    assert [m["tool_call_id"] for m in tool_msgs] == \
+           [tc["id"] for tc in assistant["tool_calls"]]
+    assert [m["content"] for m in tool_msgs] == ["内容0", "内容1", "内容2"]
+
+
+def test_pairing_survives_parallel_plus_interrupt(tmp_path):
+    """并发批跑到一半中断：已开始的照常收尾，没开始的回「已取消」——
+    仍然是每个 tc 一条结果。中断不是「跳过剩下的」。"""
+    flag = InterruptFlag()
+    calls = _read_calls(tmp_path, 3)
+    client = FakeClient([{"tool_calls": calls}, {"content": "ok"}])
+
+    def on_event(e):
+        if isinstance(e, ToolEnd):
+            flag.set()
+
+    messages = []
+    run_agent("x", client=client, model="fake", tools=get_tools(), messages=messages,
+              interrupt_flag=flag, on_event=on_event)
+
+    assistant = [m for m in messages if m["role"] == "assistant"][0]
+    tool_msgs = [m for m in messages if m["role"] == "tool"]
+    assert len(tool_msgs) == len(assistant["tool_calls"])
+    assert [m["tool_call_id"] for m in tool_msgs] == \
+           [tc["id"] for tc in assistant["tool_calls"]]
+
+
+def test_pairing_survives_parallel_plus_partial_denial(tmp_path):
+    """同批里一个 allow 一个 deny：deny 的不执行但**必须**回一条结果（D#41 同款不变量）。"""
+    from pai.core.permissions import Decision
+
+    calls = _read_calls(tmp_path, 2)
+    denied_path = json.loads(calls[1][1])["path"]
+
+    def before(name, args):
+        if args.get("path") == denied_path:
+            return Decision(kind="deny", reason="测试拒绝")
+        return Decision(kind="allow", reason="")
+
+    client = FakeClient([{"tool_calls": calls}, {"content": "ok"}])
+    messages = []
+    run_agent("x", client=client, model="fake", tools=get_tools(), messages=messages,
+              before_tool_call=before, on_event=lambda _: None)
+
+    tool_msgs = [m for m in messages if m["role"] == "tool"]
+    assert len(tool_msgs) == 2
+    assert tool_msgs[0]["content"] == "内容0"
+    assert "权限被拒绝" in tool_msgs[1]["content"]
+
+
+def test_permissions_for_a_batch_are_decided_before_any_of_it_runs(tmp_path):
+    """按批前置：本批**所有**权限判完才开始执行。
+
+    这是与 CC 的主要偏离（它在 runToolUse 内部判），理由是同批两个并行工具会同时
+    要求问真人 —— 正好撞上 TODO 里「asker 与 REPL 抢同一个输入流」那条已知缺陷。
+    """
+    from pai.core.permissions import Decision
+
+    trace = []
+
+    def before(name, args):
+        trace.append(("decide", args.get("path")))
+        return Decision(kind="allow", reason="")
+
+    def on_event(e):
+        if isinstance(e, ToolStart):
+            trace.append(("start", e.args.get("path")))
+
+    calls = _read_calls(tmp_path, 2)
+    client = FakeClient([{"tool_calls": calls}, {"content": "ok"}])
+    run_agent("x", client=client, model="fake", tools=get_tools(),
+              before_tool_call=before, on_event=on_event)
+
+    kinds = [k for k, _ in trace]
+    assert kinds[:2] == ["decide", "decide"], f"本批权限应先判完再派发，实际：{trace}"
+
+
+def test_batches_are_still_sequential_between_each_other(tmp_path):
+    """批与批之间仍是「先执行前一批、再判定后一批」——
+    所以「工具 A 建了目录、B 才写得进去」这类依赖不受影响。"""
+    from pai.core.permissions import Decision
+
+    target = tmp_path / "made" / "x.txt"
+    trace = []
+
+    def before(name, args):
+        trace.append(("decide", name))
+        return Decision(kind="allow", reason="")
+
+    def on_event(e):
+        if isinstance(e, ToolEnd):
+            trace.append(("done", e.name))
+
+    calls = [("bash", json.dumps({"command": f"mkdir -p {target.parent}"})),
+             ("write_file", json.dumps({"path": str(target), "content": "hi"}))]
+    client = FakeClient([{"tool_calls": calls}, {"content": "ok"}])
+    run_agent("x", client=client, model="fake", tools=get_tools(),
+              before_tool_call=before, on_event=on_event)
+
+    assert trace == [("decide", "bash"), ("done", "bash"),
+                     ("decide", "write_file"), ("done", "write_file")]
+    assert target.read_text(encoding="utf-8") == "hi"
+
+
+def test_serial_only_turn_behaves_exactly_as_before(tmp_path):
+    """全是串行工具时，行为与接调度器之前逐字相同。"""
+    target = tmp_path / "a.txt"
+    client = FakeClient([
+        {"tool_calls": [("write_file", json.dumps({"path": str(target), "content": "hi"}))]},
+        {"content": "写好了"},
+    ])
+    messages = []
+    answer = run_agent("x", client=client, model="fake", tools=get_tools(),
+                       messages=messages, on_event=lambda _: None)
+    assert answer == "写好了"
+    assert [m["role"] for m in messages] == ["system", "user", "assistant", "tool", "assistant"]
+
+
+def test_session_append_is_thread_safe(tmp_path):
+    """多线程往同一个 JSONL 追加：N 条记录必须是 N 行**完整** JSON，没有半行交织。"""
+    session = SessionLog(tmp_path)
+    payload = {"role": "tool", "content": "长内容" * 200}
+
+    def writer():
+        for _ in range(30):
+            session.append(dict(payload))
+
+    threads = [threading.Thread(target=writer) for _ in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    lines = session.path.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 180
+    for line in lines:
+        json.loads(line)          # 有半行交织的话这里会抛

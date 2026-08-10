@@ -10,6 +10,7 @@ pai 的立意是在别人的项目里跑，往人家仓库里拉一个 sessions/
 from __future__ import annotations
 
 import json
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -32,8 +33,13 @@ class SessionLog:
         stamp = time.strftime("%Y%m%d-%H%M%S")
         self.path = d / f"{stamp}-{self.session_id[:8]}.jsonl"
         self.cwd = str(Path.cwd().absolute())
+        self._lock = threading.Lock()
 
     def append(self, record: dict) -> None:
         record = {"ts": time.time(), "sessionId": self.session_id, "cwd": self.cwd, **record}
-        with open(self.path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        line = json.dumps(record, ensure_ascii=False) + "\n"
+        # 并发批里多个工具会同时回填结果（feature 11）。不加锁的话两条长记录可能
+        # 交织成半行，而**半行 JSONL 是不可恢复的**——审计流一旦坏了，坏的是历史。
+        with self._lock:
+            with open(self.path, "a", encoding="utf-8") as f:
+                f.write(line)

@@ -12,7 +12,15 @@ import tempfile
 from typing import Annotated
 
 from pai.core.boundary import get_paths_for_permission_check
-from pai.core.tools import READ, WRITE, MatchContext, matcher_for, path_access_for, tool
+from pai.core.tools import (
+    READ,
+    WRITE,
+    MatchContext,
+    capabilities_for,
+    matcher_for,
+    path_access_for,
+    tool,
+)
 
 MAX_OUTPUT_CHARS = 4000
 
@@ -170,3 +178,11 @@ for _fs_tool in (read_file, write_file, edit_file):
 path_access_for(read_file, READ)(lambda args: str(args.get("path") or ""))
 for _writer in (write_file, edit_file):
     path_access_for(_writer, WRITE)(lambda args: str(args.get("path") or ""))
+
+
+# 调度用的能力标志（feature 11 Task 3）。read_file 是 pai 目前**唯一**的并发安全工具。
+# 两个写工具显式写 False 而不是靠默认：默认值是给「忘了声明」兜底的，
+# 而这里是「想过了，结论是不行」——两者行为相同，意图不同，读代码的人该分得清。
+capabilities_for(read_file, read_only=True, concurrency_safe=True)
+for _writer in (write_file, edit_file):
+    capabilities_for(_writer, read_only=False, concurrency_safe=False)

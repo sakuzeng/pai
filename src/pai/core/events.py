@@ -34,6 +34,18 @@ class AssistantMessage:
 
 
 @dataclass(frozen=True)
+class MessageDelta:
+    """一轮内的增量文本。本文件开头写着「等阶段 5 真有『一轮内多次增量』再补」——就是它。
+
+    `render_text` 对它返回 None，理由不是「默认不出声」而是**契约不合**：
+    render_text 的契约是「返回一行」，而增量必须**不换行**地写出去。
+    上屏因此由 modes 层负责（D#39 渲染下放）。
+    """
+
+    text: str
+
+
+@dataclass(frozen=True)
 class ToolStart:
     tool_call_id: str
     name: str
@@ -105,7 +117,9 @@ class MemoryWritten:
 
 @dataclass(frozen=True)
 class Interrupted:
-    where: Literal["tool", "step"]
+    # stream = 掐在模型输出中途（feature 11）。与另外两处的区别有实际后果：
+    # 这一种**拿不到 usage**，所以那一步的消耗永远不会进账。
+    where: Literal["tool", "step", "stream"]
 
 
 @dataclass(frozen=True)
@@ -118,6 +132,7 @@ AgentEvent = Union[
     AgentStart,
     TurnStart,
     AssistantMessage,
+    MessageDelta,
     PermissionDecided,
     ToolStart,
     ToolEnd,
