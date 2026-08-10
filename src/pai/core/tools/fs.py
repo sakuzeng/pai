@@ -7,10 +7,11 @@
 """
 
 import os
+import re
 import tempfile
 from typing import Annotated
 
-from pai.core.tools import tool
+from pai.core.tools import MatchContext, matcher_for, tool
 
 MAX_OUTPUT_CHARS = 4000
 
@@ -75,3 +76,85 @@ def edit_file(
         return f"错误：该文本在 {path} 中出现了 {count} 次，不唯一。请把 old 加长、带上下文以保证唯一。"
     _atomic_write(path, content.replace(old, new))
     return f"已在 {path} 中完成 1 处替换。"
+
+
+# ---- 权限匹配（feature 07 Task 4）----
+#
+# 四种前缀四种含义，其中单斜杠那条是官方自己标注的最大的坑：
+#
+#   //path   文件系统绝对路径
+#   ~/path   主目录
+#   /path    **锚到写下这条规则的设置文件**——用户设置里的 /secrets/** 是
+#            ~/.pai/secrets/**，不是项目里的 secrets/。以为它是文件系统根就错了。
+#   path     含 `/` 则相对 cwd；不含 `/` 的裸文件名按 gitignore 语义任意深度匹配
+#            （`read_file(.env)` ≡ `read_file(**/.env)`）。
+#
+# **已知洞**：不做符号链接双路径检查。官方语义是 allow 要求「给定路径与真实路径都干净」、
+# deny 要求「任一脏就拦」，pai 这轮只看给定路径，于是一条软链就能绕开 deny。
+# 这是 TODO 不是设计，test_symlink_double_check_is_not_implemented 钉的是当前行为。
+
+
+def _glob_to_regex(pattern: str):
+    """把 glob 编译成正则。**单星不跨 `/`**——跨了的话 allow 规则会悄悄放宽一层目录。"""
+    out = []
+    i, n = 0, len(pattern)
+    while i < n:
+        if pattern.startswith("**/", i):
+            out.append("(?:[^/]*/)*")       # 任意层目录，含零层
+            i += 3
+        elif pattern.startswith("**", i):
+            out.append(".*")
+            i += 2
+        elif pattern[i] == "*":
+            out.append("[^/]*")
+            i += 1
+        elif pattern[i] == "?":
+            out.append("[^/]")
+            i += 1
+        else:
+            out.append(re.escape(pattern[i]))
+            i += 1
+    return re.compile("^" + "".join(out) + "$")
+
+
+def expand_pattern(specifier: str, ctx: MatchContext) -> str:
+    """把带前缀的 specifier 展开成一条绝对（或 `**/` 打头）的 glob（纯函数，单独可测）。"""
+    p = specifier.strip()
+    if p.startswith("//"):
+        return "/" + p[2:].lstrip("/")
+    if p.startswith("~/"):
+        return os.path.join(ctx.home or os.path.expanduser("~"), p[2:])
+    if p.startswith("/"):
+        return os.path.join(ctx.anchor or ctx.cwd, p[1:])
+    if "/" not in p:
+        return "**/" + p
+    return os.path.join(ctx.cwd, p[2:] if p.startswith("./") else p)
+
+
+def target_path(args: dict, ctx: MatchContext) -> str:
+    """取工具参数里的路径并绝对化。
+
+    **刻意不 realpath**：那是符号链接双路径检查的一半，只做一半比不做更误导
+    （会让人以为软链已经被覆盖了）。要做就 allow/deny 两侧一起做，见上方已知洞。
+    """
+    value = str(next(iter(args.values()), ""))
+    if not value:
+        return ""
+    if not os.path.isabs(value):
+        value = os.path.join(ctx.cwd or os.getcwd(), value)
+    return os.path.normpath(value)
+
+
+def path_matcher(specifier: str, args: dict, require_all: bool, ctx: MatchContext) -> bool:
+    """fs 三件套共用的路径匹配。
+
+    `require_all` 用不上：一次调用只碰一个路径，没有「每个都要匹配」的余地。
+    """
+    path = target_path(args, ctx)
+    if not path:
+        return False
+    return bool(_glob_to_regex(expand_pattern(specifier, ctx)).match(path))
+
+
+for _fs_tool in (read_file, write_file, edit_file):
+    matcher_for(_fs_tool)(path_matcher)

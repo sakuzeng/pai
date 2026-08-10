@@ -45,7 +45,10 @@ from pai.core.events import (
     render_text,
 )
 from pai.core.interrupt import InterruptFlag, set_current
+from pai.core.gate import make_before_tool_call
+from pai.core.hooks import load_hooks
 from pai.core.loop import run_agent
+from pai.core.permissions import load_rules, visible_tools
 from pai.core.paths import sessions_dir
 from pai.core.memory import (
     LOCAL_FILE,
@@ -69,6 +72,7 @@ HELP = """可用命令：
   /help     这张表
   /status   上下文估算、锚点数、压缩熔断状态
   /memory   本次加载了哪些指令文件 + 自动记忆目录在哪
+  /permissions  当前生效的权限规则与各自来源
   /compact  手动压缩当前对话
   /clear    清空对话（保留 system）
   /exit     退出（等同 Ctrl+D）
@@ -220,7 +224,14 @@ def run_interactive(
     flag = InterruptFlag()
     set_current(flag)                      # bash 工具从这里看见中断
     asker_state = {"exit": False}
-    ask.set_asker(_make_asker(reader, out, asker_state))
+    human_asker = _make_asker(reader, out, asker_state)
+    ask.set_asker(human_asker)
+    # 权限（feature 07）。REPL 有真人，所以 ask 走真人通道而不是降级为 deny（拍板问 1）。
+    rules = load_rules(warn=out)
+    hooks = load_hooks(warn=out)
+    tools = visible_tools(tools, rules)            # 裸名 deny 的工具压根不摆给模型
+    gate = make_before_tool_call(
+        rules, hooks=hooks, tools=tools, asker=human_asker, warn=out)
     memory_tool.set_memory_dir(memory_dir())
     memory_tool.set_notifier(
         lambda topic, path: on_event(MemoryWritten(topic=topic, path=str(path))))
@@ -251,7 +262,8 @@ def run_interactive(
         if line.startswith("/"):
             if _handle_command(line, out=out, messages=messages, anchors=anchors,
                                state=state, tools=tools, client=client, model=model,
-                               compaction=compaction, context_window=context_window):
+                               compaction=compaction, context_window=context_window,
+                               rules=rules, hooks=hooks):
                 break
             continue
 
@@ -274,7 +286,7 @@ def run_interactive(
                   anchors=anchors, state=state, follow_up=follow_up, flag=flag,
                   session=session, on_event=on_event, out=out, max_steps=max_steps,
                   max_total_tokens=max_total_tokens, context_window=context_window,
-                  compaction=compaction)
+                  compaction=compaction, before_tool_call=gate)
 
         if asker_state["exit"]:      # 用户在模型提问时选了 /exit——本轮收尾后再退
             break
@@ -299,7 +311,7 @@ def _interruptible(flag: InterruptFlag):
 
 def _run_turn(task: str, *, client, model, tools, messages, anchors, state, follow_up,
               flag, session, on_event, out, max_steps, max_total_tokens,
-              context_window, compaction) -> None:
+              context_window, compaction, before_tool_call=None) -> None:
     with _interruptible(flag):
         answer = _guarded_run(
             out,
@@ -308,6 +320,7 @@ def _run_turn(task: str, *, client, model, tools, messages, anchors, state, foll
             session=session, on_event=on_event, max_steps=max_steps,
             max_total_tokens=max_total_tokens, context_window=context_window,
             compaction=compaction,
+            before_tool_call=before_tool_call,
             # steering 在纯 REPL 无输入源（阻塞的 input 拿不到「干活时打字」），
             # 只接 followUp；注入点已在 loop 里备好，等 TUI/流式通电
             instructions=build_context,
@@ -373,7 +386,7 @@ def _system_prompt() -> str:
 
 
 def _handle_command(line: str, *, out, messages, anchors, state, tools, client, model,
-                    compaction, context_window) -> bool:
+                    compaction, context_window, rules=None, hooks=()) -> bool:
     """返回 True 表示要退出 REPL。"""
     command = line.split()[0]
     if command in ("/exit", "/quit"):
@@ -394,12 +407,43 @@ def _handle_command(line: str, *, out, messages, anchors, state, tools, client, 
             f" | 锚点 {len(anchors.entries)} 个 | 压缩：{breaker}")
     elif command == "/memory":
         _show_memory(out)
+    elif command == "/permissions":
+        _show_permissions(out, rules, hooks)
     elif command == "/compact":
         _manual_compact(messages=messages, anchors=anchors, state=state,
                         client=client, model=model, compaction=compaction, out=out)
     else:
         out(f"未知命令 {command}，/help 看可用命令")
     return False
+
+
+def _show_permissions(out: Callable[[str], None], rules, hooks=()) -> None:
+    """列出规则与来源。「被哪条规则挡的、那条从哪来」是用户能自己修的前提。"""
+    if rules is None:
+        out("🔒 权限：未装配规则")
+        return
+    lines = [
+        f"  {kind:5} {rule.text()}   （来源：{rule.source}）"
+        for kind in ("deny", "ask", "allow")
+        for rule in rules.bucket(kind)
+    ]
+    if not lines:
+        out(f"🔒 权限：没有任何规则，一律按默认决策 `{rules.default_decision}`。"
+            "规则写在 ~/.pai/settings.json 或 ./.pai/settings.json 的 permissions 里。")
+        return
+    out("🔒 权限规则（求值顺序 deny → ask → allow，第一个匹配决定）：")
+    for line in lines:
+        out(line)
+    out(f"  没有规则命中时按默认决策 `{rules.default_decision}`")
+    _show_hooks(out, hooks)
+
+
+def _show_hooks(out: Callable[[str], None], hooks) -> None:
+    if not hooks:
+        return
+    out("🪝 PreToolUse hook（退出码 2 = 阻断，崩溃/超时不阻断）：")
+    for spec in hooks:
+        out(f"  {spec.matcher:8} {spec.command}   （超时 {spec.timeout}s）")
 
 
 def _show_memory(out: Callable[[str], None]) -> None:

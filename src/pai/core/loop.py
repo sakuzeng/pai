@@ -9,14 +9,15 @@
 压缩已接线（触发/切/摘/重建/熔断，见 pai.core.compaction）。
 交互层已接线（feature 05）：结构化事件（pai.core.events）、steering/followUp
 两个注入点（pai.core.queue 说明了两者的语义差别）、中断（pai.core.interrupt）。
+权限已接线（feature 07）：`before_tool_call` 返回非 allow 就不执行、把理由回填。
 所有新参数都是 keyword-only 且默认 None——不传时行为与接线前逐字相同。
-刻意还没有的（路线图阶段任务）：权限钩子、流式。
+刻意还没有的（路线图阶段任务）：流式。
 """
 
 from __future__ import annotations
 
 import json
-from typing import Callable, List, Optional
+from typing import TYPE_CHECKING, Callable, List, Optional
 
 from pai.core import interrupt as interrupt_module
 from pai.core.compaction import (
@@ -40,6 +41,7 @@ from pai.core.events import (
     Compacted,
     CompactionSkipped,
     Interrupted,
+    PermissionDecided,
     ToolEnd,
     ToolStart,
     render_text,
@@ -48,11 +50,18 @@ from pai.core.interrupt import InterruptFlag
 from pai.core.session import SessionLog
 from pai.core.tools import Tool
 
+if TYPE_CHECKING:                       # loop 只需要 .kind / .reason，不该运行期依赖权限层
+    from pai.core.permissions import Decision
+
 # provider 回传 usage 的字段名各家不同，这里只做透传不做归一化：
 # 归一化会丢掉 DeepSeek 专有的 prompt_cache_hit/miss_tokens，而那正是我们要的。
 USAGE_RECORD_TYPE = "usage"
 
 CANCELLED_RESULT = "(已取消，用户中断)"
+
+# 被权限层拦下的调用回填给模型的前缀。带前缀是为了让模型一眼看出「这是规矩不让，
+# 不是工具坏了」——后者会诱发重试，前者该诱发换做法。
+DENIED_PREFIX = "权限被拒绝，该工具调用未执行。原因："
 
 # 分层指令与自动记忆作为 **system 之后的第一条 user 消息**注入（照官方，D#42）。
 # 靠内容前缀认出这条消息：messages 会原样发给 provider，加自定义字段是协议外的东西。
@@ -92,6 +101,7 @@ def run_agent(
     instructions: Optional[Callable[[], str]] = None,
     anchors: Optional[AnchorBook] = None,
     compaction_state: Optional[CompactionState] = None,
+    before_tool_call: Optional[Callable[[str, dict], "Decision"]] = None,
 ) -> str:
     """跑一次 agent 任务，返回最终回答。
 
@@ -252,11 +262,26 @@ def run_agent(
                 interrupted = True
                 args, result, is_error = {}, CANCELLED_RESULT, False
             else:
-                on_event(ToolStart(tool_call_id=tc.id, name=tc.function.name,
-                                   args=_safe_args(tc.function.arguments)))
-                args, result, is_error = _run_tool(tools, tc)
-                if flag.is_set():
-                    interrupted = True          # 工具自己跑到一半被中断（bash 被杀）
+                decision = None
+                if before_tool_call is not None:
+                    decision = before_tool_call(
+                        tc.function.name, _safe_args(tc.function.arguments))
+                    on_event(PermissionDecided(
+                        tool_call_id=tc.id, name=tc.function.name,
+                        kind=decision.kind, reason=decision.reason))
+                if decision is not None and decision.kind != "allow":
+                    # 不执行，但**必须**回一条结果：tool_call_id 配对是硬约束，
+                    # 缺一条下一轮就是 400（D#41 同款不变量，中断路径已有先例）。
+                    # is_error=False：这不是出错，是按规矩拒绝，模型该据此换做法而非重试。
+                    args = _safe_args(tc.function.arguments)
+                    result = f"{DENIED_PREFIX}{decision.reason}"
+                    is_error = False
+                else:
+                    on_event(ToolStart(tool_call_id=tc.id, name=tc.function.name,
+                                       args=_safe_args(tc.function.arguments)))
+                    args, result, is_error = _run_tool(tools, tc)
+                    if flag.is_set():
+                        interrupted = True      # 工具自己跑到一半被中断（bash 被杀）
 
             on_event(ToolEnd(tool_call_id=tc.id, name=tc.function.name, args=args,
                              result=result, is_error=is_error))

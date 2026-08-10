@@ -41,6 +41,20 @@ class ToolStart:
 
 
 @dataclass(frozen=True)
+class PermissionDecided:
+    """权限判定结果。在 ToolStart **之前**发出——被拦下的调用压根不会有 ToolStart。
+
+    `kind` 是 loop 收到的最终三态。ask 到这里已经被装配层解析掉了
+    （问过真人，或无人可问降级为 deny），loop 不认识 ask 这个概念。
+    """
+
+    tool_call_id: str
+    name: str
+    kind: str
+    reason: str = ""
+
+
+@dataclass(frozen=True)
 class ToolEnd:
     tool_call_id: str
     name: str
@@ -93,6 +107,7 @@ AgentEvent = Union[
     AgentStart,
     TurnStart,
     AssistantMessage,
+    PermissionDecided,
     ToolStart,
     ToolEnd,
     Compacted,
@@ -114,6 +129,10 @@ def render_text(event: AgentEvent) -> Optional[str]:
         result = event.result
         ellipsis = "…" if len(result) > TOOL_RESULT_PREVIEW_CHARS else ""
         return f"🔧 {event.name}({event.args}) → {result[:TOOL_RESULT_PREVIEW_CHARS]}{ellipsis}"
+    if isinstance(event, PermissionDecided):
+        if event.kind == "allow":
+            return None                  # 放行是常态，逐条打出来只会淹没真正要看的
+        return f"🚫 权限拒绝 {event.name}：{event.reason}"
     if isinstance(event, Compacted):
         return f"🗜️ 压缩：切于 {event.cut}，估算 {event.before} → {event.after}"
     if isinstance(event, CompactionSkipped):

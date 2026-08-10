@@ -101,3 +101,65 @@ def test_once_assembles_layered_instructions(tmp_path, monkeypatch):
 
     sent = client.requests[0]["messages"]
     assert any("这个项目用 pytest" in str(m["content"]) for m in sent)
+
+
+# ---- feature 07 Task 7：ask 降级（拍板问 1）----
+
+
+def test_ask_without_a_human_degrades_to_deny():
+    """once 模式没有真人可问：ask 降级为 deny + 说明，模型可以换个做法继续。
+
+    不降级为 allow 的理由（拍板问 1）：自动化正是最危险的场景，
+    ask 规则在那里等于不存在的话，这条规则形同虚设。
+    """
+    from pai.core.gate import make_before_tool_call
+    from pai.core.permissions import RuleSet
+
+    gate = make_before_tool_call(
+        RuleSet.from_lists(ask=["Bash(rm *)"]), asker=None)
+
+    decision = gate("bash", {"command": "rm -rf tmp"})
+
+    assert decision.kind == "deny"
+    assert "无人可问" in decision.reason
+
+
+def test_ask_with_a_human_asks_and_honors_the_answer():
+    """同一条规则在 REPL 里是真的弹给人——同一套规则两种模式不同行为（拍板问 1）。"""
+    from pai.core.gate import make_before_tool_call
+    from pai.core.permissions import RuleSet
+
+    asked = []
+
+    def asker(question, options):
+        asked.append((question, options))
+        return options[0]              # 选「允许」
+
+    gate = make_before_tool_call(RuleSet.from_lists(ask=["Bash(rm *)"]), asker=asker)
+    assert gate("bash", {"command": "rm -rf tmp"}).kind == "allow"
+    assert asked and "rm -rf tmp" in asked[0][0]
+
+    refusing = make_before_tool_call(
+        RuleSet.from_lists(ask=["Bash(rm *)"]), asker=lambda q, o: o[1])
+    assert refusing("bash", {"command": "rm -rf tmp"}).kind == "deny"
+
+
+def test_run_once_wires_the_permission_gate(tmp_path, monkeypatch):
+    """接线层漏接就等于权限层没生效，且静默——所以专门钉一次。"""
+    import json as _json
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".pai").mkdir()
+    (tmp_path / ".pai" / "settings.json").write_text(
+        _json.dumps({"permissions": {"deny": ["Bash(rm *)"]}}), encoding="utf-8")
+
+    script = [
+        {"tool_calls": [("bash", _json.dumps({"command": "rm -rf 不存在的目录"}))]},
+        {"content": "被拦了"},
+    ]
+    client = FakeClient(script)
+
+    run_once("清理", client=client, model="fake", no_session=True, on_event=lambda _: None)
+
+    tool_msg = [m for m in client.requests[1]["messages"] if m["role"] == "tool"][0]
+    assert "bash(rm *)" in tool_msg["content"]

@@ -455,3 +455,27 @@ def test_asker_lets_the_user_exit(tmp_path, monkeypatch):
     ]
     client, printed = _run(["帮我选", "/exit", "不该读到这一行"], script)
     assert "再见" in printed
+
+
+# ---- feature 07 Task 7：/permissions ----
+
+
+def test_slash_permissions_lists_rules_with_source(tmp_path, monkeypatch):
+    """拒绝要说得出「哪条规则、从哪来」，否则用户无从修。"""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".pai").mkdir()
+    (tmp_path / ".pai" / "settings.json").write_text(
+        json.dumps({"permissions": {"deny": ["Bash(rm *)"], "allow": ["Bash(ls *)"]}}),
+        encoding="utf-8")
+
+    _, printed = _run(["/permissions"], [])
+
+    assert "bash(rm *)" in printed
+    assert "bash(ls *)" in printed
+    assert "project" in printed
+
+
+def test_slash_permissions_says_so_when_empty(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _, printed = _run(["/permissions"], [])
+    assert "没有" in printed or "默认" in printed

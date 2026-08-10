@@ -7,13 +7,43 @@
 
 from __future__ import annotations
 
+import fnmatch
 import inspect
 from dataclasses import dataclass
-from typing import Annotated, Callable, get_args, get_origin, get_type_hints
+from typing import Annotated, Callable, Optional, get_args, get_origin, get_type_hints
 
 PY_TO_JSON = {str: "string", int: "integer", float: "number", bool: "boolean"}
 
 REGISTRY: dict[str, "Tool"] = {}
+
+@dataclass(frozen=True)
+class MatchContext:
+    """匹配一条规则时的上下文：规则来源目录、当前工作目录、主目录。
+
+    为什么 matcher 非要它不可：`/secrets/**` 的含义取决于**哪个设置文件写下了这条规则**
+    （用户级指向 `~/.pai/secrets/**`，项目级指向 `<项目根>/secrets/**`）。
+    这个信息既不在 specifier 里也不在工具参数里，只能由权限层带进来。
+    """
+
+    anchor: str = ""            # 定义这条规则的设置文件所在目录
+    cwd: str = ""
+    home: str = ""
+
+
+# 权限匹配器签名：(specifier, args, require_all, ctx) -> bool
+Matcher = Callable[[str, dict, bool, MatchContext], bool]
+
+
+def default_matcher(
+    specifier: str, args: dict, require_all: bool, ctx: MatchContext
+) -> bool:
+    """没挂 matcher 的工具吃这个：对**第一个参数值**做通配符匹配。
+
+    `require_all` 与 `ctx` 都用不上——前者表达「复合命令的每个子命令都要匹配」，
+    后者表达路径锚点，默认实现眼里只有一个孤零零的值，两个概念都无处安放。
+    """
+    value = next(iter(args.values()), "")
+    return fnmatch.fnmatchcase(str(value), specifier)
 
 
 @dataclass
@@ -22,6 +52,21 @@ class Tool:
     description: str
     parameters: dict
     func: Callable
+    # 权限规则的 specifier 怎么匹配这次调用，**由工具自己说了算**（feature 07 拍板问 2）：
+    # bash 懂 shell 分隔符与包装器，fs 工具懂路径锚点，权限层一概不知道。
+    matcher: Optional[Matcher] = None
+
+    def matches(
+        self,
+        specifier: str,
+        args: dict,
+        require_all: bool,
+        ctx: Optional[MatchContext] = None,
+    ) -> bool:
+        ctx = ctx if ctx is not None else MatchContext()
+        if self.matcher is None:
+            return default_matcher(specifier, args, require_all, ctx)
+        return bool(self.matcher(specifier, args, require_all, ctx))
 
     def schema(self) -> dict:
         return {
@@ -95,3 +140,33 @@ def get_tools(names: list[str] | None = None) -> dict[str, Tool]:
     if names is None:
         return {n: t for n, t in REGISTRY.items() if n not in INTERACTIVE_ONLY}
     return {n: REGISTRY[n] for n in names}
+
+
+def all_tools() -> dict[str, Tool]:
+    """全部已注册工具，**含**只在交互模式露面的那些。
+
+    与 get_tools() 的区别是故意的：权限判定要认得每一个可能被调用的工具，
+    而 INTERACTIVE_ONLY 只是「不摆给模型看」，不是「不会被调用」。
+    显式 import 子模块而不是直接读 REGISTRY——否则判定结果取决于谁先 import 了谁。
+    """
+    from pai.core.tools import ask, fs, memory_tool, shell  # noqa: F401 - import 即注册
+
+    return dict(REGISTRY)
+
+
+def matcher_for(tool_func) -> Callable[[Matcher], Matcher]:
+    """把权限匹配函数挂到已注册的工具上：`@matcher_for(bash)`。
+
+    不动 `@tool` 本身——它只负责「schema 与代码同源」这一件事。
+    参数可以是工具函数，也可以是工具名字符串。
+    """
+    name = tool_func if isinstance(tool_func, str) else getattr(tool_func, "__name__", "")
+
+    def attach(fn: Matcher) -> Matcher:
+        if name not in REGISTRY:
+            # 静默不生效 = 权限规则静默失效，比报错危险得多
+            raise ValueError(f"matcher_for：工具 {name!r} 没注册，先用 @tool 注册再挂匹配器")
+        REGISTRY[name].matcher = fn
+        return fn
+
+    return attach
