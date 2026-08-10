@@ -15,7 +15,7 @@ from pai.core.hooks import load_hooks
 from pai.core.loop import print_event, run_agent
 from pai.core.events import AgentEvent, MemoryWritten
 from pai.core.memory import build_context, memory_dir
-from pai.core.permissions import RuleSet, load_rules, visible_tools
+from pai.core.permissions import DONT_ASK, RuleSet, load_rules, visible_tools
 from pai.core.tools import memory_tool
 from pai.core.session import SessionLog
 from pai.core.tools import get_tools
@@ -31,6 +31,7 @@ def run_once(
     model: str | None = None,
     on_event: Callable[[AgentEvent], None] = print_event,
     rules: RuleSet | None = None,
+    mode: str | None = None,
 ) -> str:
     memory_tool.set_memory_dir(memory_dir())
     memory_tool.set_notifier(
@@ -53,6 +54,9 @@ def run_once(
         instructions=build_context,
         context_window=context_window(),
         compaction=CompactionSettings(),
+        # once 没有真人：模式默认 dontAsk（D#48 的显式化，见 gate.py）。
+        # 显式传 mode 可覆盖——`--dangerously-skip-permissions` 就走这条。
         before_tool_call=make_before_tool_call(
-            rules, hooks=hooks, tools=tools, asker=None, warn=print),
+            rules, hooks=hooks, tools=tools, asker=None, warn=print,
+            mode=mode if mode is not None else DONT_ASK),
     )

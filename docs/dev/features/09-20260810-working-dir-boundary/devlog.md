@@ -250,3 +250,68 @@ git hooks 在**任何**仓库里都是执行点，agent 可能在子模块、临
   但 pai 连「看一眼当前清单」的入口都没有（`/permissions` 不列它）。登记 TODO。
 - Windows 路径（`AppData`、注册表相关）完全没考虑——pai 目标平台是 macOS/Linux，
   但清单里 `.bashrc` 这种写法在 Windows 上静默失效，如实记。
+
+## 2026-08-11 · Task 6：权限模式四态 + 配置入口
+
+**目标**：`default` / `acceptEdits` / `dontAsk` / `bypassPermissions`，
+并补上 Task 3 留下的可用性缺口（once 撞到 ask 全被拒、没有任何出路）。
+
+**改动**：
+- `src/pai/core/permissions.py`：`MODES` 四常量；`RuleSet.mode`；
+  **`decide()` 整体重构**成显式七步求值链；`load_rules` 读 `defaultMode`
+- `src/pai/core/gate.py`：`dontAsk` 后处理，与 `asker is None` 合流
+- `src/pai/core/hooks.py`：透传 `mode`
+- `src/pai/cli.py`：`--permission-mode` + `--dangerously-skip-permissions`
+- `src/pai/modes/{once,interactive}.py`：`mode` 参数；once 默认 `dontAsk`
+- 新增 `tests/test_permission_modes.py`（14 条）
+- `docs/dev/STATUS.md` 测试数字 368 → 382
+
+**测试**：红是 collection error（`ImportError: cannot import name 'ACCEPT_EDITS'`），
+中间红过一次 `make_before_tool_call() got an unexpected keyword argument 'mode'`
+（求值链改完但 gate 还没接），绿 `14 passed in 0.38s`。
+全量：`368 passed, 3 deselected` → **`382 passed, 3 deselected`**。
+
+**缺口已补上**（Task 3 devlog 里记的那条遗留）：
+
+```
+once 默认（dontAsk）       bash('ls -la') → deny
+once + 白名单             bash('ls -la') → allow
+--dangerously-skip       bash('ls -la') → allow
+```
+
+**`decide()` 整体重构了，这是本 task 最实质的改动**。原先是
+`for kind in KINDS: 找规则 → 命中就返回`，模式没有插入的位置。
+改成显式七步之后，spec 那张表和代码一一对应，每一步为什么在那个位置都能读出来。
+
+重构顺手修掉一处**原本就别扭的写法**：危险路径检查原先写成
+「在循环里 `if kind != "deny"` 时查一次，循环外再查一次」——同一个检查出现两处，
+是被循环结构逼出来的。现在它就是第 2 步，只有一处。
+
+**第 3 步与第 7 步的区分是本 task 的核心，也是最容易实现错的地方**：
+两者都产出 `kind == "ask"`，但
+
+- 第 3 步是**用户显式写下的** ask 规则（`Decision.rule` 非 None）→ **bypass 也要问**；
+- 第 7 步是**兜底**产生的 ask（界外读、bash）→ bypass 放行。
+
+混同的后果是二选一：要么 bypass 等于没有（全都免疫），要么 bypass 变成万能开关
+（全都放行，用户写的 `ask=["Bash(git push *)"]` 被无视）。
+`test_bypass_is_immune_to_explicit_ask_rules` 在**同一个 RuleSet 下**同时断言两种，
+Task 7 还要为它单加一条注入验证。
+
+**`acceptEdits` 的 `&& dirs.contains(...)` 不能省**（照 CC 的
+`mode === 'acceptEdits' && isInWorkingDir`）：省了就变成「接受编辑」=「接受任何位置的写」，
+包括 `../别人的项目/`。`test_accept_edits_still_respects_boundary` 钉死。
+
+**D#48 显式化的收获比预期大**：`asker is None` 与 `mode == DONT_ASK` 合流成一行
+`if asker is None or mode == DONT_ASK`。`test_no_human_is_equivalent_to_dont_ask`
+断言两条路径结果相同。feature 07 时把它当特例写在 gate 里，现在它有了名字、
+能被配置、能被 CLI 覆盖——**同一段代码，从「特例」变成「模式」只差一个名字**。
+
+**一处 spec 没写、实现时定的**：`--dangerously-skip-permissions` 与
+`--permission-mode=<非 bypass>` 同时给会 `parser.error` 报冲突，而不是静默取其一。
+两个 flag 表达相反意图时，猜用户想要哪个是最坏的选择。
+
+**遗留**：
+- **`/mode` 命令与 shift+tab 未做**（拍板：留 TUI 阶段）。所以 REPL 里换模式
+  当前只能重启 pai 加 flag。登记 TODO。
+- `/permissions` 不显示当前模式——用户看不到自己在哪个模式下。登记 TODO（小修）。

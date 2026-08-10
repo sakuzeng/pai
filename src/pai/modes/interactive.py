@@ -206,6 +206,7 @@ def run_interactive(
     compaction: Optional[CompactionSettings] = None,
     history_path: Optional[Path] = None,
     rules: Optional[RuleSet] = None,
+    mode: Optional[str] = None,
 ) -> None:
     on_event = on_event if on_event is not None else make_event_handler()
     client = client or make_client()
@@ -232,7 +233,7 @@ def run_interactive(
     hooks = load_hooks(warn=out)
     tools = visible_tools(tools, rules)            # 裸名 deny 的工具压根不摆给模型
     gate = make_before_tool_call(
-        rules, hooks=hooks, tools=tools, asker=human_asker, warn=out)
+        rules, hooks=hooks, tools=tools, asker=human_asker, warn=out, mode=mode)
     memory_tool.set_memory_dir(memory_dir())
     memory_tool.set_notifier(
         lambda topic, path: on_event(MemoryWritten(topic=topic, path=str(path))))

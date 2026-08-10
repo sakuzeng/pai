@@ -8,6 +8,7 @@ interactive 的分岔点。
 import argparse
 
 from pai.core.tools import shell
+from pai.core.permissions import BYPASS, MODES
 from pai.modes.interactive import run_interactive
 from pai.modes.once import run_once
 
@@ -24,9 +25,24 @@ def main() -> None:
         help="本次任务的累计 token 预算，超过即停（默认 200000，0 = 不限）",
     )
     parser.add_argument("--no-session", action="store_true", help="不落盘会话 JSONL")
+    parser.add_argument(
+        "--permission-mode", choices=MODES, default=None,
+        help=f"权限模式（默认读 settings.json 的 defaultMode）：{'/'.join(MODES)}",
+    )
+    # 名字里带 dangerously 是**故意的**（照 CC 同名 flag）：这是一条要让人打字时
+    # 就犹豫一下的路。它等价于 --permission-mode=bypassPermissions。
+    parser.add_argument(
+        "--dangerously-skip-permissions", action="store_true",
+        help="跳过权限确认（等价 --permission-mode=bypassPermissions）；deny 规则、"
+             "显式 ask 规则与危险路径仍然生效",
+    )
     args = parser.parse_args()
     if args.max_tokens < 0:
         parser.error("--max-tokens 不能为负（0 = 不限）")
+    if args.dangerously_skip_permissions and args.permission_mode not in (None, BYPASS):
+        parser.error(
+            f"--dangerously-skip-permissions 与 --permission-mode={args.permission_mode} 冲突")
+    mode = BYPASS if args.dangerously_skip_permissions else args.permission_mode
 
     try:
         if args.task is None:
@@ -34,6 +50,7 @@ def main() -> None:
                 max_steps=args.max_steps,
                 max_total_tokens=args.max_tokens or None,
                 no_session=args.no_session,
+                mode=mode,
             )
             return
 
@@ -42,6 +59,7 @@ def main() -> None:
             max_steps=args.max_steps,
             max_total_tokens=args.max_tokens or None,
             no_session=args.no_session,
+            mode=mode,
         )
         print(f"\n🤖 {answer}")
     finally:

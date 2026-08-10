@@ -38,6 +38,16 @@ KINDS = ("deny", "ask", "allow")
 WORKING_DIR = "workingdir"
 DEFAULT_DECISIONS = KINDS + (WORKING_DIR,)
 
+# 权限模式（feature 09 Task 6，照 CC 的四个对外可用模式；`plan` 与 ant-only 的
+# `auto` 不做，见 spec 非目标）。
+# **模式不是全局开关，是插在求值链特定位置的放行条件，且都有免疫项**——
+# 完整链见 decide() 的注释。
+DEFAULT_MODE = "default"
+ACCEPT_EDITS = "acceptEdits"          # 工作目录内的写自动放行；仍受边界与危险路径约束
+DONT_ASK = "dontAsk"                  # 一切 ask 直接变 deny（不在链上，是 gate 的后处理）
+BYPASS = "bypassPermissions"          # 全放行，但 deny/显式 ask/危险路径三条免疫
+MODES = (DEFAULT_MODE, ACCEPT_EDITS, DONT_ASK, BYPASS)
+
 # "Bash" / "Bash(git push *)"：工具名后可选一个括号包起来的 specifier。
 # specifier 内部允许任意字符（含括号，如 Bash(echo (x))），所以贪婪匹配到最后一个 `)`。
 _RULE_RE = re.compile(r"^(?P<tool>[^(]+?)\s*(?:\(\s*(?P<spec>.*?)\s*\))?$", re.S)
@@ -79,6 +89,7 @@ class RuleSet:
     ask: list[Rule] = field(default_factory=list)
     allow: list[Rule] = field(default_factory=list)
     default_decision: str = WORKING_DIR
+    mode: str = DEFAULT_MODE
 
     def bucket(self, kind: str) -> list[Rule]:
         return getattr(self, kind)
@@ -228,34 +239,75 @@ def decide(
     cwd: Optional[str] = None,
     home: Optional[str] = None,
     working_dirs: Optional[WorkingDirs] = None,
+    mode: Optional[str] = None,
 ) -> Decision:
-    """按 deny → ask → allow 求值，第一个匹配决定。顺序不许改，理由见模块 docstring。
+    """按 CC 的求值链判定。**顺序不许改**，每一步的位置都有理由：
 
-    `tools` / `cwd` / `home` / `working_dirs` 都可注入（离线可测、白盒断言用）。
+    | 步 | 检查 | bypass 免疫？ |
+    |---|---|---|
+    | 1 | deny 规则 | ✅ |
+    | 2 | 危险路径写检查 | ✅ |
+    | 3 | **用户显式配的** ask 规则 | ✅ |
+    | 4 | `bypassPermissions` → allow | — |
+    | 5 | `acceptEdits` 且是写 且在界内 → allow | — |
+    | 6 | allow 规则 | — |
+    | 7 | 兜底（边界判定 / 未声明路径语义的工具 → ask） | ❌ |
+
+    **第 3 步与第 7 步都产出 `ask`，但待遇不同**：前者是用户写下的规则
+    （`Decision.rule` 非 None），bypass 也要问；后者是兜底，bypass 放行。
+    混同两者的话 bypass 模式要么等于没有、要么变成万能开关。
+
+    `mode` 不传时取 `rules.mode`（配置文件里的 defaultMode）。
+    `dontAsk` 不在本链上——它是 `gate.py` 对最终结果的后处理。
     """
     if tools is None:
         tools = all_tools()
     cwd = cwd if cwd is not None else os.getcwd()
     home = home if home is not None else os.path.expanduser("~")
-    for kind in KINDS:
-        rule = _first_match(kind, tool_name, args, rules, tools, cwd, home)
-        if rule is not None:
-            # 危险路径检查排在 **deny 之后、ask/allow 之前**：
-            # deny 不能被降级成 ask，但 allow 翻不过它（bypass 免疫的实现位置）。
-            if kind != "deny":
-                blocked = _dangerous_write_check(tool_name, args, tools, home)
-                if blocked is not None:
-                    return blocked
-            return Decision(
-                kind=kind,
-                reason=f"命中 {kind} 规则 `{rule.text()}`（来源：{rule.source}）",
-                rule=rule,
-            )
+    mode = mode if mode is not None else rules.mode
+    if mode not in MODES:
+        raise ValueError(f"未知权限模式 {mode!r}，只认 {MODES}")
+    dirs = working_dirs if working_dirs is not None else WorkingDirs.from_startup(cwd)
+
+    def _rule_decision(kind: str, rule: Rule) -> Decision:
+        return Decision(
+            kind=kind,
+            reason=f"命中 {kind} 规则 `{rule.text()}`（来源：{rule.source}）",
+            rule=rule,
+        )
+
+    # 1. deny 规则——最先，且什么都翻不过它
+    rule = _first_match("deny", tool_name, args, rules, tools, cwd, home)
+    if rule is not None:
+        return _rule_decision("deny", rule)
+
+    # 2. 危险路径写检查（持久化位点）
     blocked = _dangerous_write_check(tool_name, args, tools, home)
     if blocked is not None:
         return blocked
+
+    # 3. 用户**显式配的** ask 规则
+    rule = _first_match("ask", tool_name, args, rules, tools, cwd, home)
+    if rule is not None:
+        return _rule_decision("ask", rule)
+
+    # 4. bypassPermissions：走到这里说明三条免疫都没命中
+    if mode == BYPASS:
+        return Decision(kind="allow", reason=f"权限模式 `{BYPASS}`")
+
+    # 5. acceptEdits：只免掉「写一律 ask」，**不免边界**（照 CC 的 && isInWorkingDir）
+    tool = tools.get(tool_name)
+    if mode == ACCEPT_EDITS and tool is not None and tool.access == WRITE \
+            and tool.get_path is not None and dirs.contains(tool.get_path(args)):
+        return Decision(kind="allow", reason=f"权限模式 `{ACCEPT_EDITS}`（工作目录内）")
+
+    # 6. allow 规则
+    rule = _first_match("allow", tool_name, args, rules, tools, cwd, home)
+    if rule is not None:
+        return _rule_decision("allow", rule)
+
+    # 7. 兜底
     if rules.default_decision == WORKING_DIR:
-        dirs = working_dirs if working_dirs is not None else WorkingDirs.from_startup(cwd)
         return _boundary_fallback(tool_name, args, tools, dirs)
     return Decision(
         kind=rules.default_decision,
@@ -321,8 +373,15 @@ def load_rules(
                     if warn:
                         warn(f"跳过无法解析的规则 {text!r}（{path}）：{e}")
         wanted = perms.get("defaultDecision")
-        if wanted in KINDS:
+        if wanted in DEFAULT_DECISIONS:
             merged.default_decision = wanted       # 后读的层（项目）覆盖前一层
+        wanted_mode = perms.get("defaultMode")
+        if wanted_mode is not None:
+            if wanted_mode in MODES:
+                merged.mode = wanted_mode
+            elif warn:
+                warn(f"未知权限模式 {wanted_mode!r}（{path}），按 `{DEFAULT_MODE}` 处理；"
+                     f"可选：{MODES}")
     return merged
 
 
