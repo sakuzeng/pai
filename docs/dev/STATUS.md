@@ -1,6 +1,6 @@
 # 当前状态快照
 
-最后更新：2026-08-10（阶段 2 前半程 REPL 交付）。给接手者（人或 AI）一页看清现状。
+最后更新：2026-08-10（阶段 2 REPL + 阶段 3 记忆交付）。给接手者（人或 AI）一页看清现状。
 「做了什么」的时间线见 [devlog.md](devlog.md)，「为什么这么选」见 [decisions.md](decisions.md)，
 功能级故事线见 [features/](features/README.md)，阶段地图见 [roadmap.md](roadmap.md)。
 
@@ -9,6 +9,8 @@
 agent loop + 工具系统 + 会话落盘 + 阶段 1 压缩闭环已跑通；阶段 2 前半程**交互模式（纯 REPL）
 已交付**——结构化事件流、steering/followUp 双队列、中断到进程组、`/` 命令与 `!` shell 模式、
 AskUserQuestion、工具状态行。`pai` 不带参数即进 REPL。
+阶段 3 **记忆已交付**——`PAI.md` 三层加载 + `@` 导入 + 自动记忆索引 + `remember` 写回，
+且**压缩后从磁盘重读重注入**（不做就是长会话里指令静默失效）。
 两个功能全貌见 [features/02-20260803-compaction/](features/02-20260803-compaction/README.md)
 与 [features/05-20260810-repl/](features/05-20260810-repl/README.md)。
 
@@ -29,7 +31,9 @@ AskUserQuestion、工具状态行。`pai` 不带参数即进 REPL。
 | `core/interrupt.py` | 可用 | 进程级中断标志（D#40）。loop 在步边界与每个 tool_call 前查，bash 在轮询里查 |
 | `modes/statusline.py` | 可用 | `render_tool_line(events, width)` 纯函数（按终端列宽算中文宽度）+ `\r` 原地刷新；真 tty 才启用，非 tty 退回滚动行 |
 | `core/tools/ask.py` | 可用 | AskUserQuestion，asker 装配期注入；**默认工具集不含它**（once 无真人可问） |
-| memory / permissions / streaming / skills / mcp_client / evals | 未开始 | 路线图后续阶段，见 [roadmap.md](roadmap.md)。阶段 2 后半程 TUI 亦未开始 |
+| `core/memory.py` | 可用 | 分层指令发现（用户级→根→cwd，local 在后，**不读 AGENTS.md** D#43）、`@path` 导入（相对基准/4 跳/环检测/代码块内不算）、自动记忆索引（git 根定 key，200 行 + 25KB 双上限，截断留提示） |
+| `core/tools/memory_tool.py` | 可用 | `remember(topic, fact)` 写主题文件 + 维护索引；topic 白名单校验挡路径穿越；目录与通知回调走注入点 |
+| permissions / streaming / skills / mcp_client / evals | 未开始 | 路线图后续阶段，见 [roadmap.md](roadmap.md)。阶段 2 后半程 TUI 亦未开始 |
 
 ## compaction.py 里有什么
 
@@ -56,9 +60,9 @@ AskUserQuestion、工具状态行。`pai` 不带参数即进 REPL。
 
 ## 测试
 
-共收集 **196 项**（2026-08-10 阶段 2 REPL 交付：事件/队列/中断/REPL/状态行 8 个 task）：
+共收集 **238 项**（2026-08-10 阶段 2 REPL 8 task + 阶段 3 记忆 7 task）：
 
-- `./test.sh` → **193 passed, 3 deselected**，全部离线（`tests/fake_llm.py` 假 provider）。**这是默认路径。**
+- `./test.sh` → **235 passed, 3 deselected**，全部离线（`tests/fake_llm.py` 假 provider）。**这是默认路径。**
 - `./test.sh --llm` → 额外跑打真实 API 的冒烟测试，**会产生费用**。
   需同时满足有 `DEEPSEEK_API_KEY` 且 `PAI_RUN_LLM_TESTS=1`——花钱的副作用不能是默认行为。
 
@@ -93,9 +97,9 @@ AskUserQuestion、工具状态行。`pai` 不带参数即进 REPL。
 
 ## 下一步
 
-阶段 2 前半程（REPL）已交付。按用户排定的顺序，接下来是**阶段 3 记忆** → **阶段 4 权限**，
-各走一次 superpowers 全链路（动工前先补该阶段「前置精读」缺口：memory / permissions+hooks
-官方章节尚未落笔记）。阶段 2 后半程 TUI 暂缓。
+阶段 2 前半程（REPL）与阶段 3（记忆）已交付。下一步是**阶段 4 权限**——
+动工前要补前置精读缺口（官方 permissions + hooks 两章尚未落笔记）。
+阶段 2 后半程 TUI 暂缓。
 
 阶段 1 遗留的两条候选仍在 TODO：
 - **reserve_tokens / keep_recent_tokens 实测校准**——目前仍是从 pi 借来的经验值，

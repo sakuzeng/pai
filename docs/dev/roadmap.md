@@ -41,9 +41,12 @@
 - **流程**：REPL 与 TUI 各走一次 superpowers 全链路。
   REPL 档案：[features/05-20260810-repl/](features/05-20260810-repl/README.md)（8 task TDD，193 passed）。
 
-## 阶段 3 · 记忆
+## 阶段 3 · 记忆（已交付 2026-08-10）
 
 - **目标**：分层记忆文件加载（项目/用户级）+ 会话学得的东西写回。
+- **档案**：[features/06-20260810-memory/](features/06-20260810-memory/README.md)（7 task TDD，235 passed）。
+  两条裁决：指令进第一条 user 消息（D#42，代价是必须自己实现压缩后重注入）、
+  只读 PAI.md 三层不读 AGENTS.md（D#43）。
 - **参照**：CC `src/memdir/`（findRelevantMemories/memoryScan）；面试准备 `12_记忆系统/深度_CC记忆系统.md`（外部参照）。
 - **前置精读**：
   - [x] [knowledge/claude-docs/memory.md](../../knowledge/claude-docs/memory.md)（两套记忆的加载算法；**读出一条 pai 未来的 bug**：压缩会摘掉指令文件，官方靠重注入兜）

@@ -1,6 +1,6 @@
 # 06-20260810-memory —— 记忆（分层指令加载 + 会话写回）
 
-状态：已拍板（2026-08-10 用户「可以，继续」；分支 `feat/memory`）
+状态：已交付（2026-08-10，7 task 全部 TDD 跑完，235 passed；待合并 main 后转已验收）
 
 ## 需求
 
@@ -65,15 +65,42 @@ user 消息**传，并自陈「因此没有严格遵守的保证」。
 ## 实施
 
 superpowers 全链路：[spec.md](spec.md) → [plan.md](plan.md) → SDD。
-分支：待拍板后开 `feat/memory`。
+分支 `feat/memory`（自 `feat/repl` 开出，基线 193 passed）。
 
 ## 结果与测试
 
-<!-- 交付后填 -->
+7 个 task 严格 TDD，每步真实数字见 [devlog.md](devlog.md)：
+
+| task | 内容 | 提交后全套 |
+|---|---|---|
+| 1 | 分层发现（用户级 → 根 → cwd，local 在后） | 199 passed |
+| 2 | `@path` 导入（相对基准 / 4 跳 / 环 / 代码块内不算） | 206 passed |
+| 3 | 自动记忆读取（git 根定 key，200 行 + 25KB 双上限） | 213 passed |
+| 4 | 接线进 loop（第一条 user 消息）与 once/REPL | 220 passed |
+| 5 | **压缩后从磁盘重读重注入**（唯一「不做就是 bug」的一环） | 223 passed |
+| 6 | `remember` 工具 + 路径穿越防御 + `MemoryWritten` | 231 passed |
+| 7 | `/memory` 命令 | **235 passed, 3 deselected** |
+
+**两处红出来的真问题**：
+1. Task 2 的红是**测试自己的 off-by-one**——官方「最大 4 跳」从根文档起算，
+   改的是测试不是实现，并把算法写进测试 docstring。
+2. Task 6 初版测试用 `remember(..., directory=Path)` 传目录，**`@tool` 只认标量参数，
+   `Path` 在装饰期就报错**；而把目录做成 `str` 参数等于让模型自己挑写盘位置——
+   比路径穿越还糟。改用注入点（D#40 同款）。
+
+**与计划的一处偏离**：plan 要求 `MemoryWritten` 事件落进会话 JSONL 审计；实现时发现
+**审计已经免费有了**（`remember` 的调用与结果本就以 `assistant.tool_calls` + `tool` 消息落盘），
+所以没重复落一份，该事件只负责可见性。
+
+**端到端冒烟**（真跑，非测试）：`AGENTS.md` 确实没被读、`@detail.md` 展开、`local` 在后、
+`remember` 写文件并建索引、`../../etc/passwd` 被拒且一个文件都没写出来、
+写回内容出现在下一次 `build_context()` 里。
 
 ## 遗留问题
 
-<!-- 交付后填，每条同步一行进全局 TODO -->
+全部登记在 TODO「feature 06（记忆）遗留」小节，共 6 条。最值得先知道的一条：
+**REPL 中途改 `PAI.md` 不生效**——多轮只在第一轮读盘（认出已有指令消息就连 loader 都不调），
+改了要等一次压缩或重启，可加 `/memory reload`。
 
 ## 用到的知识
 

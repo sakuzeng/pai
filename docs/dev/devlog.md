@@ -27,3 +27,4 @@
 - 2026-08-09 02-compaction SDD 六 task 完成——AnchorBook/find_cut_point/summarize/compact/熔断/接线全链 TDD，2 轮任务级修复（含 Critical：测试文件被重写当场恢复）→ [档案](features/02-20260803-compaction/README.md)
 - 2026-08-09 02-compaction 终审通过——最强模型全分支审查 With fixes（Critical：摘要 usage 漏记预算，计划自带 bug）→ 修复波 4/4 复审 clean，115 passed；5 项 Minor 延后入 TODO → [档案](features/02-20260803-compaction/README.md)
 - 2026-08-10 05-repl 立项→交付——阶段 2 前半程：事件流定型/双队列/中断到进程组/REPL/AskUser/状态行，8 task TDD，193 passed → [档案](features/05-20260810-repl/README.md)
+- 2026-08-10 06-memory 立项→交付——阶段 3：PAI.md 三层加载/@导入/自动记忆索引/remember 写回/压缩后重注入，7 task TDD，235 passed → [档案](features/06-20260810-memory/README.md)
