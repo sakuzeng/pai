@@ -1,6 +1,6 @@
 # 当前状态快照
 
-最后更新：2026-08-11（阶段 4 权限 + **工作目录边界与权限模式**交付）。
+最后更新：2026-08-11（**阶段 5 流式**交付）。
 **数字由机器对账**：`test_status_reports_the_current_test_count` 会在完整跑时校验本页的 passed 数——漂了三次之后不再靠人肉。
 给接手者（人或 AI）一页看清现状。
 「做了什么」的时间线见 [devlog.md](devlog.md)，「为什么这么选」见 [decisions.md](decisions.md)，
@@ -23,6 +23,11 @@ AskUserQuestion、工具状态行。`pai` 不带参数即进 REPL。
 （读界内放行/界外问、写一律问）、符号链接双路径、危险路径 bypass 免疫、
 **权限模式四态**（`default`/`acceptEdits`/`dontAsk`/`bypassPermissions`）。
 在当前目录跑 pai，**上级目录与系统文件已需确认**。
+阶段 5 **流式已交付**——答案逐字上屏、中断可掐在模型输出中途、工具能力标志
+（`is_read_only` / `is_concurrency_safe`，收 input 的函数、默认全 False）进 `@tool`、
+**保序贪心分批调度**（连续的并发安全工具并行，其余串行，不重排），
+权限**按批前置**判定（偏离 CC，绕开「两个并行工具同时问真人」）。
+usage 的取法按实测重写（D#58）：`include_usage` 在 DeepSeek 上是空操作，**每块都看**才取得到。
 功能全貌见 [features/02](features/02-20260803-compaction/README.md)、
 [features/05](features/05-20260810-repl/README.md)、
 [features/07](features/07-20260810-permissions/README.md)。
@@ -31,20 +36,20 @@ AskUserQuestion、工具状态行。`pai` 不带参数即进 REPL。
 
 | 模块 | 状态 | 说明 |
 |---|---|---|
-| `core/loop.py` | 可用 | agent loop：依赖注入、max_steps 兜底、每条消息落盘、usage 落盘、用量预算熔断、自动压缩触发/熔断 |
+| `core/loop.py` | 可用 | agent loop：依赖注入、max_steps 兜底、每条消息落盘、usage 落盘、用量预算熔断、自动压缩触发/熔断；**主循环走流式**（侧查询刻意不走）、工具按批调度、权限按批前置（D#59） |
 | `core/tools/` | 可用 | `@tool` 从签名生成 schema；bash / read_file / write_file / edit_file |
 | `core/compaction.py` | 可用 | 见下——阶段 1 主线（触发→切→摘→重建→熔断）全部接进 loop |
 | `modes/once.py` | 可用 | 单次任务，跑完即退出（对应 pi 的 print-mode）。client/model 可注入故可离线测；`context_window()` + `CompactionSettings()` 默认透传 |
 | `viz/` | 可用 | `pai-viz` 本地架构可视化：工具自省自动上图，阶段状态解析本表 |
 | `cli.py` / `config.py` | 可用 | cli 只做参数解析与分发；OpenAI 兼容协议打 DeepSeek；`context_window()` 读 `PAI_CONTEXT_WINDOW`，默认 1_000_000（v4-flash） |
 | `modes/interactive.py` | 可用 | REPL：跨轮持有 messages/锚点簿/熔断状态；历史（按 cwd 分文件、连续重复只记一条）、`\` 续行、`!` shell 模式、`/help /status /compact /clear /exit`、两级 Ctrl+C；API 出错不炸会话 |
-| `core/events.py` | 可用 | 10 个 frozen dataclass 扁平联合 + `render_text` 默认渲染器（D#39）。`on_event` 现在收事件对象，渲染下放 modes 层 |
+| `core/events.py` | 可用 | 12 个 frozen dataclass 扁平联合 + `render_text` 默认渲染器（D#39）。`on_event` 现在收事件对象，渲染下放 modes 层；`MessageDelta`（流式增量）与 `Interrupted(where="stream")` 于阶段 5 补上 |
 | `core/queue.py` | 可用 | `PendingMessageQueue`（all/single 两种 drain）。followUp 已通电；**steering 有注入点无输入源**（阻塞 input 拿不到「干活时打字」，等 TUI/流式） |
 | `core/interrupt.py` | 可用 | 进程级中断标志（D#40）。loop 在步边界与每个 tool_call 前查，bash 在轮询里查 |
 | `modes/statusline.py` | 可用 | `render_tool_line(events, width)` 纯函数（按终端列宽算中文宽度）+ `\r` 原地刷新；真 tty 才启用，非 tty 退回滚动行 |
 | `core/tools/ask.py` | 可用 | AskUserQuestion，asker 装配期注入；**默认工具集不含它**（once 无真人可问） |
 | `core/paths.py` | 可用 | pai 用户级路径唯一事实源：`~/.pai/projects/<可读 slug>/{memory,sessions}/`，slug 用全路径连字符（D#44，对齐 CC） |
-| `core/session.py` | 可用 | append-only JSONL，落**用户目录**不再写当前工作目录；每条带 `sessionId`/`cwd`；文件名带短 id（D#45，关掉 R#15） |
+| `core/session.py` | 可用 | append-only JSONL，落**用户目录**不再写当前工作目录；每条带 `sessionId`/`cwd`；文件名带短 id（D#45，关掉 R#15）；`append` 加锁（并发批同时回填会把 JSONL 写成半行） |
 | `core/memory.py` | 可用 | 分层指令发现（用户级→根→cwd，local 在后，**不读 AGENTS.md** D#43）、`@path` 导入（相对基准/4 跳/环检测/代码块内不算）、记忆扫描（每文件前 30 行取 frontmatter、mtime 新→旧、截 200）、索引**投影**（`render_index`，200 行 + 25KB 双上限，截断留提示）、相对时间与陈旧警告（`memory_age` / `freshness_note`） |
 | `core/recall.py` | 可用 | 按查询召回：manifest → 侧查询（`max_tokens=4096`——**推理模型的 reasoning 计进该上限**，实测 256 会静默截断）→ 防御式 JSON 解析（分得清「没说话」与「明确不选」）→ 白名单（容忍 `[type]` 装饰、取最长匹配）→ ≤5 篇 → `<system-reminder>` 注入块；空目录短路、`alreadySurfaced` 去重、连续 3 次失败停用并发 `RecallFailed` |
 | `core/tools/memory_tool.py` | 可用 | `remember(name, description, fact, type)` 一事一文件带 frontmatter，同名即更新；写完重建 `MEMORY.md`（原子写）；name 白名单校验挡路径穿越；目录/通知/会话 id 走注入点 |
@@ -53,7 +58,10 @@ AskUserQuestion、工具状态行。`pai` 不带参数即进 REPL。
 | `core/hooks.py` | 可用 | 外部命令 hook：退出码 0/2/其他 三态、多 hook 取最严；**超时/起不来 → deny（fail-closed，D#54）**，其他退出码维持非阻断；`load_hooks` 读两层配置 |
 | `core/gate.py` | 可用 | 装配 `before_tool_call`：规则 + hook + **ask 解析**（有真人问真人；无真人 = `dontAsk` 模式，两者合流 D#48/D#53）。loop 因此不认识 ask |
 | `core/tools/` 的 matcher | 可用 | `Tool.matcher` + `matcher_for`；bash 拆分隔符/剥包装器/词边界，fs 三件套认 `//`、`~/`、`/`（锚到规则来源）、裸名任意深度。另有 `get_path`/`access` 声明供边界判定用（**bash 两个都不声明**，故结构上不参与边界 D#52） |
-| streaming / skills / mcp_client / evals | 未开始 | 路线图后续阶段，见 [roadmap.md](roadmap.md)。阶段 2 后半程 TUI 亦未开始 |
+| `core/streaming.py` | 可用 | 流式装配：按 `index` 归并 tool_calls（`id`/`name` 只在首块）、`arguments` 拼完才解析（实测逐字符分片）、**usage 每块都看**（两种协议形状都取得到 D#58）、中断即停并如实回空 usage。**一次响应装配成一条 assistant 消息**（D#57，拒绝 CC 的 block 级记录） |
+| `core/scheduler.py` | 可用 | 保序贪心分批（照 CC `partitionToolCalls`）：连续的并发安全工具合批并行、其余串行、**结果按输入顺序回填**；单调用批不起线程池（于是 bash 永远在主线程）。`MAX_TOOL_WORKERS=8` 是未实测经验值 |
+| `modes/echo.py` | 可用 | 增量上屏：`MessageDelta` 不换行逐字写、每条消息只戴一次 `🤖`；**最终答案不打两遍**——按 `AgentEnd.reason` 分流（`final` 已流过不重打，`budget`/`max_steps`/`interrupted` 是 loop 合成的必须打） |
+| skills / mcp_client / evals | 未开始 | 路线图后续阶段，见 [roadmap.md](roadmap.md)。阶段 2 后半程 TUI 亦未开始 |
 
 ## compaction.py 里有什么
 
@@ -80,10 +88,10 @@ AskUserQuestion、工具状态行。`pai` 不带参数即进 REPL。
 
 ## 测试
 
-共收集 **461 项**（阶段 2 REPL 8 task + 阶段 3 记忆 7 task + 交付后五个补漏 + 文档一致性
-+ **阶段 4 权限 task 1-7** + **feature 10 记忆召回 7 task**）：
+共收集 **512 项**（阶段 2 REPL 8 task + 阶段 3 记忆 7 task + 交付后五个补漏 + 文档一致性
++ **阶段 4 权限 task 1-7** + **feature 10 记忆召回 7 task** + **feature 11 流式 task 1-6**）：
 
-- `./test.sh` → **458 passed, 3 deselected**，全部离线（`tests/fake_llm.py` 假 provider）。**这是默认路径。**
+- `./test.sh` → **509 passed, 3 deselected**，全部离线（`tests/fake_llm.py` 假 provider）。**这是默认路径。**
 - `./test.sh --llm` → 额外跑打真实 API 的冒烟测试，**会产生费用**。
   需同时满足有 `DEEPSEEK_API_KEY` 且 `PAI_RUN_LLM_TESTS=1`——花钱的副作用不能是默认行为。
 
@@ -128,8 +136,11 @@ AskUserQuestion、工具状态行。`pai` 不带参数即进 REPL。
 
 ## 下一步
 
-阶段 2 前半程（REPL）、阶段 3（记忆）、阶段 4（权限 + 工作目录边界）已交付。
-下一步按 roadmap 是**阶段 5 streaming**；阶段 2 后半程 TUI 暂缓。
+阶段 2 前半程（REPL）、阶段 3（记忆）、阶段 4（权限 + 工作目录边界）、**阶段 5（流式）**已交付。
+下一步按 roadmap 是**阶段 6 skills / MCP client**；阶段 2 后半程 TUI 暂缓。
+阶段 5 的四条遗留见 TODO「feature 11（流式）遗留」，其中两条值得先知道：
+**并发在界面上完全不可见**（做了并发却看不见并发）、
+**中断丢弃半条 assistant 消息**（屏幕上看得见、上下文里没有）。
 
 **两条待用户拍板**（见 TODO）：
 1. matcher 签名从已拍板 spec 的 3 参改成 4 参（D#49，feature 07 起就欠着）——

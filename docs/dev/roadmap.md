@@ -82,15 +82,30 @@
   - [x] [knowledge/claude-docs/permissions-hooks.md](../../knowledge/claude-docs/permissions-hooks.md)（求值顺序 deny→ask→allow、Bash 复合命令/包装器/词边界四坑、「语义下放给工具」的原文、hook 决策优先级）
 - **流程**：superpowers 全链路。
 
-## 阶段 5 · 流式
+## 阶段 5 · 流式（已交付 2026-08-11）
 
 - **目标**：流式输出 + 工具执行中断。
-- **范围**：必修前置（TODO 已记）——并行工具调用的 usage 重复累加问题。中断参照子 AbortController 思路：工具出错杀兄弟任务但不向上传播取消。工具能力标志（is_read_only / is_concurrency_safe）在此阶段进 `@tool` 装饰器——调度靠标志，不靠 if-else 判工具名。
+- **范围**：必修前置（TODO 已记）——并行工具调用的 usage 重复累加问题
+  （⚠️ **2026-08-11 实测：这条的前提不成立**——它是 Anthropic 协议下「一个 content block 一条
+  assistant 记录」的后果，OpenAI 兼容协议下一次响应只有一份 usage。范围待 brainstorm 重定，
+  见 [features/11](features/11-20260811-streaming/README.md)）。中断参照子 AbortController 思路：工具出错杀兄弟任务但不向上传播取消。工具能力标志（is_read_only / is_concurrency_safe）在此阶段进 `@tool` 装饰器——调度靠标志，不靠 if-else 判工具名。
 - **参照**：CC `src/services/tools/StreamingToolExecutor.ts`；CC `src/Tool.ts` 的 `isConcurrencySafe` / `isReadOnly`（能力标志，默认保守全 false。反编译源码行号会漂，检索符号名）。
 - **前置精读**：
-  - [ ] 官方 streaming 相关章节 → 届时落 knowledge/claude-docs/
-- **顺带工具**：WebFetch / WebSearch（长耗时工具最受益于流式与中断；单独立项走「中等改动」流程亦可提前）。
+  - [x] [knowledge/concepts/streaming-tool-calls.md](../../knowledge/concepts/streaming-tool-calls.md)（OpenAI 兼容协议的流式：tool_calls 按 index 归并、usage 在哪、中断没有 usage。**含 6 个真实探针**）
+  - [x] [knowledge/source-walks/cc-streaming-tools.md](../../knowledge/source-walks/cc-streaming-tools.md)（CC `StreamingToolExecutor` + `Tool.ts` 能力标志 + 保序分批 + 兄弟取消）
+  - ~~官方 streaming 相关章节 → 届时落 knowledge/claude-docs/~~ —— **2026-08-11 改写，理由留档**：
+    官方 Claude Code 文档**没有 streaming 章节**（见 [claude-docs/map.md](../../knowledge/claude-docs/map.md) 的覆盖图），
+    而 pai 走的是 **OpenAI 兼容协议打 DeepSeek**，真正约束 pai 的是 DeepSeek 的
+    `stream` / `stream_options` 语义。所以这条落到 `concepts/`（无单一外部原文可链）而非 `claude-docs/`。
+    **且实测与 DeepSeek 官方文档不符**——`include_usage` 是空操作、没有文档说的那个「choices 为空」的额外块，
+    证据见 [features/11 evidence](features/11-20260811-streaming/evidence/20260811-流式探针/说明.md)。
+- **顺带工具**：WebFetch / WebSearch（长耗时工具最受益于流式与中断；单独立项走「中等改动」流程亦可提前）。**未做**，仍在随做清单里。
 - **流程**：superpowers 全链路。
+- **档案**：[features/11-20260811-streaming/](features/11-20260811-streaming/README.md)（6 task TDD，509 passed）。
+  交付形态是**方案 B**：做了流式输出 + 能力标志 + 保序并发；**没做**边流边派发与兄弟取消
+  （实测边流边派发最多抢 16% 流时间，而 CC 那套复杂度全为它付）。
+  三条升格的取舍见 [D#57](decisions.md)（一次响应一条消息）、[D#58](decisions.md)（usage 每块都看）、
+  [D#59](decisions.md)（权限按批前置）。
 
 ## 阶段 6 · skills / MCP client
 

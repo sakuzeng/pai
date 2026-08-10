@@ -62,6 +62,9 @@
 | 54 | hook fail-closed，但只覆盖「没拿到判定」（复议 50） |
 | 55 | 记忆索引是**投影**不是账本——从 frontmatter 重建，代价是手编被覆盖 |
 | 56 | 召回照 CC 做框架侧查询，但加空目录短路 + 连续失败停用 + usage 计进熔断 |
+| 57 | 一次流式响应装配成**一条** assistant 消息——拒绝 CC 的 block 级记录 |
+| 58 | usage「每块都看」而不是照文档认 `include_usage`（实测与文档不符） |
+| 59 | 权限**按批前置**判定，偏离 CC 的「执行时判」 |
 
 ## 种子版（2026-08-02）
 
@@ -644,3 +647,58 @@
     连带把「解析不出来」与「明确选了空列表」在解析层分开（前者才是故障），并加
     `RecallFailed` 事件。**教训**：抄来的常数带着它原本的模型假设，前提不会自己跟过来。
     见 [K concepts/reasoning-models-max-tokens.md](../../knowledge/concepts/reasoning-models-max-tokens.md)。
+
+57. **一次流式响应装配成一条 assistant 消息**（2026-08-11，feature 11 Task 1）。
+
+    **CC 怎么做**：走 Anthropic 协议，流式并行工具调用时**每个 content block 变成一条
+    独立的 assistant 记录**，它们共享同一个 `message.id`。代价是必须再写一个
+    `getAssistantMessageId`：从后往前找「最后一次真实 usage」当锚点时，会锚在同一响应的
+    最后一个分片上，而该分片的 usage 其实覆盖了前面几个分片 → 前面那些被重复计入。
+    于是找到锚之后还要继续往前挪，直到同一响应的第一个分片。
+
+    **pai 怎么做**：`streaming.assemble` 把整个 chunk 序列装成**一条**消息，
+    形状与非流式的 `response.choices[0].message` 兼容，loop 那一侧一个字都不用改。
+
+    **理由**：那个补丁存在的唯一原因是 CC 的**建模选择**，不是流式的固有代价。
+    保持一对一，补丁就永远不需要。这条推翻了 TODO 里挂了很久的「接流式前必修：
+    并行工具调用会让 usage 重复累加」——**它的前提在 OpenAI 兼容协议下不成立**
+    （实测：2 个并行 tool_calls、1 份 usage，流式与非流式一致）。
+
+    **反过来仍要警惕**：若将来为了「边流边显示」把一次响应拆成多条记录，
+    就是亲手复制这个 bug。判据写在 [K concepts/streaming-tool-calls.md](../../knowledge/concepts/streaming-tool-calls.md) 第四节：
+    **问「一次 API 响应在我的数据结构里变成了几条记录」**。
+
+58. **usage 的取法是「每块都看，最后一个非空的赢」，不照文档认 `include_usage`**
+    （2026-08-11，feature 11 Task 1，实测证据见
+    [features/11 evidence](features/11-20260811-streaming/evidence/20260811-流式探针/说明.md)）。
+
+    **文档怎么说**（DeepSeek 官方，`refs/deepseek-api/api/create-completion.md`）：
+    设 `stream_options={"include_usage": true}` 时，在 `[DONE]` 之前多传**一个额外的块**，
+    该块 `usage` 有值而 **`choices` 始终是空数组**。
+
+    **实测是什么**（三方对照：不传 / `False` / `True`）：`include_usage` 是**空操作**，
+    usage 一律挂在带 `finish_reason` 的**末块**上，该块 `choices` **从来不为空**，
+    那个「额外块」从未出现。
+
+    **pai 怎么做**：不管 `choices` 空不空，**每块都看一眼 `chunk.usage`**，最后一个非空的赢。
+
+    **理由**：OpenAI 生态最常见的写法是 `if not chunk.choices: usage = chunk.usage`——
+    在 DeepSeek 上那个分支**永不触发**，usage 恒为 None，而 usage 是预算熔断与上下文锚点的
+    唯一输入，两者会一起**静默**失效。反过来假设「usage 一定在末块」也不安全（标准 OpenAI
+    会给独立块）。「每块都看」是唯一同时吃得下两种形状的写法。
+
+59. **权限判定按批前置，不在执行时判**（2026-08-11，feature 11 Task 5）。
+
+    **CC 怎么做**：权限在 `runToolUse` 内部判，与工具执行交织。
+
+    **pai 怎么做**：每批开始前**串行判完该批所有工具的权限**，只把 allow 的派发给调度器。
+
+    **理由两条**：① CC 的做法下，同批两个并行工具可能同时要求问真人——正好撞上
+    TODO 里「asker 与 REPL 抢同一个输入流」那条已知缺陷；按批前置让它结构上不存在。
+    ② **语义变化被限制在批内**：并发批里全是只读工具，不改变彼此的判定前提；
+    批与批之间仍保持「先执行前一批、再判定后一批」，所以「工具 A 建了目录、B 才写得进去」
+    这类依赖不受影响。
+
+    **前提被钉进代码**：调度器要求 `read_only` **且** `concurrency_safe` 都为真才并发
+    （`scheduler._parallelizable`）。只看 `concurrency_safe` 的话，将来出现一个
+    「并发安全但会写」的工具，理由②会**静默失效**——所以前提放在代码里，不放在文档里。

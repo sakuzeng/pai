@@ -5,6 +5,8 @@ import signal
 import threading
 import time
 
+import pytest
+
 from pai.core import interrupt
 from pai.core.tools import get_tools
 
@@ -588,3 +590,109 @@ def test_new_memory_without_type_defaults_to_project(tmp_path):
     with _memory_at(tmp_path):
         memory_tool.remember(name="乙", description="d", fact="f")
     assert scan_memories(tmp_path)[0].type == "project"
+
+
+# ---------------------------------------------------------------------------
+# feature 11 task 3：工具能力标志
+# ---------------------------------------------------------------------------
+
+
+def test_capabilities_default_to_false_for_undeclared_tools():
+    """fail-closed（照 CC 的 buildTool 默认）：新加的工具忘了声明 → 判为不可并发。
+
+    **代价是慢，不是错**——最坏结果是它被串行执行。反过来默认 True 才是危险的。
+    """
+    from pai.core.tools import Tool
+
+    t = Tool(name="x", description="d", parameters={}, func=lambda: "")
+    assert t.read_only({}) is False
+    assert t.concurrency_safe({}) is False
+
+
+def test_capabilities_accept_plain_bools():
+    """大多数工具的取值是常量（read_file 永远只读），写 True 就够。"""
+    from pai.core.tools import REGISTRY, capabilities_for, tool
+
+    @tool
+    def _cap_bool_probe(a: str) -> str:
+        """探针。"""
+        return a
+
+    capabilities_for(_cap_bool_probe, read_only=True, concurrency_safe=True)
+    t = REGISTRY["_cap_bool_probe"]
+    assert t.read_only({"a": "1"}) is True
+    assert t.concurrency_safe({"a": "1"}) is True
+
+
+def test_capabilities_accept_callables_that_look_at_args():
+    """收 input 而不是静态布尔（照 CC 的 Tool.isReadOnly(input)）：
+    bash 是不是只读取决于这次跑 `ls` 还是 `rm`，静态布尔表达不了。
+
+    pai 今天没有这样的工具，但签名要现在就留对，否则将来得改第二次。
+    """
+    from pai.core.tools import REGISTRY, capabilities_for, tool
+
+    @tool
+    def _cap_callable_probe(cmd: str) -> str:
+        """探针。"""
+        return cmd
+
+    capabilities_for(_cap_callable_probe,
+                     read_only=lambda args: args.get("cmd", "").startswith("ls"))
+    t = REGISTRY["_cap_callable_probe"]
+    assert t.read_only({"cmd": "ls -l"}) is True
+    assert t.read_only({"cmd": "rm -rf /"}) is False
+
+
+def test_capability_raising_is_treated_as_unsafe():
+    """照 CC：判定器自己抛异常就当不安全（它的注释点名了 shell 词法解析会失败）。"""
+    from pai.core.tools import REGISTRY, capabilities_for, tool
+
+    @tool
+    def _cap_boom_probe(a: str) -> str:
+        """探针。"""
+        return a
+
+    def boom(_args):
+        raise RuntimeError("判定器炸了")
+
+    capabilities_for(_cap_boom_probe, read_only=boom, concurrency_safe=boom)
+    assert REGISTRY["_cap_boom_probe"].read_only({"a": "x"}) is False
+
+
+def test_capability_with_non_dict_args_is_unsafe():
+    """模型发来的 arguments 可能是 `null` / `[1,2]` / 字符串——
+    判定期拿到脏输入是常态（同 get_path 那条注释的理由）。"""
+    from pai.core.tools import REGISTRY
+
+    t = REGISTRY["read_file"]
+    assert t.read_only(None) is False
+    assert t.concurrency_safe([1, 2]) is False
+
+
+def test_capabilities_for_rejects_unregistered_tools():
+    """静默不生效 = 调度静默退回串行，比报错难查得多（同 matcher_for 的理由）。"""
+    from pai.core.tools import capabilities_for
+
+    with pytest.raises(ValueError, match="没注册"):
+        capabilities_for("no_such_tool_at_all", read_only=True)
+
+
+def test_builtin_tool_capabilities():
+    """六个内置工具的取值钉死。
+
+    `bash` 两个都**不声明**：CC 是 `isConcurrencySafe = isReadOnly(input)`，
+    而 pai 没有只读命令判定器（feature 07 明确不做只读免提示集合，TODO 有记），
+    前件不存在就不装——不声明本身就是声明。
+    """
+    from pai.core.tools import all_tools
+
+    tools = all_tools()
+    assert tools["read_file"].read_only({"path": "x"}) is True
+    assert tools["read_file"].concurrency_safe({"path": "x"}) is True
+    for name in ("write_file", "edit_file", "bash", "remember", "ask_user_question"):
+        assert tools[name].read_only({}) is False, name
+        assert tools[name].concurrency_safe({}) is False, name
+    # bash 是「不声明」而不是「声明为 False」——两者行为相同但意图不同，钉死意图
+    assert tools["bash"].is_read_only is None
+    assert tools["bash"].is_concurrency_safe is None

@@ -36,3 +36,8 @@
 - 2026-08-10 07-permissions 立项→交付——阶段 4：三态求值/匹配下放给工具/bash 四坑/路径锚点/两层设置/外部 hook 全链 TDD，三条注入反证 + 自举跑通自己的 design_gate，329 passed → [档案](features/07-20260810-permissions/README.md)
 - 2026-08-11 09-working-dir-boundary 立项→交付——补 feature 07 缺的**策略层**：默认兜底从常量 allow 改为工作目录边界函数、符号链接双路径、危险路径 bypass 免疫、权限模式四态、hook 改 fail-closed，7 task TDD + 四条注入验证，385 passed → [档案](features/09-20260810-working-dir-boundary/README.md)
 - 2026-08-11 10-memory-recall 立项→交付——补 feature 06 缺的**召回层**：记忆改一事一文件带 frontmatter、MEMORY.md 由扫描结果重建（投影不是账本 D#55）、相对时间与陈旧警告、每轮侧查询选 ≤5 篇注入 system-reminder（usage 计进熔断、连续失败停用 D#56），7 task TDD，458 passed → [档案](features/10-20260811-memory-recall/README.md)
+- 2026-08-11 11-streaming 立项——阶段 5 开工：档案建立状态「讨论中」、.active 切过去，待前置精读与 brainstorm 拍板 → [档案](features/11-20260811-streaming/README.md)
+- 2026-08-11 11-streaming 前置精读——CC 流式执行器与能力标志走读 + OpenAI 兼容协议流式实测 6 探针，**推翻 TODO「usage 重复累加」的前提**、撞出 include_usage 空操作与中断无 usage 两条 → [档案](features/11-20260811-streaming/README.md)
+- 2026-08-11 11-streaming brainstorm→spec 定稿——三问拍板完整存档：方案 B（流式+能力标志+保序并发）、默认开不加开关、两条 05 遗留都不进；待批后进 plan → [spec](features/11-20260811-streaming/spec.md)
+- 2026-08-11 11-streaming plan 定稿——6 task 带全量代码严格 TDD（装配器/loop 流式/能力标志/调度器/接线/上屏），测试数字一律写下限，待批后开工 → [plan](features/11-20260811-streaming/plan.md)
+- 2026-08-11 11-streaming 交付——阶段 5：主循环走流式（增量上屏/中断掐在流中途/unmetered 留痕）、工具能力标志进 @tool（收 input 的函数，默认全 False）、保序贪心分批并发、权限按批前置（D#57-59）；**反向对照推翻了 TODO 挂了很久的「usage 重复累加」必修前提**，6 task TDD，509 passed → [档案](features/11-20260811-streaming/README.md)

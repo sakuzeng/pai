@@ -256,6 +256,36 @@
 - [ ] **apiKeyHelper（key 来自一条命令）**：价值在密钥轮转/企业网关，pai 暂无此场景；
       带 TTL 缓存 + stale-while-revalidate + 并发去重一整套复杂度，等真需要再做。
 
+### feature 11（流式）遗留 —— 2026-08-11
+
+- [ ] **中断丢弃半条 assistant 消息，与屏幕上看到的不一致**（11 复盘质疑四）：
+      打出来的半截答案不进上下文，下一轮问「你刚说的那个」它不知道。
+      当时的理由是实现视角的（没有 usage、token 数无从得知）；用户视角看，
+      「看得见的东西不算数」才是那个奇怪的地方。可考虑追加时按估算记 token
+      （锚点本来就允许估算段），值得复议。
+- [ ] **并发在界面上完全不可见**（11 复盘质疑二）：为了不给 modes 层强加「事件处理器
+      必须线程安全」，所有事件都在主线程发、`ToolEnd` 按原顺序交付——于是看不出谁先跑完，
+      甚至看不出并发有没有真的发生。**做了并发却看不见并发**，对学习驱动的项目是损失。
+      也许加个事件时间戳就够，不必改线程模型。
+- [ ] **`MAX_TOOL_WORKERS = 8` 是个不会生效的常量**（11 复盘质疑一）：唯一的并发安全工具是
+      `read_file`，模型一轮最多发过 3 个。连带**质疑「给照抄常数写来源注释」这条习惯**——
+      给一个不会生效的常量写严肃注释，可能把「留痕」做成了仪式。
+      下次遇到倾向于直接写「暂不限并发，真撞上再加」。
+- [ ] **`once` 的输出形态变了**（11 复盘质疑三）：多了 `🤖 ` 前缀与空行，stdout 被多次写入。
+      拍板时当作「预期内的代价」轻轻放过了，但 once 是**给脚本用的模式**，
+      `pai "..." > out.txt` 这类用法迟早要回来处理。
+- [ ] **能力判定的三条退化路径不可分辨**（11 task 3）：未声明 / 参数不是 dict /
+      判定器抛异常，全部返回 False 且不留痕——「判定器写错了」与「工具确实不安全」
+      在外部完全一样。工具多了会变成静默的性能损失。
+- [ ] **`assemble` 不认 `finish_reason` 提前收尾**（11 task 1）：读到迭代器结束为止。
+      真实 SDK 在 `[DONE]` 后就停，暂不影响；provider 若在 finish 之后还发东西会继续消费。
+- [ ] **流式中断的粒度是「块与块之间」**（11 task 1）：巨大 chunk 传输中按 Ctrl+C
+      要等它收完。实测 chunk 都很小（逐字符），暂不处理。
+- [ ] **把「反向对照」写成 roadmap 的固定勾选项**（11 复盘「下次怎么做更好」）：
+      本轮它是用户在开工指令里点名要求的，结果一次撞出三条文档读不出来的事实，
+      其中一条直接决定了核心代码怎么写。应在各阶段「前置精读」清单下加一行固定项：
+      **「反向对照：拿 N 个真实场景跑一遍，把与文档不符的地方记进 evidence」**。
+
 ### feature 10（记忆召回）遗留 —— 2026-08-11
 
 - [x] ~~**召回的 `json_object` 一次都没真验过**~~ **已验证并修复 2026-08-11**（用户授权花钱）。
@@ -323,9 +353,14 @@
 - [ ] **指令消息作为普通 user 消息参与压缩切点计算**（06 task 5）：它可能被切掉——
       现在靠重注入兜住了，但切点算法并不知道这条消息「特殊」。若将来指令很长，
       值得让 `find_cut_point` 显式跳过它。
-- [ ] **`set_memory_dir` / `set_notifier` / `set_origin_session` 是进程级全局**
+- [x] ~~**`set_memory_dir` / `set_notifier` / `set_origin_session` 是进程级全局**
       （06 task 6 + **feature 10 又加了第三个**，同 D#40 的老问题）：
-      测试靠 contextmanager 复位；一旦有并发（阶段 5）就要重新考虑。
+      测试靠 contextmanager 复位；一旦有并发（阶段 5）就要重新考虑。~~
+      **2026-08-11 并发真的来了，核实后这条担忧不成立**（feature 11 Task 5）：
+      三个注入点都是**装配期写、执行期只读**，线程并发下不构成竞争。
+      真正需要加锁的是 `SessionLog.append`（多个工具同时回填结果会把 JSONL 写成半行），
+      已加 `threading.Lock`。**原条目保留**：它记录的是「担心过、查过、结论是不用改」，
+      比直接删掉有用。
 
 ### feature 05（REPL）遗留 —— 2026-08-10
 
@@ -414,12 +449,26 @@
       pi 的语义（`api/openai-completions.ts:1337`）：`prompt_tokens` 是**含缓存的总数**，
       `input = prompt_tokens - cacheRead - cacheWrite`，`totalTokens = input+output+cacheRead+cacheWrite`。
       按钱算预算的前提就是这个减法。注：pi 明确兼容了 DeepSeek 的 `prompt_cache_hit_tokens` 字段。
-- [ ] **接流式前必修：并行工具调用会让 usage 重复累加**（2026-08-03）。
-      CC 注释（`utils/tokens.ts:28`）：并行工具调用流式返回时，**每个 content block 会成为一条独立的
-      assistant 记录，但共享同一个 `message.id`**——天真累加就是重复计费，CC 为此专门有
-      `getAssistantMessageId` 识别同源记录。
-      pai 当前安全（不流式，一次 `create()` 累加一次），但接流式后必然撞上。
-      与「单轮多 tool_calls 无测试覆盖」（R#11）是同一场景的两面。
+- [x] ~~**接流式前必修：并行工具调用会让 usage 重复累加**（2026-08-03）~~ ——
+      **2026-08-11 前提被实测推翻，本条降级为「不适用」**（feature 11 前置精读的反向对照）。
+      原文保留：CC 注释（`utils/tokens.ts:28`）说并行工具调用流式返回时，**每个 content block
+      会成为一条独立的 assistant 记录，但共享同一个 `message.id`**，天真累加就是重复计费，
+      CC 为此有 `getAssistantMessageId` 识别同源记录；当时判断「pai 接流式后必然撞上」。
+      **错在哪**：那是 **Anthropic 协议的形状**带来的，不是流式的固有属性。pai 走 OpenAI
+      兼容协议，实测**一次流式响应只有一份 usage**（2 个并行 tool_calls、1 份 usage，
+      流式与非流式一致），证据见
+      [features/11 evidence](features/11-20260811-streaming/evidence/20260811-流式探针/说明.md)。
+      **仍需警惕的是自己造出来**：若 pai 为了边流边显示把一次响应拆成多条 assistant 记录，
+      就会亲手复制这个 bug。判据写进
+      [K concepts/streaming-tool-calls.md](../../knowledge/concepts/streaming-tool-calls.md) 第四节。
+      与「单轮多 tool_calls 无测试覆盖」（R#11）仍是同一场景的两面，**R#11 那条不受影响，照做**。
+- [ ] **接流式后真正会咬人的是这两条**（2026-08-11 探针替换上面那条，归 feature 11）：
+      ① **usage 的取法**——`stream_options.include_usage` 在 DeepSeek 上是**空操作**，
+      usage 永远在**末块**且 `choices` **非空**；OpenAI 生态惯用的
+      `if not chunk.choices: usage = chunk.usage` 分支**永不触发** → 预算熔断与锚点一起静默哑掉。
+      稳妥写法是「每块都看一眼 `chunk.usage`，最后一个非空的就是它」。
+      ② **中断掉的流拿不到 usage**（它在末块，而我们没读到末块）→ 被中断请求的消耗
+      不进 `spent_tokens`，且偏差方向恒定（**总是少算**）。与下面「usage 可信度过滤」同源。
 - [ ] **usage 可信度过滤**（2026-08-03）。两家都不直接信原始返回：
       pi 排除 `aborted` / `error` / 全 0；CC 排除**合成消息**（`SYNTHETIC_MESSAGES`，
       中断等场景注入的假 assistant 消息带假 usage）。

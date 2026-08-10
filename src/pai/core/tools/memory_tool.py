@@ -24,7 +24,7 @@ from pai.core.memory import (
     render_index,
     scan_memories,
 )
-from pai.core.tools import tool
+from pai.core.tools import capabilities_for, tool
 from pai.core.tools.fs import atomic_write
 
 _DIR: Optional[Path] = None
@@ -149,3 +149,7 @@ def remember(
     if _NOTIFY is not None:
         _NOTIFY(safe, target)                 # 只有真写成功了才通知
     return f"已记住（{safe}）：{fact.strip()}"
+
+
+# 写文件 + 重建索引，两样都不是只读，也不能与别的写并发（feature 11 Task 3）。
+capabilities_for(remember, read_only=False, concurrency_safe=False)

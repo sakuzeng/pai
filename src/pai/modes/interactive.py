@@ -64,6 +64,7 @@ from pai.core.queue import PendingMessageQueue
 from pai.core.recall import RecallState, make_recall
 from pai.core.session import SessionLog
 from pai.core.tools import Tool, ask, get_tools, memory_tool
+from pai.modes.echo import make_stream_echo
 from pai.modes.statusline import StatusLinePrinter
 
 PROMPT = "› "
@@ -179,16 +180,23 @@ def make_event_handler(stream=None, *, enabled: Optional[bool] = None
     out = stream if stream is not None else sys.stdout
     printer = StatusLinePrinter(stream=out, enabled=enabled)
 
-    def handle(event: AgentEvent) -> None:
+    def rest(event: AgentEvent) -> None:
+        """状态行优先接管工具事件，其余回落到按行渲染。"""
         if isinstance(event, (ToolStart, ToolEnd)) and printer.enabled:
             printer.handle(event)
             return
-        if isinstance(event, AgentEnd) and printer.enabled:
-            printer.clear()
         text = render_text(event)
         if text is not None:
             out.write(text + "\n")
             out.flush()
+
+    echo = make_stream_echo(out, fallback=rest)
+
+    def handle(event: AgentEvent) -> None:
+        # 状态行要在**结尾语打出来之前**擦掉，否则 `\r` 那行会留在屏幕上
+        if isinstance(event, AgentEnd) and printer.enabled:
+            printer.clear()
+        echo(event)
 
     return handle
 
@@ -342,8 +350,8 @@ def _run_turn(task: str, *, client, model, tools, messages, anchors, state, foll
             instructions=build_context,
             get_follow_up_messages=follow_up.drain,
         )
-    if answer is not None:
-        out(f"🤖 {answer}")
+    # 不在这里打答案：流式已经逐字打过了（feature 11）。
+    # 非 final 的结尾语（预算/步数/中断）由 modes.echo 按 AgentEnd.reason 负责打。
 
 
 def _guarded_run(out: Callable[[str], None], *args, **kwargs):
