@@ -6,14 +6,16 @@
 代价是命令拿不到终端的 SIGINT——所以中断必须由 pai 自己发（见 pai.core.interrupt）。
 """
 
+import fnmatch
 import os
+import re
 import signal
 import subprocess
 import time
 from typing import Annotated, Optional, Tuple
 
 from pai.core import interrupt
-from pai.core.tools import tool
+from pai.core.tools import matcher_for, tool
 
 MAX_OUTPUT_CHARS = 4000
 TIMEOUT_SECONDS = 60
@@ -109,6 +111,87 @@ def bash(command: Annotated[str, "要执行的 shell 命令"]) -> str:
     if len(output) > MAX_OUTPUT_CHARS:
         return output[:MAX_OUTPUT_CHARS] + f"\n\n[... 截断，共 {len(output)} 字符]"
     return output
+
+
+# ---- 权限匹配（feature 07 Task 3）----
+#
+# 这一段是「权限系统是不是纸糊的」的分水岭。核心是一条不对称：
+# allow 要求**每个子命令都匹配**，deny/ask 是**任一子命令命中**即算。
+# 少了它，`allow=["Bash(ls *)"]` 会把 `ls && rm -rf /` 整条放行——
+# 规则看着写了，实际等于没写。
+#
+# 匹配是**前缀 + 词边界**，不是子串：这挡得住手滑，挡不住对抗。
+# 官方原话是「基于前缀的匹配防不住刻意绕过」，pai 照抄这个边界，不吹自己更强。
+
+# 拆分：`&&` `||` `;` `|` `|&` `&` 换行。多字符的要排在单字符前面，
+# 否则 `|&` 会先被 `|` 吃掉半个。
+_SEPARATORS = re.compile(r"\|\||&&|\|&|[;|&\n]")
+
+# **进程包装器**：原样跑后面那条命令，剥掉不改变语义。
+PROCESS_WRAPPERS = ("timeout", "time", "nice", "nohup", "stdbuf", "xargs")
+
+# **环境运行器**（`npx` / `docker exec` / `devbox run` …）明确**不剥**。
+# 剥了等于承认「借个壳就能跑任意命令」；不剥的代价是官方也认的那个洞：
+# `Bash(devbox run *)` 会放行 `devbox run rm -rf .`。两害相权取其轻，
+# 并且用 test_env_runners_are_not_stripped_and_this_is_a_known_hole 把它钉在明面上。
+
+_DURATION = re.compile(r"^\d+(\.\d+)?[smhd]?$")
+
+
+def split_commands(command: str) -> list:
+    """按 shell 分隔符拆成子命令列表（纯函数，单独可测）。"""
+    return [part.strip() for part in _SEPARATORS.split(command) if part.strip()]
+
+
+def strip_wrappers(command: str) -> str:
+    """剥掉不改变语义的进程包装器（纯函数，单独可测）。
+
+    **带标志就不剥**：`xargs -n1 npm test` 的语义已经不是「原样跑 npm test」了，
+    再剥就是把一条没审过的命令当成审过的。
+    """
+    tokens = command.split()
+    while len(tokens) >= 2 and tokens[0] in PROCESS_WRAPPERS:
+        head, rest = tokens[0], tokens[1:]
+        if rest[0].startswith("-"):
+            break
+        # timeout 的时长是位置参数，不是标志，得跟着一起剥
+        if head == "timeout" and len(rest) >= 2 and _DURATION.match(rest[0]):
+            rest = rest[1:]
+        tokens = rest
+    return " ".join(tokens)
+
+
+def match_one(specifier: str, command: str) -> bool:
+    """单条子命令是否命中 specifier（纯函数，单独可测）。
+
+    尾部 ` *` 与 `:*`（仅在模式末尾）等价，都表示**前缀 + 词边界**匹配：
+    `ls *` 匹配 `ls` 与 `ls -la`，但不匹配 `lsof`。
+    不带空格的 `ls*` 退回朴素通配，`lsof` 也算匹配——两种写法的区别是故意保留的。
+    """
+    pattern = specifier.strip()
+    prefix = None
+    if pattern.endswith(":*"):
+        prefix = pattern[:-2].strip()
+    elif pattern.endswith(" *"):
+        prefix = pattern[:-2].strip()
+    if prefix:
+        return command == prefix or command.startswith(prefix + " ")
+    return fnmatch.fnmatchcase(command, pattern)
+
+
+@matcher_for(bash)
+def bash_matcher(specifier: str, args: dict, require_all: bool, ctx) -> bool:
+    """bash 的权限匹配：拆复合命令 → 剥包装器 → 逐条比对。
+
+    `require_all` 由权限层按桶传：allow 传 True，deny/ask 传 False。
+    `ctx`（路径锚点）用不上——shell 命令里的路径要不要管是 fs 工具的事。
+    """
+    parts = [strip_wrappers(p) for p in split_commands(str(args.get("command", "")))]
+    if not parts:
+        return False
+    if require_all:
+        return all(match_one(specifier, p) for p in parts)
+    return any(match_one(specifier, p) for p in parts)
 
 
 def reap_spawned() -> None:

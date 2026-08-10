@@ -893,3 +893,106 @@ def test_no_reinjection_when_instructions_not_provided(tmp_path, monkeypatch):
               on_event=lambda _: None)
     after = client.requests[3]["messages"]
     assert not any(str(m.get("content") or "").startswith(INSTRUCTION_HEADER) for m in after)
+
+
+# ---- feature 07 Task 7：权限接线 ----
+#
+# loop 只认一件事：`before_tool_call` 返回的 Decision 是不是 allow。
+# 「ask 怎么问真人 / 无人可问时怎么降级」全在注入的那个可调用对象里，
+# loop 不认识 ask 这个概念——否则模式差异会渗进 loop。
+
+
+def _deny_gate(reason="不许"):
+    from pai.core.permissions import Decision
+
+    return lambda name, args: Decision(kind="deny", reason=reason)
+
+
+def test_denied_tool_is_not_executed_but_result_is_backfilled(tmp_path):
+    """工具没跑，但 tool_call_id 配对完好（D#41 同款不变量）。"""
+    target = tmp_path / "不该被创建.txt"
+    script = [
+        {"tool_calls": [("write_file", json.dumps(
+            {"path": str(target), "content": "hi"}))]},
+        {"content": "算了"},
+    ]
+    client = FakeClient(script)
+
+    run_agent("写个文件", client=client, model="fake", tools=get_tools(),
+              on_event=lambda _: None, before_tool_call=_deny_gate())
+
+    assert not target.exists()                    # 工具真的没跑
+    second = client.requests[1]["messages"]
+    tool_msg = [m for m in second if m["role"] == "tool"][0]
+    assistant_msg = [m for m in second if m["role"] == "assistant"][0]
+    assert tool_msg["tool_call_id"] == assistant_msg["tool_calls"][0]["id"]
+
+
+def test_deny_reason_reaches_the_model():
+    """理由必须回填到 tool 消息里，模型才能据此换个做法。"""
+    script = [
+        {"tool_calls": [("bash", json.dumps({"command": "rm -rf /"}))]},
+        {"content": "换个做法"},
+    ]
+    client = FakeClient(script)
+
+    run_agent("清理", client=client, model="fake", tools=get_tools(),
+              on_event=lambda _: None,
+              before_tool_call=_deny_gate("命中 deny 规则 `bash(rm *)`（来源：user）"))
+
+    tool_msg = [m for m in client.requests[1]["messages"] if m["role"] == "tool"][0]
+    assert "bash(rm *)" in tool_msg["content"]
+    assert "user" in tool_msg["content"]
+
+
+def test_permission_decided_event_is_emitted():
+    from pai.core.events import PermissionDecided
+
+    script = [
+        {"tool_calls": [("bash", json.dumps({"command": "ls"}))]},
+        {"content": "好"},
+    ]
+    client = FakeClient(script)
+    events = []
+
+    run_agent("x", client=client, model="fake", tools=get_tools(),
+              on_event=events.append, before_tool_call=_deny_gate("因为不行"))
+
+    decided = [e for e in events if isinstance(e, PermissionDecided)]
+    assert [(e.name, e.kind) for e in decided] == [("bash", "deny")]
+    assert decided[0].reason == "因为不行"
+
+
+def test_allow_decision_runs_the_tool_normally(tmp_path):
+    from pai.core.permissions import Decision
+
+    target = tmp_path / "该被创建.txt"
+    script = [
+        {"tool_calls": [("write_file", json.dumps(
+            {"path": str(target), "content": "hi"}))]},
+        {"content": "写好了"},
+    ]
+    client = FakeClient(script)
+
+    run_agent("写", client=client, model="fake", tools=get_tools(),
+              on_event=lambda _: None,
+              before_tool_call=lambda name, args: Decision(kind="allow"))
+
+    assert target.read_text(encoding="utf-8") == "hi"
+
+
+def test_no_before_tool_call_preserves_old_behavior(tmp_path):
+    """默认 None = 与接线前逐字相同。压缩、事件、记忆三次接线都是这个先例。"""
+    target = tmp_path / "x.txt"
+    script = [
+        {"tool_calls": [("write_file", json.dumps(
+            {"path": str(target), "content": "hi"}))]},
+        {"content": "写好了"},
+    ]
+    client = FakeClient(script)
+
+    answer = run_agent("写", client=client, model="fake", tools=get_tools(),
+                       on_event=lambda _: None)
+
+    assert answer == "写好了"
+    assert target.read_text(encoding="utf-8") == "hi"

@@ -57,9 +57,16 @@
   - [x] [knowledge/claude-docs/memory.md](../../knowledge/claude-docs/memory.md)（两套记忆的加载算法；**读出一条 pai 未来的 bug**：压缩会摘掉指令文件，官方靠重注入兜）
 - **流程**：superpowers 全链路。
 
-## 阶段 4 · 权限
+## 阶段 4 · 权限（已交付 2026-08-10）
 
 - **目标**：`before_tool_call` 挂点上的权限层：allow/ask/deny 三态规则 + 规则语义下放给工具解释。
+- **档案**：[features/07-20260810-permissions/](features/07-20260810-permissions/README.md)
+  （7 task TDD + 补一根 spec 漏接的线，329 passed）。
+  五条裁决：求值顺序不按特异性排（D#46）、默认 allow 及其交付后自我复议（D#47）、
+  ask 无真人时降级为 deny（D#48）、matcher 签名加 MatchContext（D#49，**偏离已拍板 spec，待复议**）、
+  hook 崩溃不阻断（D#50）。
+  **门禁必须带测试**这条 anna 回流已兑现：三条注入反证（翻求值顺序 / require_all 恒 False /
+  不拆复合命令）各自打红了不同的测试集，且**自举跑通了 pai 自己的 `guards/design_gate.py`**。
 - **范围**：做——三态规则、按 source 分桶（user/project）、bash 前缀匹配与路径匹配。anna 门禁思想回流：ask 只用在必须真人拍板的节点、门禁三种退出码、**门禁必须带测试**（注入已知错误断言真会拦——这是对 anna 短板的修正）。不做——LLM 分类命令危险度、配置硬编码。
 - **参照**：CC `src/utils/permissions/`（规则三态 + 语义下放）；anna `guards/`。
 - **前置精读**：

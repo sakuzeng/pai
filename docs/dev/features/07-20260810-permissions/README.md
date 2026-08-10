@@ -1,7 +1,7 @@
 # 07-20260810-permissions —— 权限层（三态规则 + 工具级匹配 + hooks）
 
-状态：讨论中（等用户拍板；拍板后改「已拍板」，`.active` 已指向本目录）
-分支：`feat/memory`（前置精读 + spec/plan）；实现分支待拍板后开
+状态：已拍板（2026-08-10 用户拍板「按 plan 走」；四问答案见下，`.active` 指向本目录）
+分支：`feat/07-permissions`（自 `main` 开出）
 
 ## 需求
 
@@ -63,16 +63,51 @@ anna 门禁思想回流：ask 只用在必须真人拍板的节点、**门禁必
 
 ## 实施
 
-superpowers 全链路：[spec.md](spec.md) → [plan.md](plan.md) → SDD。
-分支：待拍板后开 `feat/permissions`。
+superpowers 全链路：[spec.md](spec.md) → [plan.md](plan.md) → SDD →
+[devlog.md](devlog.md)（每 task 一条）→ [复盘.md](复盘.md)。
+分支：`feat/07-permissions`（自 `main` 开出）。
 
 ## 结果与测试
 
-<!-- 交付后填 -->
+7 个 task 全部 TDD 交付（每 task 一条 devlog，红→绿真实数字都在
+[devlog.md](devlog.md)），另补齐 spec §6 漏接的一根线（hook 配置从 settings.json 读）。
+
+**`276 passed, 3 deselected` → `329 passed, 3 deselected`**（+53），全部离线。
+
+| task | 做了什么 | 增量 |
+|---|---|---|
+| 1 | `core/permissions.py`：Rule / RuleSet / Decision + `decide()` 三态求值 | +7 → 283 |
+| 2 | 匹配下放给工具：`Tool.matcher` / `matcher_for` / `all_tools` | +4 → 287 |
+| 3 | **bash 匹配器（分水岭）**：拆复合命令、剥包装器、前缀带词边界 | +7 → 294 |
+| 4 | fs 匹配器：四种路径前缀，`/` 锚到规则来源 | +6 → 300 |
+| 5 | 两层 settings.json 加载 + 裸名 deny 摘工具 | +5 → 305 |
+| 6 | `core/hooks.py`：三种退出码、多 hook 取最严、两条边界 | +11 → 316 |
+| 7 | 接进 loop / ask 降级 / `/permissions` / 注入验证 | +10 → 326 |
+| 补 | spec §6 的 hook 配置加载（`load_hooks`）+ 两处装配 | +3 → 329 |
+
+**注入验证（roadmap 硬要求）做了三条**，全文见 devlog：
+翻求值顺序 → 4 条红；`require_all` 恒 False → 3 条红；不拆复合命令 → 3 条红；
+还原后 329 全绿、grep 确认无残留。
+其中值得记的是：**翻求值顺序时 Task 3 那 7 条一条都没红**——
+两条防线正交，只验一条会给人「权限系统被测住了」的错觉。
+
+**自举已验证**（拍板问 3 的卖点）：pai 的 hook 层真的能跑 pai 自己的
+`guards/design_gate.py`——喂一个状态为「讨论中」的档案，拿到
+`deny / 方案门禁：99-demo 当前状态是「讨论中」，未到「已拍板」。`
 
 ## 遗留问题
 
-<!-- 交付后填，每条同步一行进全局 TODO -->
+八条，已逐条同步进 [TODO.md](../../TODO.md) 的「feature 07（权限）遗留」小节：
+
+1. **首启无规则时应明确告知「一律放行」**——现在是静默全放行，而 STATUS 写着
+   「permissions 可用」。这是复盘质疑一，也是 D#47 的自我复议。
+2. **matcher 签名 3 参 → 4 参偏离了已拍板 spec，请复议**（D#49）。
+3. **符号链接双路径检查未做**——一条软链就能绕开 deny 规则。
+4. **环境运行器的洞**（`Bash(devbox run *)` 放行 `devbox run rm -rf .`），官方同款取舍。
+5. **bash 拆分是正则不是真 shell 解析**，引号里的分隔符会误拆（方向偏保守，非安全洞）。
+6. **只读命令内置免提示集合未做**——它是「默认 ask 太烦」的直接原因。
+7. **按参数语义挂匹配器可能比按工具挂更对**（复盘质疑二），加第五个 fs 类工具时重估。
+8. **`strip_wrappers` 的「带标志就不剥」是推的不是抄的**（复盘质疑三）。
 
 ## 用到的知识
 

@@ -1,8 +1,11 @@
 # 07-20260810-permissions · 实施计划
 
-7 个 task，严格 TDD（先红后绿，贴真实 pytest 输出）。基线：**235 passed, 3 deselected**。
-分支 `feat/permissions`（自 `feat/memory` 开出）。每个 task 一条 devlog（这次逐条写，
-不再像 feature 06 那样最后补）。
+7 个 task，严格 TDD（先红后绿，贴真实 pytest 输出）。
+**基线：`276 passed, 3 deselected`**（2026-08-10 刷新——本计划初稿写于 235 那会儿，
+其后交付了 feature 08 与五个补漏；下面每个 task 的累计数字已按新基线重算）。
+分支 **`feat/07-permissions`**（自 `main` 开出）——初稿写的 `feat/permissions` 不合
+2026-08-10 立的命名规约（`<类型>/<NN>-<描述>`），已更正。
+每个 task 一条 devlog，逐条写不攒最后补。
 
 顺序：规则求值 → 匹配下放 → bash 匹配器 → fs 匹配器 → 配置加载 → hooks → 接线。
 Task 3 是「权限系统是不是纸糊的」的分水岭，不许简化。
@@ -26,7 +29,7 @@ Task 3 是「权限系统是不是纸糊的」的分水岭，不许简化。
 
 **实现**：`Rule` / `RuleSet` / `Decision` 三个 dataclass + `decide()`。
 
-**验收**：235 → 242 passed（+7）。
+**验收**：235 → 283 passed（+7）。
 
 ## Task 2：匹配下放给工具（`matcher_for` + 默认实现）
 
@@ -42,7 +45,7 @@ Task 3 是「权限系统是不是纸糊的」的分水岭，不许简化。
 **实现**：`Tool` 加 `matcher` 字段（默认 `None`）；`matcher_for(func)` 装饰器；
 `permissions` 里调用 `tool.matches(specifier, args, require_all=...)`。
 
-**验收**：+4 → 246 passed。
+**验收**：+4 → 287 passed。
 
 ## Task 3：bash 匹配器（**分水岭**）
 
@@ -64,7 +67,7 @@ Task 3 是「权限系统是不是纸糊的」的分水岭，不许简化。
 
 **实现**：`shell.py` 里 `@matcher_for(bash)`；拆分与剥离都是纯函数，单独可测。
 
-**验收**：+7 → 253 passed。
+**验收**：+7 → 294 passed。
 
 ## Task 4：fs 匹配器（路径锚点）
 
@@ -82,7 +85,7 @@ Task 3 是「权限系统是不是纸糊的」的分水岭，不许简化。
 **实现**：`fs.py` 里给 `read_file`/`write_file`/`edit_file` 挂同一个路径匹配器；
 `Rule` 带 `anchor` 目录（由 source 决定）。
 
-**验收**：+6 → 259 passed。
+**验收**：+6 → 300 passed。
 
 ## Task 5：配置加载与裸名 deny 摘工具
 
@@ -97,7 +100,7 @@ Task 3 是「权限系统是不是纸糊的」的分水岭，不许简化。
 
 **实现**：`load_rules(cwd, home)`；`get_tools` 侧或 loop 侧做摘除（实现时定，取舍写 devlog）。
 
-**验收**：+5 → 264 passed。
+**验收**：+5 → 305 passed。
 
 ## Task 6：外部命令 hook（`core/hooks.py`）
 
@@ -115,7 +118,7 @@ Task 3 是「权限系统是不是纸糊的」的分水岭，不许简化。
 
 **实现**：`run_pre_tool_use(hooks, tool, args, timeout)`；子进程用 `subprocess.run` 带超时。
 
-**验收**：+9 → 273 passed。
+**验收**：+9 → 314 passed。
 
 ## Task 7：接进 loop / ask 降级 / `/permissions` / **注入验证**
 
@@ -135,12 +138,14 @@ Task 3 是「权限系统是不是纸糊的」的分水岭，不许简化。
 
 **实现**：`run_agent(..., before_tool_call=None)`；`modes/` 两处装配；REPL 的 `/permissions`。
 
-**验收**：+7 → **280 passed** 左右，`./test.sh` 全绿。
+**验收**：+7 → **321 passed** 左右，`./test.sh` 全绿。
 
 ---
 
 ## 每 task 完成后必做
 
-devlog 一条（目标 / 改动文件 / 红→绿真实数字 / 遗留）。全部完成后：全局 devlog 里程碑一行、
+devlog 一条（目标 / 改动文件 / 红→绿真实数字 / 遗留）。
+**交付前必须先写 `复盘.md`**（2026-08-10 立的规矩 8，含「我现在质疑什么」必答节，
+`tests/test_docs_consistency.py` 强制）。全部完成后：全局 devlog 里程碑一行、
 decisions 记四问取舍 + 「默认决策 allow」的安全代价 + 「前缀匹配防不住对抗」的官方原话，
-STATUS 更新，遗留（符号链接双路径、环境运行器的洞、只读命令集未做）逐条进 TODO。
+STATUS 更新（数字有机器对账，忘改会红），遗留（符号链接双路径、环境运行器的洞、只读命令集未做）逐条进 TODO。

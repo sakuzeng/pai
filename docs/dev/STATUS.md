@@ -1,6 +1,6 @@
 # 当前状态快照
 
-最后更新：2026-08-10（阶段 2 REPL + 阶段 3 记忆交付；交付后五个补漏，见 features/05 devlog）。
+最后更新：2026-08-10（阶段 4 权限交付；此前阶段 2 REPL + 阶段 3 记忆已交付）。
 **数字由机器对账**：`test_status_reports_the_current_test_count` 会在完整跑时校验本页的 passed 数——漂了三次之后不再靠人肉。
 给接手者（人或 AI）一页看清现状。
 「做了什么」的时间线见 [devlog.md](devlog.md)，「为什么这么选」见 [decisions.md](decisions.md)，
@@ -13,8 +13,12 @@ agent loop + 工具系统 + 会话落盘 + 阶段 1 压缩闭环已跑通；阶�
 AskUserQuestion、工具状态行。`pai` 不带参数即进 REPL。
 阶段 3 **记忆已交付**——`PAI.md` 三层加载 + `@` 导入 + 自动记忆索引 + `remember` 写回，
 且**压缩后从磁盘重读重注入**（不做就是长会话里指令静默失效）。
-两个功能全貌见 [features/02-20260803-compaction/](features/02-20260803-compaction/README.md)
-与 [features/05-20260810-repl/](features/05-20260810-repl/README.md)。
+阶段 4 **权限已交付**——allow/ask/deny 三态（求值顺序 deny → ask → allow）、
+匹配语义下放给工具（bash 拆复合命令、fs 认路径锚点）、两层 `settings.json`、
+外部命令 hook（三种退出码），**pai 已能跑自己的 `guards/design_gate.py`**。
+功能全貌见 [features/02](features/02-20260803-compaction/README.md)、
+[features/05](features/05-20260810-repl/README.md)、
+[features/07](features/07-20260810-permissions/README.md)。
 
 ## 模块现状
 
@@ -36,7 +40,11 @@ AskUserQuestion、工具状态行。`pai` 不带参数即进 REPL。
 | `core/session.py` | 可用 | append-only JSONL，落**用户目录**不再写当前工作目录；每条带 `sessionId`/`cwd`；文件名带短 id（D#45，关掉 R#15） |
 | `core/memory.py` | 可用 | 分层指令发现（用户级→根→cwd，local 在后，**不读 AGENTS.md** D#43）、`@path` 导入（相对基准/4 跳/环检测/代码块内不算）、自动记忆索引（git 根定 key，200 行 + 25KB 双上限，截断留提示） |
 | `core/tools/memory_tool.py` | 可用 | `remember(topic, fact)` 写主题文件 + 维护索引；topic 白名单校验挡路径穿越；目录与通知回调走注入点 |
-| permissions / streaming / skills / mcp_client / evals | 未开始 | 路线图后续阶段，见 [roadmap.md](roadmap.md)。阶段 2 后半程 TUI 亦未开始 |
+| `core/permissions.py` | 可用 | 规则解析 + 三态求值（**顺序 deny → ask → allow，特异性不排序** D#46）；两层 `settings.json` 合并、按 source 记锚点；裸名 deny 摘工具（`visible_tools`） |
+| `core/hooks.py` | 可用 | 外部命令 hook：退出码 0/2/其他 三态、多 hook 取最严、崩溃/超时不阻断（D#50）；`load_hooks` 读两层配置 |
+| `core/gate.py` | 可用 | 装配 `before_tool_call`：规则 + hook + **ask 解析**（有真人问真人，无真人降级为 deny D#48）。loop 因此不认识 ask |
+| `core/tools/` 的 matcher | 可用 | `Tool.matcher` + `matcher_for`；bash 拆分隔符/剥包装器/词边界，fs 三件套认 `//`、`~/`、`/`（锚到规则来源）、裸名任意深度 |
+| streaming / skills / mcp_client / evals | 未开始 | 路线图后续阶段，见 [roadmap.md](roadmap.md)。阶段 2 后半程 TUI 亦未开始 |
 
 ## compaction.py 里有什么
 
@@ -63,9 +71,10 @@ AskUserQuestion、工具状态行。`pai` 不带参数即进 REPL。
 
 ## 测试
 
-共收集 **279 项**（阶段 2 REPL 8 task + 阶段 3 记忆 7 task + 交付后五个补漏 + 文档一致性）：
+共收集 **332 项**（阶段 2 REPL 8 task + 阶段 3 记忆 7 task + 交付后五个补漏 + 文档一致性
++ **阶段 4 权限 task 1-7**）：
 
-- `./test.sh` → **276 passed, 3 deselected**，全部离线（`tests/fake_llm.py` 假 provider）。**这是默认路径。**
+- `./test.sh` → **329 passed, 3 deselected**，全部离线（`tests/fake_llm.py` 假 provider）。**这是默认路径。**
 - `./test.sh --llm` → 额外跑打真实 API 的冒烟测试，**会产生费用**。
   需同时满足有 `DEEPSEEK_API_KEY` 且 `PAI_RUN_LLM_TESTS=1`——花钱的副作用不能是默认行为。
 
@@ -73,6 +82,12 @@ AskUserQuestion、工具状态行。`pai` 不带参数即进 REPL。
 `REAL_TRAJECTORY`（含一条真实的 sed 失败）、`REAL_USAGE_TRAJECTORY` + `REAL_USAGE_STEPS`。
 
 ## 已知缺陷（详细条目在 [archive/devlog-2026-08.md](archive/devlog-2026-08.md)）
+
+0. **权限层不配置就等于不存在**：两层 `settings.json` 都没有时，
+   `default_decision` 是 `allow`，一律放行——而本页写着「permissions 可用」。
+   D#47 交付后已自我复议：这是**虚假安全感**，比没有权限层更危险。
+   已登记 TODO（首启时明确告知）。另外两个已知洞：**符号链接绕得开 deny**、
+   `Bash(devbox run *)` 会放行 `devbox run rm -rf .`（均有测试钉住当前行为）。
 
 1. **锚与压缩天然冲突，重置后有读数盲区——且接进 loop 后暴露出比原评审更具体的一条约束**
    （评审 R#7，D#34 已裁决熔断器只认真实 usage，本条按接线后的实况改写）。
@@ -100,9 +115,13 @@ AskUserQuestion、工具状态行。`pai` 不带参数即进 REPL。
 
 ## 下一步
 
-阶段 2 前半程（REPL）与阶段 3（记忆）已交付。下一步是**阶段 4 权限**——
-动工前要补前置精读缺口（官方 permissions + hooks 两章尚未落笔记）。
-阶段 2 后半程 TUI 暂缓。
+阶段 2 前半程（REPL）、阶段 3（记忆）、阶段 4（权限）已交付。
+下一步按 roadmap 是**阶段 5 streaming**；阶段 2 后半程 TUI 暂缓。
+
+**权限层交付时留了一条要用户拍板的**（见 TODO「feature 07 遗留」前两条）：
+matcher 签名从已拍板 spec 的 3 参改成了 4 参（D#49），因为 spec 第 2 节与第 4 节
+凑不到一起——路径锚点是「规则的属性」，三参签名没有它的出口。要么认可并订正 spec，
+要么换实现。
 
 阶段 1 遗留的两条候选仍在 TODO：
 - **reserve_tokens / keep_recent_tokens 实测校准**——目前仍是从 pi 借来的经验值，
