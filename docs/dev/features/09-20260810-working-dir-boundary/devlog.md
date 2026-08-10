@@ -40,3 +40,48 @@
 `test_get_path_reads_the_declared_argument` 用 `edit_file(path, old, new)` 钉这条。
 
 **遗留**：无（本 task 只加声明，未接线）。
+
+## 2026-08-11 · Task 2：边界判定核心（纯函数，先不接线）
+
+**目标**：`core/boundary.py` —— 提供 CC 那个 `in_working_dir`，纯函数，
+不 import permissions（反向依赖）。
+
+**改动**：
+- 新增 `src/pai/core/boundary.py`（`WorkingDirs` / `path_in_working_path` /
+  `paths_all_inside`）
+- 新增 `tests/test_boundary.py`（10 条）
+- `docs/dev/STATUS.md` 测试数字 334 → 344
+
+**测试**：红是 collection error（`ModuleNotFoundError: No module named 'pai.core.boundary'`），
+绿 `10 passed in 0.36s`。
+全量：`334 passed, 3 deselected` → **`344 passed, 3 deselected`**（+10，plan 估的是 +7）。
+
+**多写的三条里有一条是 plan 完全没想到的**，而且它是本 task 最重要的一条：
+
+`test_relative_paths_resolve_against_current_cwd_not_the_boundary`
+——**与 plan 那条 `test_boundary_uses_startup_cwd_not_current_cwd` 配对，方向相反，
+两条必须同时成立**：
+
+- 边界集合锚在**启动 cwd**（照 CC `getOriginalCwd()`）：agent 中途 `cd` 出去，
+  边界不跟着跑；
+- 但**相对路径按进程当前 cwd 解析**：因为工具真正 `open()` 的就是那个路径。
+
+写 plan 时我只想到前者。真去实现才发现：如果相对路径也按启动 cwd 解析，
+那么 `cd /etc` 之后 `read_file("passwd")` 会被算成 `<proj>/passwd`（界内、放行），
+**而实际读到的是 `/etc/passwd`**——一条干净的 cd 逃逸。
+两条锚点必须不同，这是本模块最反直觉的地方，docstring 里写了理由。
+
+另两条补的：`test_empty_path_is_not_inside`（`get_path` 拿到脏输入会返回空串，
+此时不能默认放行）、`test_dotdot_traversal_is_normalized`。
+
+**`test_prefix_is_not_enough` 是真会咬人的一条**：
+`"/tmp/proj-evil".startswith("/tmp/proj")` 为 True。边界判定写成朴素前缀比较的话，
+攻击者在项目旁边建一个 `<项目名>-evil` 目录就越界了。实现里比到**分隔符边界**
+（`base.rstrip(sep) + sep`），测试里先断言 `startswith` 确实会误判、再断言我们没误判。
+
+**`paths_all_inside([])` 返回 False，不是 True**：空集合意味着「判不出来」，
+而 `all([])` 的数学惯例是 True。这里刻意反直觉——判不出来不等于没问题。
+Task 4 的符号链接双路径会依赖这条。
+
+**遗留**：本模块刻意不 realpath（符号链接双路径是 Task 4）。
+现在只看给定路径，与 feature 07 的 `fs.target_path` 同款边界。
