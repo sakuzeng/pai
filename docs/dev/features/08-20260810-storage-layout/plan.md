@@ -46,12 +46,18 @@
 3. `test_running_pai_does_not_create_sessions_in_cwd` —— **e2e**：在临时目录里跑一轮
    （fake client），断言该目录下**没有** `sessions/`。这条是整个需求的初衷。
 4. `test_memory_and_sessions_share_one_project_dir` —— 两者同居。
+5. `test_every_record_carries_session_id_and_cwd` —— 每条记录都带 `sessionId` 与 `cwd`
+   （08 之后不记 cwd 就是净信息丢失：同仓库不同子目录写进同一个目录）。
+6. `test_same_second_sessions_do_not_collide` —— 同一秒建两个 SessionLog 得到**两个文件**，
+   `sessionId` 各不相同（关掉 R#15 旧账）。
+7. `test_filename_keeps_the_timestamp_prefix` —— `%Y%m%d-%H%M%S-<短 id>.jsonl`，
+   于是 `ls` 仍按时间排序（**与 CC 不同**：CC 用纯 `<sessionId>.jsonl`）。
 
 **实现**：`SessionLog.__init__` 默认参数从 `"sessions"` 改为 `None` 再在函数体里取
 `sessions_dir()`——**不能写成默认值直接调用**（默认参数在函数定义时求值，
 补漏五刚在 `history_path_for` 上栽过同款）。
 
-**验收**：+4 → 270 passed。
+**验收**：+7 → 273 passed。
 
 ## Task 4：装配层与可见性
 
@@ -64,7 +70,7 @@
 
 **实现**：`once.py` / `interactive.py` 走 `paths`；`_show_memory` 增加会话目录一行。
 
-**验收**：+3 → **273 passed** 左右，`./test.sh` 全绿。
+**验收**：+3 → **276 passed** 左右，`./test.sh` 全绿。
 
 ---
 
@@ -72,6 +78,6 @@
 
 devlog 一条（目标 / 改动文件 / 红→绿真实数字 / 遗留）。全部完成后：
 **先写复盘再宣告交付**（规矩 8，含「我现在质疑什么」必答节）；
-STATUS 更新（数字有机器对账，忘了会红）；decisions 记「slug 用全路径连字符、
-接受与 CC 同款的碰撞」；遗留（slug 碰撞、history 仍用哈希）逐条进 TODO；
+STATUS 更新（数字有机器对账，忘了会红）；decisions 记两条：「slug 用全路径连字符、接受与 CC 同款的碰撞」、
+「会话文件名保留时间戳前缀而非 CC 的纯 uuid」；遗留（slug 碰撞、history 仍用哈希）逐条进 TODO；
 全局 devlog 里程碑一行。
