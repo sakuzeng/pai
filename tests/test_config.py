@@ -4,7 +4,7 @@ import pytest
 
 """config 的 env 装配测试。"""
 
-from pai.config import model_name
+from pai.config import model_name, recall_model
 
 
 def test_model_name_loads_dotenv_first(monkeypatch):
@@ -103,3 +103,16 @@ def test_user_dir_constant_does_not_drift_from_memory_module():
     from pai.core import memory
 
     assert config.USER_DIR == memory.USER_DIR
+
+
+def test_recall_model_falls_back_to_the_main_model(monkeypatch):
+    """没配便宜档就用主模型——宁可默认可用，也不要因为没配就静默不召回。"""
+    monkeypatch.delenv("PAI_RECALL_MODEL", raising=False)
+    monkeypatch.setenv("PAI_MODEL", "主模型")
+    assert recall_model() == "主模型"
+
+
+def test_recall_model_env_overrides(monkeypatch):
+    monkeypatch.setenv("PAI_MODEL", "主模型")
+    monkeypatch.setenv("PAI_RECALL_MODEL", "便宜档")
+    assert recall_model() == "便宜档"

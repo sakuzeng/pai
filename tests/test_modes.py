@@ -169,3 +169,32 @@ def test_run_once_wires_the_permission_gate(tmp_path, monkeypatch):
 
     tool_msg = [m for m in client.requests[1]["messages"] if m["role"] == "tool"][0]
     assert "bash(rm *)" in tool_msg["content"]
+
+
+def test_run_once_wires_recall_when_memories_exist(tmp_path, monkeypatch):
+    """接线层测试：有记忆时该先打一次侧查询，把选中的记忆注进主请求（feature 10）。"""
+    monkeypatch.chdir(tmp_path)
+    from pai.core.memory import memory_dir
+
+    from tests.test_memory_scan import write_memory
+    from tests.test_recall import reply
+
+    write_memory(memory_dir(), "甲", description="怎么跑测试", body="记忆正文在此")
+    client = FakeClient([reply(["甲.md"]), {"content": "done"}])
+
+    answer = run_once("问题", client=client, model="fake", rules=_OPEN,
+                      no_session=True, on_event=lambda _: None)
+
+    assert answer == "done"
+    assert len(client.requests) == 2                    # 第 0 次是召回的侧查询
+    main = json.dumps(client.requests[1]["messages"], ensure_ascii=False)
+    assert "记忆正文在此" in main
+
+
+def test_run_once_without_memories_costs_no_extra_request(tmp_path, monkeypatch):
+    """空记忆目录不该多花一次请求——短路是本功能的成本底线。"""
+    monkeypatch.chdir(tmp_path)
+    client = FakeClient([{"content": "done"}])
+    run_once("问题", client=client, model="fake", rules=_OPEN,
+             no_session=True, on_event=lambda _: None)
+    assert len(client.requests) == 1

@@ -996,3 +996,62 @@ def test_no_before_tool_call_preserves_old_behavior(tmp_path):
 
     assert answer == "写好了"
     assert target.read_text(encoding="utf-8") == "hi"
+
+
+# ---- feature 10 task 6：召回接线（loop 不认识记忆，只认识一个回调） ----
+
+
+def test_recall_text_is_appended_after_the_task_message():
+    client = FakeClient([{"content": "好"}])
+    run_agent("我的问题", client=client, model="fake", tools=get_tools(),
+              recall=lambda q: ("<system-reminder>召回内容</system-reminder>", {}),
+              on_event=lambda _: None)
+
+    sent = client.requests[0]["messages"]
+    assert sent[-2]["content"] == "我的问题"
+    assert sent[-1]["content"] == "<system-reminder>召回内容</system-reminder>"
+    assert sent[-1]["role"] == "user"
+
+
+def test_recall_is_called_once_with_the_task_as_query():
+    seen = []
+
+    def recall(query):
+        seen.append(query)
+        return "", {}
+
+    client = FakeClient([{"tool_calls": [("bash", json.dumps({"command": "true"}))]},
+                         {"content": "好"}])
+    run_agent("我的问题", client=client, model="fake", tools=get_tools(),
+              recall=recall, on_event=lambda _: None)
+    assert seen == ["我的问题"]          # 每轮一次，不是每步一次
+
+
+def test_empty_recall_text_inserts_no_message():
+    client = FakeClient([{"content": "好"}])
+    run_agent("我的问题", client=client, model="fake", tools=get_tools(),
+              recall=lambda q: ("", {}), on_event=lambda _: None)
+    assert client.requests[0]["messages"][-1]["content"] == "我的问题"
+
+
+def test_recall_usage_counts_toward_the_budget():
+    """侧查询是实打实的钱——不计进熔断账就是预算文化上的破口（同压缩那次的处理）。"""
+    client = FakeClient(_budget_script(10, 1000))
+    answer = run_agent("x", client=client, model="fake", tools=get_tools(),
+                       recall=lambda q: ("", {"total_tokens": 2000}),
+                       max_steps=10, max_total_tokens=2500, on_event=lambda _: None)
+
+    assert "预算" in answer
+    # 召回先花掉 2000，于是第一次请求（1000）之后累计 3000 就超了 → 只发得出 1 次
+    assert len(client.requests) == 1
+
+
+def test_recall_failure_does_not_break_the_turn():
+    """召回炸了不该把整轮对话带走——同「REPL 任何异常都该回提示符」的教训。"""
+    def boom(query):
+        raise RuntimeError("召回内部炸了")
+
+    client = FakeClient([{"content": "好"}])
+    answer = run_agent("我的问题", client=client, model="fake", tools=get_tools(),
+                       recall=boom, on_event=lambda _: None)
+    assert answer == "好"

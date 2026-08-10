@@ -54,6 +54,16 @@ def model_name() -> str:
     return os.environ.get("PAI_MODEL", DEFAULT_MODEL)
 
 
+def recall_model() -> str:
+    """记忆召回的侧查询模型（feature 10）。
+
+    CC 用的是便宜档（`getDefaultSonnetModel()`），pai 只有一个模型档——这个 env 就是那个口子。
+    不设就回落主模型：召回是每轮一次的小请求，宁可默认可用，也不要因为没配就静默不生效。
+    """
+    _load_env()
+    return os.environ.get("PAI_RECALL_MODEL") or model_name()
+
+
 def context_window() -> int:
     _load_env()
     return int(os.environ.get("PAI_CONTEXT_WINDOW", 1_000_000))

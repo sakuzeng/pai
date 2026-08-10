@@ -102,6 +102,7 @@ def run_agent(
     anchors: Optional[AnchorBook] = None,
     compaction_state: Optional[CompactionState] = None,
     before_tool_call: Optional[Callable[[str, dict], "Decision"]] = None,
+    recall: Optional[Callable[[str], "tuple"]] = None,
 ) -> str:
     """跑一次 agent 任务，返回最终回答。
 
@@ -141,6 +142,19 @@ def run_agent(
     anchors = anchors if anchors is not None else AnchorBook()
     state = compaction_state if compaction_state is not None else CompactionState()
     spent_tokens = 0
+
+    # 按查询召回（feature 10）。loop 不认识记忆/模型/目录，只认识一个回调——
+    # 与 instructions 同款做法，装配层把这些关进闭包里。
+    # 契约：返回 (要注入的文本, usage)；空文本 = 什么都不插。
+    if recall is not None:
+        try:
+            recalled, r_usage = recall(task)
+        except Exception:      # noqa: BLE001 - 召回失败降级成「没召回」，不该把整轮带走
+            recalled, r_usage = "", {}
+        # 侧查询的 token 与压缩那次一样计进熔断账，否则预算就有个后门
+        spent_tokens += (r_usage or {}).get("total_tokens") or 0
+        if recalled.strip():
+            _extend(messages, [{"role": "user", "content": recalled}], session)
 
     def finish(reason: str, text: str) -> str:
         on_event(AgentEnd(reason=reason, text=text))

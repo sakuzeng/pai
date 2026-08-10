@@ -232,7 +232,7 @@ def test_repl_shows_memory_writes(tmp_path, monkeypatch):
     from pai.core.events import MemoryWritten, render_text
 
     script = [
-        {"tool_calls": [("remember", json.dumps({"topic": "构建",
+        {"tool_calls": [("remember", json.dumps({"name": "构建", "description": "怎么跑测试",
                                                  "fact": "测试用 ./test.sh"}))]},
         {"content": "好"},
     ]
@@ -484,3 +484,22 @@ def test_slash_permissions_says_so_when_empty(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _, printed = _run(["/permissions"], [], rules=None)
     assert "没有" in printed or "默认" in printed
+
+
+def test_repl_holds_recall_state_across_turns(tmp_path, monkeypatch):
+    """RecallState 跨轮持有：第一轮注入过的记忆，第二轮不再重复选，
+    于是第二轮**连侧查询都不发**（状态每轮清零的话，脚本会被多消耗一条而报错）。"""
+    monkeypatch.chdir(tmp_path)
+    from pai.core.memory import memory_dir
+
+    from tests.test_memory_scan import write_memory
+    from tests.test_recall import reply
+
+    write_memory(memory_dir(), "甲", description="怎么跑测试", body="记忆正文")
+    client = FakeClient([reply(["甲.md"]), {"content": "第一轮"}, {"content": "第二轮"}])
+
+    run_interactive(client=client, model="fake", rules=_OPEN,
+                    reader=_reader(["问题一", "问题二"]), out=lambda _: None,
+                    on_event=lambda _: None, no_session=True)
+
+    assert len(client.requests) == 3          # 召回 1 次 + 两轮各 1 次

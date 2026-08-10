@@ -6,6 +6,8 @@
 """
 from pai.core import memory
 
+from tests.test_memory_scan import write_memory
+
 
 def _write(path, text="x"):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -158,20 +160,25 @@ def test_project_key_falls_back_to_project_root_outside_git(tmp_path):
     assert home in a.parents
 
 
+# 下面四条自 feature 10 起改写：索引不再是「原样读 MEMORY.md」，而是从各记忆文件的
+# frontmatter 现渲染的**投影**。两条上限与「不静默丢内容」的规矩原样保留。
+
 def test_memory_index_is_truncated_at_200_lines(tmp_path):
-    index = tmp_path / "MEMORY.md"
-    index.write_text("\n".join(f"第 {i} 行" for i in range(1, 401)), encoding="utf-8")
+    for i in range(250):
+        write_memory(tmp_path, f"m{i:03d}", mtime=1_700_000_000 + i)
 
     text = memory.load_memory_index(tmp_path)
-    assert "第 200 行" in text
-    assert "第 201 行" not in text
+    entries = [line for line in text.splitlines() if line.startswith("- [")]
+    assert len(entries) <= memory.MAX_INDEX_LINES
+    assert "m249" in text                            # 最新的留在常驻区
+    assert "m000" not in text                        # 最老的被挤出去
     assert "截断" in text                            # 官方静默截断，pai 必须留提示
 
 
 def test_memory_index_is_truncated_at_25kb(tmp_path):
-    index = tmp_path / "MEMORY.md"
-    # 10 行 × 每行 4KB：远不到 200 行就先撞 25KB 上限（「先到者为准」）
-    index.write_text("\n".join("x" * 4000 for _ in range(10)), encoding="utf-8")
+    # 10 篇 × 每篇 4KB 描述：远不到 200 行就先撞 25KB 上限（「先到者为准」）
+    for i in range(10):
+        write_memory(tmp_path, f"m{i}", description="x" * 4000)
 
     text = memory.load_memory_index(tmp_path)
     assert len(text.encode("utf-8")) < 26 * 1024
@@ -179,18 +186,18 @@ def test_memory_index_is_truncated_at_25kb(tmp_path):
 
 
 def test_short_index_is_returned_whole_without_note(tmp_path):
-    (tmp_path / "MEMORY.md").write_text("就一行", encoding="utf-8")
+    write_memory(tmp_path, "就一条", description="短索引应原样返回")
     text = memory.load_memory_index(tmp_path)
-    assert text.strip() == "就一行"
+    assert "短索引应原样返回" in text
     assert "截断" not in text
 
 
-def test_topic_files_are_not_loaded_at_startup(tmp_path):
-    (tmp_path / "MEMORY.md").write_text("索引：见 debugging.md", encoding="utf-8")
-    (tmp_path / "debugging.md").write_text("很长的调试笔记", encoding="utf-8")
+def test_memory_bodies_are_not_loaded_at_startup(tmp_path):
+    write_memory(tmp_path, "debugging", description="调试要点一句话", body="很长的调试笔记正文")
 
     text = memory.load_memory_index(tmp_path)
-    assert "很长的调试笔记" not in text              # 模型要用时自己 read_file
+    assert "调试要点一句话" in text                   # 描述进常驻区
+    assert "很长的调试笔记正文" not in text           # 正文不进——它由召回按需注入
 
 
 def test_missing_memory_index_returns_empty(tmp_path):

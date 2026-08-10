@@ -265,11 +265,12 @@ def _memory_at(directory):
         memory_tool.set_memory_dir(None)
 
 
-def test_remember_writes_topic_file_and_indexes_it(tmp_path):
+def test_remember_writes_a_memory_file_and_indexes_it(tmp_path):
     from pai.core.tools import memory_tool
 
     with _memory_at(tmp_path):
-        result = memory_tool.remember(topic="构建", fact="测试用 ./test.sh 跑")
+        result = memory_tool.remember(name="构建", description="怎么跑测试",
+                                      fact="测试用 ./test.sh 跑")
     assert "构建" in result
     assert "测试用 ./test.sh 跑" in (tmp_path / "构建.md").read_text(encoding="utf-8")
     assert "构建.md" in (tmp_path / "MEMORY.md").read_text(encoding="utf-8")
@@ -279,29 +280,29 @@ def test_remember_appends_without_clobbering(tmp_path):
     from pai.core.tools import memory_tool
 
     with _memory_at(tmp_path):
-        memory_tool.remember(topic="构建", fact="第一条")
-        memory_tool.remember(topic="构建", fact="第二条")
+        memory_tool.remember(name="构建", description="怎么跑测试", fact="第一条")
+        memory_tool.remember(name="构建", description="怎么跑测试", fact="第二条")
     body = (tmp_path / "构建.md").read_text(encoding="utf-8")
     assert "第一条" in body and "第二条" in body
 
 
-def test_remember_indexes_each_topic_once(tmp_path):
+def test_remember_indexes_each_memory_once(tmp_path):
     from pai.core.tools import memory_tool
 
     with _memory_at(tmp_path):
-        memory_tool.remember(topic="构建", fact="a")
-        memory_tool.remember(topic="构建", fact="b")
+        memory_tool.remember(name="构建", description="怎么跑测试", fact="a")
+        memory_tool.remember(name="构建", description="怎么跑测试", fact="b")
     index = (tmp_path / "MEMORY.md").read_text(encoding="utf-8")
     assert index.count("构建.md") == 1             # 索引有 200 行上限，别自己撑爆它
 
 
 def test_remember_rejects_path_traversal(tmp_path):
-    """topic 是**模型生成的**，且是唯一能指定写盘位置的参数——破了就是任意文件写。"""
+    """name 是**模型生成的**，且是唯一能指定写盘位置的参数——破了就是任意文件写。"""
     from pai.core.tools import memory_tool
 
     with _memory_at(tmp_path):
         for evil in ("../../etc/passwd", "/tmp/evil", "sub/dir", "..", ".", "", "   "):
-            result = memory_tool.remember(topic=evil, fact="x")
+            result = memory_tool.remember(name=evil, description="d", fact="x")
             assert "错误" in result, f"{evil!r} 应被拒绝"
     assert list(tmp_path.iterdir()) == []          # 一个文件都不该被写出来
 
@@ -312,8 +313,122 @@ def test_remember_returns_error_string_instead_of_raising(tmp_path):
     blocked = tmp_path / "file"
     blocked.write_text("我是文件不是目录", encoding="utf-8")
     with _memory_at(blocked):
-        result = memory_tool.remember(topic="构建", fact="x")
+        result = memory_tool.remember(name="构建", description="d", fact="x")
     assert "错误" in result                        # 工具错误不 throw（架构约束）
+
+
+# ---- feature 10 task 3：一事一文件 + frontmatter + 索引投影 ----
+
+
+def test_remember_writes_frontmatter_that_scan_can_read_back(tmp_path):
+    """写侧与扫描侧必须闭环——召回的 manifest 全靠这几个字段。"""
+    from pai.core.memory import scan_memories
+    from pai.core.tools import memory_tool
+
+    with _memory_at(tmp_path):
+        memory_tool.remember(name="构建约定", description="怎么跑测试",
+                             fact="用 ./test.sh", type="feedback")
+    header = scan_memories(tmp_path)[0]
+    assert header.name == "构建约定"
+    assert header.description == "怎么跑测试"
+    assert header.type == "feedback"
+    assert header.modified                          # ISO 戳落在 frontmatter 里
+
+
+def test_remember_type_defaults_to_project(tmp_path):
+    from pai.core.memory import scan_memories
+    from pai.core.tools import memory_tool
+
+    with _memory_at(tmp_path):
+        memory_tool.remember(name="甲", description="d", fact="f")
+    assert scan_memories(tmp_path)[0].type == "project"
+
+
+def test_same_name_updates_instead_of_creating_a_second_file(tmp_path):
+    """CC 的写入纪律：先找已有的、更新它，而不是新建重复的（本次靠工具保证，不靠提示词）。"""
+    from pai.core.memory import scan_memories
+    from pai.core.tools import memory_tool
+
+    with _memory_at(tmp_path):
+        memory_tool.remember(name="构建", description="旧描述", fact="第一条")
+        memory_tool.remember(name="构建", description="新描述", fact="第二条")
+
+    memories = [p.name for p in tmp_path.glob("*.md") if p.name != "MEMORY.md"]
+    assert memories == ["构建.md"]                  # 只有一篇，不是两篇
+    header = scan_memories(tmp_path)[0]
+    assert header.description == "新描述"           # 描述覆写
+    body = (tmp_path / "构建.md").read_text(encoding="utf-8")
+    assert "第一条" in body and "第二条" in body    # 正文追加，不丢信息
+
+
+def test_origin_session_id_is_recorded_when_injected(tmp_path):
+    from pai.core.memory import scan_memories
+    from pai.core.tools import memory_tool
+
+    with _memory_at(tmp_path):
+        memory_tool.set_origin_session("deadbeef")
+        try:
+            memory_tool.remember(name="甲", description="d", fact="f")
+        finally:
+            memory_tool.set_origin_session(None)
+        memory_tool.remember(name="乙", description="d", fact="f")
+
+    by_name = {h.name: h for h in scan_memories(tmp_path)}
+    assert by_name["甲"].origin_session_id == "deadbeef"
+    assert by_name["乙"].origin_session_id == ""    # 没注入就没有这个字段，不写空值
+
+
+def test_deleted_memory_disappears_from_the_index(tmp_path):
+    """**投影方案的判据测试**：账本实现（往 MEMORY.md 打补丁）在这条上必红。"""
+    from pai.core.tools import memory_tool
+
+    with _memory_at(tmp_path):
+        memory_tool.remember(name="留下的", description="d", fact="f")
+        memory_tool.remember(name="要删的", description="d", fact="f")
+        (tmp_path / "要删的.md").unlink()           # 人手动删掉一篇
+        memory_tool.remember(name="留下的", description="d", fact="再来一条")
+
+    index = (tmp_path / "MEMORY.md").read_text(encoding="utf-8")
+    assert "留下的" in index
+    assert "要删的" not in index
+
+
+def test_index_is_rebuilt_so_hand_edits_are_overwritten(tmp_path):
+    """拍板问 2 认下的代价：索引是生成物，手编会被覆盖。文件头把这件事写给人看。"""
+    from pai.core.tools import memory_tool
+
+    with _memory_at(tmp_path):
+        memory_tool.remember(name="甲", description="d", fact="f")
+        (tmp_path / "MEMORY.md").write_text("我是人手写的一行\n", encoding="utf-8")
+        memory_tool.remember(name="乙", description="d", fact="f")
+
+    index = (tmp_path / "MEMORY.md").read_text(encoding="utf-8")
+    assert "我是人手写的一行" not in index
+    assert "自动生成" in index and "手改会被覆盖" in index
+
+
+def test_legacy_file_gets_frontmatter_on_next_write(tmp_path):
+    """06 时代的裸 bullet 文件：下次写到它头上时就地补 frontmatter，旧内容不丢。"""
+    from pai.core.memory import scan_memories
+    from pai.core.tools import memory_tool
+
+    (tmp_path / "约定.md").write_text("- 2026-08-10 用户偏好中文回复\n", encoding="utf-8")
+    with _memory_at(tmp_path):
+        memory_tool.remember(name="约定", description="用户偏好", fact="也偏好简短")
+
+    header = scan_memories(tmp_path)[0]
+    assert header.type == "project"                 # 不再是 legacy
+    body = (tmp_path / "约定.md").read_text(encoding="utf-8")
+    assert "用户偏好中文回复" in body and "也偏好简短" in body
+
+
+def test_writes_leave_no_temp_files_behind(tmp_path):
+    """原子写用同目录临时文件；写完不该留垃圾（半截的临时文件比没有更让人困惑）。"""
+    from pai.core.tools import memory_tool
+
+    with _memory_at(tmp_path):
+        memory_tool.remember(name="甲", description="d", fact="f")
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["MEMORY.md", "甲.md"]
 
 
 def test_remember_is_in_the_default_tool_set():
@@ -332,8 +447,8 @@ def test_remember_notifies_the_assembly_layer(tmp_path):
     with _memory_at(tmp_path):
         memory_tool.set_notifier(lambda topic, path: seen.append((topic, path)))
         try:
-            memory_tool.remember(topic="构建", fact="x")
-            memory_tool.remember(topic="非法/名字", fact="x")     # 失败不该通知
+            memory_tool.remember(name="构建", description="d", fact="x")
+            memory_tool.remember(name="非法/名字", description="d", fact="x")   # 失败不该通知
         finally:
             memory_tool.set_notifier(None)
 
@@ -449,3 +564,27 @@ def test_write_preserves_file_mode(tmp_path):
 
     fs.write_file(path=str(target), content="echo bye\n")
     assert stat.S_IMODE(target.stat().st_mode) == 0o755
+
+
+def test_update_keeps_the_existing_type_when_not_specified(tmp_path):
+    """离线冒烟当场抓到的：更新时不传 type，不该把原来的 feedback 静默降回 project。
+
+    `@tool` 的默认值让「没传」与「传了默认值」无法区分，所以默认值必须是空串，
+    再由实现去回落：已有 type > DEFAULT_TYPE。
+    """
+    from pai.core.memory import scan_memories
+    from pai.core.tools import memory_tool
+
+    with _memory_at(tmp_path):
+        memory_tool.remember(name="甲", description="d", fact="第一条", type="feedback")
+        memory_tool.remember(name="甲", description="d2", fact="第二条")
+    assert scan_memories(tmp_path)[0].type == "feedback"
+
+
+def test_new_memory_without_type_defaults_to_project(tmp_path):
+    from pai.core.memory import scan_memories
+    from pai.core.tools import memory_tool
+
+    with _memory_at(tmp_path):
+        memory_tool.remember(name="乙", description="d", fact="f")
+    assert scan_memories(tmp_path)[0].type == "project"
