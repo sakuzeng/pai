@@ -80,6 +80,7 @@ inbox.md         还写不出锚点的：新工具/想法一行一项待消化
 | [source-walks/pi-cc-api-keys.md](source-walks/pi-cc-api-keys.md) | pi 的映射表+注入钩子 vs CC 的带来源+apiKeyHelper；结论：key 留 .env 不进 settings.json | 精读 | src/pai/config.py |
 | [source-walks/cc-memdir.md](source-walks/cc-memdir.md) | **记忆召回是框架主动做的**：便宜模型按 header manifest 选 ≤5 篇；外加 memoryAge 的陈旧警告 | 精读 | src/pai/core/memory.py |
 | [source-walks/pi-agentloop.md](source-walks/pi-agentloop.md) | pi 四层分层 + 十种事件 + 双队列注入时机 + AgentLoopConfig 全部钩子 | 精读 | roadmap 阶段 2 |
+| [source-walks/cc-streaming-tools.md](source-walks/cc-streaming-tools.md) | 工具在模型还没说完就开跑：能力标志是**收 input 的函数**（默认全 false）、保序贪心分批、**只有 Bash 出错才杀兄弟**、子 AbortController 不向上传播；`getAssistantMessageId` 那条**不适用于 pai**（协议不同） | 精读 | src/pai/core/loop.py、roadmap 阶段 5 |
 | [source-walks/cc-pi-permission-boundaries.md](source-walks/cc-pi-permission-boundaries.md) | **CC 的默认不是常量是函数**（`in_working_dir ? allow : ask`）；pi 零内置权限 + 明写免责；钩子失败语义两家都 fail-closed 而 pai 反着来 | 精读 | src/pai/core/permissions.py、features/09 |
 | [concepts/hooks-gates.md](concepts/hooks-gates.md) | hooks 事件与工具调用门禁模式（阶段 4 设计输入）；**fail-open vs fail-closed 按失败代价分场景** | 沉淀 | roadmap 阶段 4、decisions #54 |
 | [concepts/path-boundary-checks.md](concepts/path-boundary-checks.md) | 路径边界判定四条坑：前缀≠包含、**两个 cwd 锚点**（合并即 cd 逃逸）、符号链接双路径且 allow/deny 反向、判不出来≠没问题 | 沉淀 | src/pai/core/boundary.py、decisions #51 #52 |
@@ -88,6 +89,7 @@ inbox.md         还写不出锚点的：新工具/想法一行一项待消化
 | [concepts/terminal-width.md](concepts/terminal-width.md) | 中文占两列、ANSI 不占列；必须先按可见文本截断再上色 | 沉淀 | src/pai/modes/statusline.py |
 | [concepts/reasoning-models-max-tokens.md](concepts/reasoning-models-max-tokens.md) | 推理模型的 reasoning 计进 `max_tokens`：上限设小不省钱，只会让 content **静默变空串**（实测同 query 思考量差 17 倍） | 沉淀 | src/pai/core/recall.py |
 | [concepts/context-management.md](concepts/context-management.md) | 上下文管理全梯度 + 「窗口用不满≠不用管」的实测认知 | 沉淀 | src/pai/core/compaction.py |
+| [concepts/streaming-tool-calls.md](concepts/streaming-tool-calls.md) | 流式下 tool_calls 按 `index` 归并且 `arguments` **逐字符**分片；usage 实测**永远在末块**（`include_usage` 是空操作，惯用的「choices 为空即 usage 块」分支永不触发 → 用量静默丢失）；中断的流没有 usage | 沉淀 | src/pai/core/loop.py、roadmap 阶段 5 |
 | [inbox.md](inbox.md) | 待消化收件箱（准入豁免区，一行一项） | 常驻 | 升格前豁免 |
 | [anna/gates.md](anna/gates.md) | anna 确定性门禁方法论（含短板教训）。**本地不入库**（R2#1 裁决，.gitignore 排除）——克隆本仓库的读者看不到此文件 | 沉淀 | roadmap 阶段 4 |
 
