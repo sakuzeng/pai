@@ -5,6 +5,8 @@
 """
 import re
 import subprocess
+
+import pytest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -123,3 +125,22 @@ def test_delivered_features_have_a_retrospective():
         assert "TEMPLATE-PLACEHOLDER" not in text, f"{d.name} 的 复盘.md 还是模板占位"
         assert "## 我现在质疑什么" in text, \
             f"{d.name} 的 复盘.md 缺「我现在质疑什么」节——这一节是必答，留空视为没做"
+
+
+def test_status_reports_the_current_test_count(request):
+    """STATUS 的测试数字漂了三次（R#2 是「严重」级别的旧账，2026-08-10 又漂两次）。
+
+    人肉对账靠不住：每次补完一个漏就该回头改 STATUS，而那正是最容易忘的一步。
+    `testscollected` 是**选中**的用例数（不含 deselected），全绿时恰等于 passed 数。
+    跑子集时这个数当然对不上，所以只在完整跑（无 -k、无显式路径）时校验。
+    """
+    if request.config.option.keyword or request.config.args != ["tests"]:
+        pytest.skip("只在完整跑 ./test.sh 时对账")
+
+    text = (ROOT / "docs" / "dev" / "STATUS.md").read_text(encoding="utf-8")
+    m = re.search(r"\*\*(\d+) passed", text)
+    assert m, "STATUS 里应有「**N passed」这样的测试数字"
+    assert int(m.group(1)) == request.session.testscollected, (
+        f"STATUS 写着 {m.group(1)} passed，实际选中 {request.session.testscollected} 条——"
+        "补完漏别忘了回头改 STATUS"
+    )

@@ -1,6 +1,7 @@
 # 当前状态快照
 
-最后更新：2026-08-10（阶段 2 REPL + 阶段 3 记忆交付；readline / .env 两处小修）。给接手者（人或 AI）一页看清现状。
+最后更新：2026-08-10（阶段 2 REPL + 阶段 3 记忆交付；交付后五个补漏，见 features/05 devlog）。
+**数字由机器对账**：`test_status_reports_the_current_test_count` 会在完整跑时校验本页的 passed 数——漂了三次之后不再靠人肉。给接手者（人或 AI）一页看清现状。
 「做了什么」的时间线见 [devlog.md](devlog.md)，「为什么这么选」见 [decisions.md](decisions.md)，
 功能级故事线见 [features/](features/README.md)，阶段地图见 [roadmap.md](roadmap.md)。
 
@@ -60,9 +61,9 @@ AskUserQuestion、工具状态行。`pai` 不带参数即进 REPL。
 
 ## 测试
 
-共收集 **247 项**（2026-08-10 阶段 2 REPL 8 task + 阶段 3 记忆 7 task + 两处小修）：
+共收集 **260 项**（阶段 2 REPL 8 task + 阶段 3 记忆 7 task + 交付后五个补漏 + 文档一致性）：
 
-- `./test.sh` → **244 passed, 3 deselected**，全部离线（`tests/fake_llm.py` 假 provider）。**这是默认路径。**
+- `./test.sh` → **257 passed, 3 deselected**，全部离线（`tests/fake_llm.py` 假 provider）。**这是默认路径。**
 - `./test.sh --llm` → 额外跑打真实 API 的冒烟测试，**会产生费用**。
   需同时满足有 `DEEPSEEK_API_KEY` 且 `PAI_RUN_LLM_TESTS=1`——花钱的副作用不能是默认行为。
 
