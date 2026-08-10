@@ -11,7 +11,7 @@ import re
 import tempfile
 from typing import Annotated
 
-from pai.core.tools import MatchContext, matcher_for, tool
+from pai.core.tools import READ, WRITE, MatchContext, matcher_for, path_access_for, tool
 
 MAX_OUTPUT_CHARS = 4000
 
@@ -158,3 +158,10 @@ def path_matcher(specifier: str, args: dict, require_all: bool, ctx: MatchContex
 
 for _fs_tool in (read_file, write_file, edit_file):
     matcher_for(_fs_tool)(path_matcher)
+
+
+# 目录边界的两项声明（feature 09 Task 1）。取的是**声明的那个参数**而不是
+# 「第一个参数」——三件套碰巧都是 path 打头，写成「取第一个」在加第四个工具时会静默出错。
+path_access_for(read_file, READ)(lambda args: str(args.get("path") or ""))
+for _writer in (write_file, edit_file):
+    path_access_for(_writer, WRITE)(lambda args: str(args.get("path") or ""))

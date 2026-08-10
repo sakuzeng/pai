@@ -33,6 +33,14 @@ class MatchContext:
 # 权限匹配器签名：(specifier, args, require_all, ctx) -> bool
 Matcher = Callable[[str, dict, bool, MatchContext], bool]
 
+# 从工具入参取出它要碰的那个路径。取不到返回空串——权限判定期拿到脏输入是常态
+# （模型可能发来任何东西），在这里抛异常会把判定链炸断。
+PathGetter = Callable[[dict], str]
+
+# 工具对文件系统的访问性质。目录边界对读写不对称（照 CC）：
+# 读在工作目录内放行、界外问；写一律问。所以判定必须分得清这次是读还是写。
+READ, WRITE = "read", "write" 
+
 
 def default_matcher(
     specifier: str, args: dict, require_all: bool, ctx: MatchContext
@@ -55,6 +63,18 @@ class Tool:
     # 权限规则的 specifier 怎么匹配这次调用，**由工具自己说了算**（feature 07 拍板问 2）：
     # bash 懂 shell 分隔符与包装器，fs 工具懂路径锚点，权限层一概不知道。
     matcher: Optional[Matcher] = None
+
+    # 目录边界要用的两项声明（feature 09）。同样是「下放给工具」：
+    # 这次调用碰哪个路径、是读是写，只有工具自己知道。
+    # **bash 两个都不声明**，于是它结构上就进不了边界判定——
+    # 这是拍板问 2「bash 不做目录边界」的落点，不是权限层里的一个 if。
+    get_path: Optional[PathGetter] = None
+    access: Optional[str] = None
+
+    def participates_in_boundary(self) -> bool:
+        """两项都声明了才参与目录边界判定。缺一不可：
+        只有 access 不知道查哪个路径，只有 get_path 不知道该按读还是按写判。"""
+        return self.get_path is not None and self.access in (READ, WRITE)
 
     def matches(
         self,
@@ -152,6 +172,25 @@ def all_tools() -> dict[str, Tool]:
     from pai.core.tools import ask, fs, memory_tool, shell  # noqa: F401 - import 即注册
 
     return dict(REGISTRY)
+
+
+def path_access_for(tool_func, access: str) -> Callable[[PathGetter], PathGetter]:
+    """给已注册的工具声明「碰哪个路径、是读是写」：`@path_access_for(read_file, READ)`。
+
+    与 `matcher_for` 同款——不动 `@tool` 本身，挂到没注册的工具上当场抛。
+    """
+    name = tool_func if isinstance(tool_func, str) else getattr(tool_func, "__name__", "")
+    if access not in (READ, WRITE):
+        raise ValueError(f"access 只能是 {READ!r} 或 {WRITE!r}，得到 {access!r}")
+
+    def attach(fn: PathGetter) -> PathGetter:
+        if name not in REGISTRY:
+            raise ValueError(f"path_access_for：工具 {name!r} 没注册，先用 @tool 注册")
+        REGISTRY[name].get_path = fn
+        REGISTRY[name].access = access
+        return fn
+
+    return attach
 
 
 def matcher_for(tool_func) -> Callable[[Matcher], Matcher]:

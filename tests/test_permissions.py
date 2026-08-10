@@ -435,3 +435,59 @@ def test_scoped_deny_keeps_tool_visible(tmp_path):
 
     sent = [t["function"]["name"] for t in client.requests[0]["tools"]]
     assert "bash" in sent
+
+
+# ---- feature 09 Task 1：工具自我声明「碰哪个路径、是读是写」----
+#
+# 延续拍板问 2 的「语义下放给工具」：目录边界要知道这次调用碰的是哪个路径、是读是写，
+# 而这两件事只有工具自己知道。**权限层不许按工具名分支**。
+# bash 两个都不声明，所以它结构上就进不了边界判定——不是靠 if 判掉的。
+
+
+def test_fs_tools_declare_path_and_access():
+    from pai.core.tools import get_tools
+
+    tools = get_tools()
+    assert tools["read_file"].access == "read"
+    assert tools["write_file"].access == "write"
+    assert tools["edit_file"].access == "write"
+    for name in ("read_file", "write_file", "edit_file"):
+        assert tools[name].get_path is not None, name
+
+
+def test_bash_declares_neither():
+    """拍板问 2 的结构性落点：bash 进不了边界判定，因为它没声明，不是因为有个 if。"""
+    from pai.core.tools import get_tools
+
+    bash = get_tools()["bash"]
+    assert bash.access is None
+    assert bash.get_path is None
+    assert not bash.participates_in_boundary()
+
+
+def test_tool_without_declaration_does_not_participate():
+    tools = {"fake": _fake_tool("fake")}
+    assert not tools["fake"].participates_in_boundary()
+
+    from pai.core.tools import get_tools
+
+    assert get_tools()["read_file"].participates_in_boundary()
+
+
+def test_get_path_reads_the_declared_argument():
+    """取的是**声明的那个参数**，不是「第一个参数」——两者碰巧一致时最容易写错。"""
+    from pai.core.tools import get_tools
+
+    tools = get_tools()
+    assert tools["read_file"].get_path({"path": "a.txt"}) == "a.txt"
+    # edit_file 的签名是 (path, old, new)：确认取的是 path 而不是别的
+    assert tools["edit_file"].get_path({"path": "b.txt", "old": "x", "new": "y"}) == "b.txt"
+    # 参数缺失不炸——权限判定期拿到脏输入是常态（模型可能发来任何东西）
+    assert tools["read_file"].get_path({}) == ""
+
+
+def test_path_access_for_rejects_unregistered_tool():
+    from pai.core.tools import path_access_for
+
+    with pytest.raises(ValueError):
+        path_access_for("从来没注册过", "read")(lambda args: "")
