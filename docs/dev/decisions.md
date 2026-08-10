@@ -43,6 +43,10 @@
 | 35 | 知识入仓 knowledge/ 不建独立仓库；补记：主要代价是雇主内容披露，裁决 anna 篇不入库 |
 | 36 | 功能档案按目录组织；注记：devlog 下沉、decisions 保持全局 |
 | 37 | 拍平 vs 原样发实测裁决：默认 flat 维持；raw 缓存优势待大轨迹复测（evidence 归档） |
+| 38 | 阶段 2「core 不动」作废：core 可动但只加不改语义 |
+| 39 | 事件流用 dataclass 扁平联合，砍掉不流式就没意义的 turn_end |
+| 40 | 工具的运行期上下文走进程级注入点，不进函数签名 |
+| 41 | 中断按「回填已取消结果」实现，不抛异常 |
 
 ## 种子版（2026-08-02）
 
@@ -387,3 +391,38 @@
     顺带首个实测参照：摘要 completion ≤ 1671（含 reasoning），
     `reserve_tokens=16384` 充裕（STATUS 缺陷 3 从「无实测依据」改「有实测参照，维持」）。
 
+
+38. **roadmap 阶段 2「core 不动」正式作废**（2026-08-10，feature 05 拍板）：
+    原文写「`modes/interactive.py` 纯 REPL 先行（core 不动）」，但同一段的范围又写
+    「事件流定型 + steering/followUp 双队列」——后者必然要改 `loop.on_event` 的签名，
+    用户拍板中断做到「工具执行中途可断」又必然要改 `tools/shell.py`。两者不可兼得。
+    改为：**core 可动，但只加不改语义**——新参数一律 keyword-only 且默认值维持旧行为
+    （沿用压缩接线的先例），唯一的破坏性改动是 `on_event` 的参数类型，用户已知情选择。
+    对照：pi 把可变性全部收进 `AgentLoopConfig` 钩子（K source-walks/pi-agentloop.md），
+    pai 用「keyword-only + 默认 None」达到同样效果而不引入配置对象——工具少时更直接。
+
+39. **事件流用 frozen dataclass 扁平联合，且砍掉 `turn_end`/`message_update`**
+    （2026-08-10，feature 05 task 1）：pi 的 `AgentEvent` 有三层生命周期
+    （agent/turn/message）共 9 种事件，pai 只取 8 种并去掉 `turn_end` 与 `message_update`。
+    理由：**不流式时 `turn_end` 与 `AssistantMessage` 是同一时刻的同一信息**，
+    设了只是为了凑 pi 的形状；`message_update` 更是纯流式产物。阶段 5 真出现
+    「一轮内多次增量」时再补——那时它们才承载新信息。
+    代价如实记：阶段 5 补事件时，REPL/状态行的渲染层要跟着改一次。
+
+40. **工具需要的运行期上下文走进程级注入点，不进函数签名**（2026-08-10，
+    feature 05 task 3/6）：`@tool` 从函数签名生成 schema（架构约束「schema 与代码同源」），
+    所以给 `bash` 加个 `interrupt_flag` 参数、给 `ask_user_question` 加个 `asker` 参数，
+    **模型就会看见一个它不该填的参数**。取舍：本仓库其他地方一律依赖注入，这里破例用
+    模块级单例（`interrupt.set_current` / `ask.set_asker`），代价是全局状态——
+    靠「`current()` 永不返回 None」+ 测试用 contextmanager 复位兜住。
+    这是「schema 与代码同源」这条约束的**直接代价**，不是偷懒；真要消除它得让 Tool
+    携带运行期上下文对象，那是比全局状态更大的改动。
+
+41. **中断按「剩余工具各回填一条已取消」实现，不抛异常**（2026-08-10，feature 05 task 5）：
+    直觉做法是让中断抛异常一路弹出 loop。但 D#2 已经定下「`tool_call_id` 配对由 loop
+    唯一负责，任何分支都回填 tool 消息」——一轮 3 个 tool_calls 只回 1 条，
+    下一轮请求就是 400（R#11 有真实复现）。所以中断是**数据路径**不是异常路径：
+    置标志 → 剩余 tool_calls 各回一条「(已取消，用户中断)」→ 在下一次 create() 前干净返回。
+    同理 REPL 里干活期间的 SIGINT 只置标志不抛 KeyboardInterrupt——抛了会把
+    已完成的工作连同栈一起丢掉，而官方对中断的承诺恰恰是「保留迄今完成的工作」
+    （K claude-docs/interactive-mode.md）。

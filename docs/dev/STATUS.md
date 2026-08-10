@@ -1,15 +1,16 @@
 # 当前状态快照
 
-最后更新：2026-08-09（体系补全：knowledge / features / roadmap 就位）。给接手者（人或 AI）一页看清现状。
+最后更新：2026-08-10（阶段 2 前半程 REPL 交付）。给接手者（人或 AI）一页看清现状。
 「做了什么」的时间线见 [devlog.md](devlog.md)，「为什么这么选」见 [decisions.md](decisions.md)，
 功能级故事线见 [features/](features/README.md)，阶段地图见 [roadmap.md](roadmap.md)。
 
 ## 一句话
 
-agent loop + 工具系统 + 会话落盘已跑通；阶段 1 压缩闭环**已接进 loop**——超线自动
-切/摘/重建/熔断，端到端测试跑通（含超长单轮不压+警告的非目标路径）。
-动工前清障（P0 五条 R#3/4/7/8/9）**已全部清完**；
-该功能全貌见 [features/02-20260803-compaction/](features/02-20260803-compaction/README.md)。
+agent loop + 工具系统 + 会话落盘 + 阶段 1 压缩闭环已跑通；阶段 2 前半程**交互模式（纯 REPL）
+已交付**——结构化事件流、steering/followUp 双队列、中断到进程组、`/` 命令与 `!` shell 模式、
+AskUserQuestion、工具状态行。`pai` 不带参数即进 REPL。
+两个功能全貌见 [features/02-20260803-compaction/](features/02-20260803-compaction/README.md)
+与 [features/05-20260810-repl/](features/05-20260810-repl/README.md)。
 
 ## 模块现状
 
@@ -22,8 +23,13 @@ agent loop + 工具系统 + 会话落盘已跑通；阶段 1 压缩闭环**已�
 | `modes/once.py` | 可用 | 单次任务，跑完即退出（对应 pi 的 print-mode）。client/model 可注入故可离线测；`context_window()` + `CompactionSettings()` 默认透传 |
 | `viz/` | 可用 | `pai-viz` 本地架构可视化：工具自省自动上图，阶段状态解析本表 |
 | `cli.py` / `config.py` | 可用 | cli 只做参数解析与分发；OpenAI 兼容协议打 DeepSeek；`context_window()` 读 `PAI_CONTEXT_WINDOW`，默认 1_000_000（v4-flash） |
-| `modes/interactive.py` | 未开始 | REPL。结构已预留，加一个文件即可，core 不动 |
-| memory / permissions / streaming / skills / mcp_client / evals | 未开始 | 路线图后续阶段，见 [roadmap.md](roadmap.md) |
+| `modes/interactive.py` | 可用 | REPL：跨轮持有 messages/锚点簿/熔断状态；历史（按 cwd 分文件、连续重复只记一条）、`\` 续行、`!` shell 模式、`/help /status /compact /clear /exit`、两级 Ctrl+C；API 出错不炸会话 |
+| `core/events.py` | 可用 | 10 个 frozen dataclass 扁平联合 + `render_text` 默认渲染器（D#39）。`on_event` 现在收事件对象，渲染下放 modes 层 |
+| `core/queue.py` | 可用 | `PendingMessageQueue`（all/single 两种 drain）。followUp 已通电；**steering 有注入点无输入源**（阻塞 input 拿不到「干活时打字」，等 TUI/流式） |
+| `core/interrupt.py` | 可用 | 进程级中断标志（D#40）。loop 在步边界与每个 tool_call 前查，bash 在轮询里查 |
+| `modes/statusline.py` | 可用 | `render_tool_line(events, width)` 纯函数（按终端列宽算中文宽度）+ `\r` 原地刷新；真 tty 才启用，非 tty 退回滚动行 |
+| `core/tools/ask.py` | 可用 | AskUserQuestion，asker 装配期注入；**默认工具集不含它**（once 无真人可问） |
+| memory / permissions / streaming / skills / mcp_client / evals | 未开始 | 路线图后续阶段，见 [roadmap.md](roadmap.md)。阶段 2 后半程 TUI 亦未开始 |
 
 ## compaction.py 里有什么
 
@@ -50,9 +56,9 @@ agent loop + 工具系统 + 会话落盘已跑通；阶段 1 压缩闭环**已�
 
 ## 测试
 
-共收集 **118 项**（2026-08-09 阶段 1 压缩闭环 + 终审修复波：e2e 与预算/警告分支测试）：
+共收集 **196 项**（2026-08-10 阶段 2 REPL 交付：事件/队列/中断/REPL/状态行 8 个 task）：
 
-- `./test.sh` → **115 passed, 3 deselected**，全部离线（`tests/fake_llm.py` 假 provider）。**这是默认路径。**
+- `./test.sh` → **193 passed, 3 deselected**，全部离线（`tests/fake_llm.py` 假 provider）。**这是默认路径。**
 - `./test.sh --llm` → 额外跑打真实 API 的冒烟测试，**会产生费用**。
   需同时满足有 `DEEPSEEK_API_KEY` 且 `PAI_RUN_LLM_TESTS=1`——花钱的副作用不能是默认行为。
 
@@ -87,11 +93,16 @@ agent loop + 工具系统 + 会话落盘已跑通；阶段 1 压缩闭环**已�
 
 ## 下一步
 
-阶段 1 主线（触发→切→摘→重建→熔断）已完整接进 loop 并 e2e 跑通。接下来两条候选，
-均已记入 TODO：
+阶段 2 前半程（REPL）已交付。按用户排定的顺序，接下来是**阶段 3 记忆** → **阶段 4 权限**，
+各走一次 superpowers 全链路（动工前先补该阶段「前置精读」缺口：memory / permissions+hooks
+官方章节尚未落笔记）。阶段 2 后半程 TUI 暂缓。
+
+阶段 1 遗留的两条候选仍在 TODO：
 - **reserve_tokens / keep_recent_tokens 实测校准**——目前仍是从 pi 借来的经验值，
   需要真实会话（或 `--llm` 冒烟测试）的真实摘要长度与触发频率数据才能定。
 - **microcompact 评估**（K source-walks/cc-compaction.md）——pai 的 4 个工具全部可重放，
   按 tool_call_id 清旧结果不用调模型，可能是性价比最高的第二级压缩，阶段 1 跑通后评估。
 
-走 superpowers 全链路，spec/plan/devlog 落 [features/02-20260803-compaction/](features/02-20260803-compaction/README.md)。
+阶段 2 REPL 的 6 条遗留见 TODO「feature 05（REPL）遗留」小节，其中两条值得先知道：
+**`Tool.run` 的返回契约分不出工具内部错误**（状态行因此标不出红叉）、
+**steering 无真实输入源**（结构已就位，等 TUI/流式通电）。

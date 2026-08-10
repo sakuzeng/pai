@@ -22,9 +22,11 @@
 - **流程**：superpowers 全链路（brainstorm → spec → plan → SDD → 合并 → tag `compaction-v1`）。
 - **完成定义**：压缩在真实轨迹夹具上跑通；锚定退化空窗有测试钉死；`./test.sh` 全绿。
 
-## 阶段 2 · REPL → TUI
+## 阶段 2 · REPL → TUI（REPL 已交付 2026-08-10，TUI 未开始）
 
-- **目标**：`modes/interactive.py` 纯 REPL 先行（core 不动），随后 TUI。
+- **目标**：`modes/interactive.py` 纯 REPL 先行，随后 TUI。
+  ⚠️ 原文的「core 不动」**已作废**（D#38）：事件流定型必须改 `loop.on_event`，
+  中断做到工具执行中途必须改 `tools/shell.py`。改为「core 可动但只加不改语义」。
 - **范围**：做——事件流定型（参照 pi 三层生命周期）、steering/followUp 双队列、REPL；TUI 后半程动工。不做——alt-screen、主题系统、鼠标。
 - **TUI 设计原则**（现在拍板，实现时不再议）：
   1. `Component.render(width) -> list[str]` 纯函数契约，组件不持终端句柄；
@@ -34,16 +36,17 @@
 - **参照**：pi `packages/tui/src/tui.ts`（Component 契约）、pi-mono 根目录 `tui-plan.md`（36KB 设计文档，动工前通读）、`packages/agent/src/agent.ts`（PendingMessageQueue）。
 - **前置精读**：
   - [x] [knowledge/source-walks/pi-agentloop.md](../../knowledge/source-walks/pi-agentloop.md)
-  - [ ] 官方 interactive-mode 章节（https://code.claude.com/docs/zh-CN/interactive-mode）→ 届时落 knowledge/claude-docs/
+  - [x] [knowledge/claude-docs/interactive-mode.md](../../knowledge/claude-docs/interactive-mode.md)（官方交互契约：中断两级 / 干活时输入 / `!` shell 模式 / 历史三细节）
 - **顺带工具**：AskUserQuestion（REPL 才有真人可问）。
 - **流程**：REPL 与 TUI 各走一次 superpowers 全链路。
+  REPL 档案：[features/05-20260810-repl/](features/05-20260810-repl/README.md)（8 task TDD，193 passed）。
 
 ## 阶段 3 · 记忆
 
 - **目标**：分层记忆文件加载（项目/用户级）+ 会话学得的东西写回。
 - **参照**：CC `src/memdir/`（findRelevantMemories/memoryScan）；面试准备 `12_记忆系统/深度_CC记忆系统.md`（外部参照）。
 - **前置精读**：
-  - [ ] 官方 memory 章节（https://code.claude.com/docs/zh-CN/memory）→ 届时落 knowledge/claude-docs/
+  - [x] [knowledge/claude-docs/memory.md](../../knowledge/claude-docs/memory.md)（两套记忆的加载算法；**读出一条 pai 未来的 bug**：压缩会摘掉指令文件，官方靠重注入兜）
 - **流程**：superpowers 全链路。
 
 ## 阶段 4 · 权限

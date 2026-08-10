@@ -82,6 +82,25 @@
 
 ## P2 · 值得改
 
+### feature 05（REPL）遗留 —— 2026-08-10
+
+- [ ] **`Tool.run` 的返回契约分不出错误**（05 task 1）：`ToolEnd.is_error` 只标得出
+      loop 自己造的错（参数非法 / 未知工具），工具内部异常被 `Tool.run` 吸收成
+      「错误：...」字符串，状态行因此标不出红叉。要真区分得改 `Tool.run` 返回
+      `(text, is_error)` 或抛受控异常——影响面到每个工具，单独立项。
+- [ ] **steering 队列在 REPL 阶段无真实输入源**（05 拍板问 2，诚实边界）：
+      结构与注入点已在 loop 里备好、有假回调测试钉死位置，但阻塞的 `input()` 拿不到
+      「agent 干活时打字」。TUI/流式阶段接真实输入源时才通电。
+- [ ] **`AgentStart.task` 在多轮 REPL 里语义歧义**（05 task 5）：字段是「本轮的任务」
+      而非「整个会话的任务」，多轮时名字容易误读。改名或拆事件，小事。
+- [ ] **`statusline._preview` 只取第一个参数值**（05 task 8）：`bash` 只有 command 正好，
+      `edit_file` 这类多参数工具的预览只显示 path，够用但不精确。
+- [ ] **REPL 无会话恢复**（05 spec 非目标）：`messages` 只活在进程内，
+      落盘仍是 append-only JSONL，没有 `/resume`。要做得先有会话树。
+- [ ] **`_install_sigint` 在非主线程装不上**（05 task 7）：已 try/ValueError 兜住并退化为
+      不可中断，但真出现（未来 TUI 把 REPL 跑在子线程里）时中断会静默失效，需要显式告警。
+
+
 - [ ] **verify_compaction 的 tripped 单向性补测试**（02 终审延后项）：置位后降线不回落，
       实现已双重审查确认正确（表达式 + 熔断后触发块整体跳过），3 行测试即可。
 - [ ] **AnchorBook.latest() 返回序与 entries 存储序相反**（02 终审 Minor#6）：
