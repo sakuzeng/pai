@@ -185,5 +185,16 @@ bypass 提到显式 ask 之前 → 1 红。**其中第 4 条第一次注错了**
 
 ## 用到的知识
 
-[knowledge/source-walks/cc-pi-permission-boundaries.md](../../../../knowledge/source-walks/cc-pi-permission-boundaries.md)（本需求的直接前置）、
-[knowledge/claude-docs/permissions-hooks.md](../../../../knowledge/claude-docs/permissions-hooks.md)（feature 07 的前置，本次发现它有目录边界缺口）
+**读进来的**（动工前的调研）：
+- [knowledge/source-walks/cc-pi-permission-boundaries.md](../../../../knowledge/source-walks/cc-pi-permission-boundaries.md)
+  —— 本需求的直接前置，CC `filesystem.ts` 源码走读 + pi 的零内置权限哲学
+- [knowledge/claude-docs/permissions-hooks.md](../../../../knowledge/claude-docs/permissions-hooks.md)
+  —— feature 07 的前置，**本次发现它有目录边界缺口**（grep 零命中）
+
+**写出去的**（开发中撞出的可迁移知识，AGENTS.md「知识沉淀」要求）：
+- [knowledge/concepts/path-boundary-checks.md](../../../../knowledge/concepts/path-boundary-checks.md)
+  —— 路径边界判定四条坑，换语言换项目仍成立
+- [knowledge/concepts/mutation-testing-pitfalls.md](../../../../knowledge/concepts/mutation-testing-pitfalls.md)
+  —— 注入反证的三条教训（含本次注错那一回）
+- [knowledge/concepts/hooks-gates.md](../../../../knowledge/concepts/hooks-gates.md)
+  —— 追加「fail-open vs fail-closed 按失败代价分场景」一节（D#54 的可迁移形态）

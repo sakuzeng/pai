@@ -81,7 +81,9 @@ inbox.md         还写不出锚点的：新工具/想法一行一项待消化
 | [source-walks/cc-memdir.md](source-walks/cc-memdir.md) | **记忆召回是框架主动做的**：便宜模型按 header manifest 选 ≤5 篇；外加 memoryAge 的陈旧警告 | 精读 | src/pai/core/memory.py |
 | [source-walks/pi-agentloop.md](source-walks/pi-agentloop.md) | pi 四层分层 + 十种事件 + 双队列注入时机 + AgentLoopConfig 全部钩子 | 精读 | roadmap 阶段 2 |
 | [source-walks/cc-pi-permission-boundaries.md](source-walks/cc-pi-permission-boundaries.md) | **CC 的默认不是常量是函数**（`in_working_dir ? allow : ask`）；pi 零内置权限 + 明写免责；钩子失败语义两家都 fail-closed 而 pai 反着来 | 精读 | src/pai/core/permissions.py、features/09 |
-| [concepts/hooks-gates.md](concepts/hooks-gates.md) | hooks 事件与工具调用门禁模式（阶段 4 设计输入） | 沉淀 | roadmap 阶段 4 |
+| [concepts/hooks-gates.md](concepts/hooks-gates.md) | hooks 事件与工具调用门禁模式（阶段 4 设计输入）；**fail-open vs fail-closed 按失败代价分场景** | 沉淀 | roadmap 阶段 4、decisions #54 |
+| [concepts/path-boundary-checks.md](concepts/path-boundary-checks.md) | 路径边界判定四条坑：前缀≠包含、**两个 cwd 锚点**（合并即 cd 逃逸）、符号链接双路径且 allow/deny 反向、判不出来≠没问题 | 沉淀 | src/pai/core/boundary.py、decisions #51 #52 |
+| [concepts/mutation-testing-pitfalls.md](concepts/mutation-testing-pitfalls.md) | 注入反证的坑：**注错了和没测住现象一样（全绿）**；正交防线要分别注；红阶段就绿的测试不具本次鉴别力 | 沉淀 | features/07、features/09 的 devlog |
 | [concepts/process-groups-and-interrupts.md](concepts/process-groups-and-interrupts.md) | 独立进程组 + killpg 才杀得干净；杀不净的第一个症状是**输出丢失**不是资源泄漏 | 沉淀 | src/pai/core/tools/shell.py |
 | [concepts/terminal-width.md](concepts/terminal-width.md) | 中文占两列、ANSI 不占列；必须先按可见文本截断再上色 | 沉淀 | src/pai/modes/statusline.py |
 | [concepts/context-management.md](concepts/context-management.md) | 上下文管理全梯度 + 「窗口用不满≠不用管」的实测认知 | 沉淀 | src/pai/core/compaction.py |
