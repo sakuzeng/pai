@@ -273,3 +273,47 @@ def test_slash_memory_says_so_when_nothing_loaded(tmp_path, monkeypatch):
 def test_slash_memory_is_listed_in_help():
     _, printed = _run(["/help"], [])
     assert "/memory" in printed
+
+
+def test_history_is_not_bound_to_readline_for_injected_readers(tmp_path, monkeypatch):
+    """注入 reader 的测试路径绝不该碰进程级的 readline 状态——否则测试之间互相串。"""
+    from pai.modes import interactive
+
+    calls: list = []
+    monkeypatch.setattr(interactive, "_read_history_into_readline", lambda p: calls.append(p))
+    _run(["/exit"], [], history_path=tmp_path / "h")
+    assert calls == []
+
+
+def test_history_is_loaded_when_input_is_a_real_terminal(tmp_path, monkeypatch):
+    """↑/↓ 与 Ctrl+R 靠 readline，而 readline 的历史要从我们自己写的文件里读回来。
+
+    （05 交付时漏了这一半：历史文件一直在写，但从没读回去，↑ 是死的。
+    测试只覆盖了「文件写对没有」，所以全绿也照不出来。）
+    """
+    from pai.modes import interactive
+
+    history = tmp_path / "h"
+    loaded: list = []
+    monkeypatch.setattr(interactive, "_is_real_terminal_input", lambda _: True)
+    monkeypatch.setattr(interactive, "_read_history_into_readline", lambda p: loaded.append(p))
+
+    _run(["/exit"], [], history_path=history)
+    assert loaded == [history]
+
+
+def test_real_terminal_input_requires_both_real_input_and_tty(monkeypatch):
+    from pai.modes import interactive
+
+    monkeypatch.setattr(interactive.sys.stdin, "isatty", lambda: True, raising=False)
+    assert interactive._is_real_terminal_input(input) is True
+    assert interactive._is_real_terminal_input(lambda _: "x") is False
+
+    monkeypatch.setattr(interactive.sys.stdin, "isatty", lambda: False, raising=False)
+    assert interactive._is_real_terminal_input(input) is False
+
+
+def test_read_history_into_readline_survives_a_missing_file(tmp_path):
+    from pai.modes import interactive
+
+    interactive._read_history_into_readline(tmp_path / "从来没有过的文件")   # 不抛

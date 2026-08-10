@@ -201,3 +201,30 @@ w= 24 列宽= 24 | ◐ bash: echo "=== impro…
 
 **遗留**：`_preview` 取参数字典的第一个值当预览——`bash` 只有 command 所以正好，
 多参数工具（`edit_file`）的预览会只显示 path，够用但不精确，记 TODO。
+
+## 2026-08-10 · 补漏：历史文件写了但没读回 readline（05 交付后发现）
+
+**怎么发现的**：用户问「本机现在能测什么」，我准备写「↑/↓ 翻历史」时先去核实，
+`grep readline src/pai/modes/interactive.py` → **一行都没有**。
+
+**漏在哪**：spec 写的是「`readline` 提供 ↑/↓ 与 `Ctrl+R`；历史按 cwd 分文件存」，
+实现只做了后半句（写文件、按 cwd 分、连续重复只记一条），**从没把文件读回 readline**，
+所以 ↑ 是死的。Task 7 的两条历史测试只断言了「文件内容对不对」，
+全绿也照不出来——**测试覆盖了产物，没覆盖用途**。
+
+**改动**：`interactive.py` 加 `_is_real_terminal_input`（谓词，可测）与
+`_read_history_into_readline`；`tests/test_interactive.py` +3。
+`.active` 走 `!小修` 显式放行通道（理由留档：`!小修:补 05 漏项——历史文件写了但没读回 readline`）。
+
+**测试**：红 2 条（`AttributeError: module 'pai.modes.interactive' has no attribute
+'_read_history_into_readline'`）→ 绿 **`239 passed, 3 deselected`**（235 → 239，+4）。
+
+**中途踩的一个坑**：第一版测试写
+`monkeypatch.setattr(interactive.sys, "stdin", SimpleNamespace(isatty=...))`——
+`interactive.sys` **就是真的 `sys` 模块对象**，这一改把 `input()` 一起弄坏了
+（`AttributeError: 'SimpleNamespace' object has no attribute 'readline'`）。
+改成把条件抽成 `_is_real_terminal_input(reader)` 谓词单独测，不再动进程级 stdin。
+
+**诚实边界**：macOS 系统 Python 的 readline 是 libedit 后端，历史文件格式与 GNU readline
+略有差异；读失败按「没有历史」处理。**这条只能在真终端上验证，我在这个环境里验不了**——
+需要用户本机确认 ↑ 真的能翻出上一轮的输入。

@@ -93,6 +93,29 @@ def _append_history(path: Path, line: str) -> None:
         pass                    # 历史写不进去不该弄挂 REPL
 
 
+def _is_real_terminal_input(reader: Callable[..., str]) -> bool:
+    """只有真人坐在真终端前才挂 readline：注入 reader 的测试路径碰进程级 readline
+    状态会让测试互相串，管道里更是没有 ↑/↓ 可言。"""
+    return reader is input and sys.stdin.isatty()
+
+
+def _read_history_into_readline(history: Path) -> None:
+    """把我们自己写的历史文件喂给 readline，↑/↓ 与 Ctrl+R 才有东西可翻。
+
+    只在真实交互路径调用：注入 reader 的测试路径碰进程级 readline 状态会让测试互相串。
+    macOS 系统 Python 的 readline 是 libedit 后端，历史文件格式与 GNU readline 略有差异，
+    读失败按「没有历史」处理，不该因此弄挂 REPL。
+    """
+    try:
+        import readline
+    except ImportError:
+        return                      # Windows 等无 readline 的平台：↑/↓ 退化，其余照常
+    try:
+        readline.read_history_file(str(history))
+    except OSError:
+        pass                        # 文件不存在或格式不认，都当作没有历史
+
+
 def _read_line(reader: Callable[..., str]) -> str:
     r"""`\` + Enter 是唯一在所有终端都可用的多行方式（其余靠终端 key protocol，属 TUI）。"""
     line = reader(PROMPT)
@@ -173,6 +196,9 @@ def run_interactive(
     memory_tool.set_memory_dir(memory_dir())
     memory_tool.set_notifier(
         lambda topic, path: on_event(MemoryWritten(topic=topic, path=str(path))))
+
+    if _is_real_terminal_input(reader):
+        _read_history_into_readline(history)
 
     out("pai 交互模式。/help 看命令，Ctrl+D 退出。")
     pending_exit = False
