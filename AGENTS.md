@@ -26,7 +26,7 @@
 
 ## 知识沉淀
 
-- 学习笔记（官方文档精读、源码走读、概念整理、方法论回流）进 knowledge/，须带统一头部（含 pai 锚点），并登记进 knowledge/README.md 的登记表。写不出 pai 锚点的内容不进本仓库（去面试准备仓库）——唯一豁免是 knowledge/inbox.md：待消化的新工具/想法一行一项收留，升格成笔记时才须锚点。
+- 学习笔记（官方文档精读、源码走读、概念整理、方法论回流、**开发中撞出的可迁移工程知识**）进 knowledge/，须带统一头部（含 pai 锚点），并登记进 knowledge/README.md 的登记表。目录按**来源**分（官方文档 / 别人的源码 / 无单一外部原文），选哪个见 knowledge/README.md「结构」。开发知识分两种：只关于 pai 的（为什么这么设计、踩了什么坑）进 docs/dev/，换个项目仍成立的（POSIX 语义、Unicode 宽度这类）才进 knowledge/concepts/。写不出 pai 锚点的内容不进本仓库（去面试准备仓库）——唯一豁免是 knowledge/inbox.md：待消化的新工具/想法一行一项收留，升格成笔记时才须锚点。
 - 路线图阶段动工前（superpowers brainstorm 之前），先核对 docs/dev/roadmap.md 该阶段「前置精读」清单：笔记缺失先读先记，再动工。诚实边界：勾选与登记只保证笔记文件存在且链接可达（tests/test_docs_consistency.py 机械校验），「人是否真读了」判不了——这是提示词层约束，别当成有保证。
 
 ## 架构约束

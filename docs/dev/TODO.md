@@ -98,11 +98,13 @@
 - [ ] **建档案时不要删模板的 `复盘.md`**（06 复盘）：05/06 建档时我 `rm` 掉了它，
       等于把「验收后要写技术总结」的提示也抹了。两篇已补写，但下次 `cp -r _template`
       之后只删真正用不到的（如中等改动无 spec/plan），`复盘.md` 留着当 TODO 用。
-- [ ] **两块硬拿的工程知识没沉淀**（都有 pai 锚点，够格进 concepts/）：
-      ① 进程组中断——`start_new_session` + `killpg`，以及「只杀子进程时后台孙进程
-      仍握着 stdout 管道、`communicate` 收不到 EOF 连部分输出都丢」这条实测；
-      ② 终端列宽——`east_asian_width` 按列不按字符，以及 ANSI 转义符不占列、
-      必须先按可见文本截断再上色。两条都是这次撞出来的，不写就只活在 devlog 里。
+- [x] ~~**两块硬拿的工程知识没沉淀**~~ **已补 2026-08-10**：
+      [concepts/process-groups-and-interrupts.md](../../knowledge/concepts/process-groups-and-interrupts.md)、
+      [concepts/terminal-width.md](../../knowledge/concepts/terminal-width.md)。
+      顺带把 knowledge/ 的分类标准从「按主题」改成**「按来源」**（原先 concepts/ 是
+      否定式定义「不专属某家源码的」，边界靠猜，当天就误放了一篇双源走读进去），
+      并在 README 与 AGENTS.md 里写明：开发知识里「只关于 pai 的」进 docs/dev/，
+      「换个项目仍成立的」才进 concepts/。
 
 ### API key 解析（2026-08-10，K source-walks/pi-cc-api-keys.md）
 
