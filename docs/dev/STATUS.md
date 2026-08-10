@@ -1,6 +1,6 @@
 # 当前状态快照
 
-最后更新：2026-08-10（阶段 4 权限交付；此前阶段 2 REPL + 阶段 3 记忆已交付）。
+最后更新：2026-08-11（阶段 4 权限 + **工作目录边界与权限模式**交付）。
 **数字由机器对账**：`test_status_reports_the_current_test_count` 会在完整跑时校验本页的 passed 数——漂了三次之后不再靠人肉。
 给接手者（人或 AI）一页看清现状。
 「做了什么」的时间线见 [devlog.md](devlog.md)，「为什么这么选」见 [decisions.md](decisions.md)，
@@ -16,6 +16,10 @@ AskUserQuestion、工具状态行。`pai` 不带参数即进 REPL。
 阶段 4 **权限已交付**——allow/ask/deny 三态（求值顺序 deny → ask → allow）、
 匹配语义下放给工具（bash 拆复合命令、fs 认路径锚点）、两层 `settings.json`、
 外部命令 hook（三种退出码），**pai 已能跑自己的 `guards/design_gate.py`**。
+随后 feature 09 补上**策略层**：默认兜底不再是常量 `allow` 而是**工作目录边界函数**
+（读界内放行/界外问、写一律问）、符号链接双路径、危险路径 bypass 免疫、
+**权限模式四态**（`default`/`acceptEdits`/`dontAsk`/`bypassPermissions`）。
+在当前目录跑 pai，**上级目录与系统文件已需确认**。
 功能全貌见 [features/02](features/02-20260803-compaction/README.md)、
 [features/05](features/05-20260810-repl/README.md)、
 [features/07](features/07-20260810-permissions/README.md)。
@@ -40,10 +44,11 @@ AskUserQuestion、工具状态行。`pai` 不带参数即进 REPL。
 | `core/session.py` | 可用 | append-only JSONL，落**用户目录**不再写当前工作目录；每条带 `sessionId`/`cwd`；文件名带短 id（D#45，关掉 R#15） |
 | `core/memory.py` | 可用 | 分层指令发现（用户级→根→cwd，local 在后，**不读 AGENTS.md** D#43）、`@path` 导入（相对基准/4 跳/环检测/代码块内不算）、自动记忆索引（git 根定 key，200 行 + 25KB 双上限，截断留提示） |
 | `core/tools/memory_tool.py` | 可用 | `remember(topic, fact)` 写主题文件 + 维护索引；topic 白名单校验挡路径穿越；目录与通知回调走注入点 |
-| `core/permissions.py` | 可用 | 规则解析 + 三态求值（**顺序 deny → ask → allow，特异性不排序** D#46）；两层 `settings.json` 合并、按 source 记锚点；裸名 deny 摘工具（`visible_tools`） |
-| `core/hooks.py` | 可用 | 外部命令 hook：退出码 0/2/其他 三态、多 hook 取最严、崩溃/超时不阻断（D#50）；`load_hooks` 读两层配置 |
-| `core/gate.py` | 可用 | 装配 `before_tool_call`：规则 + hook + **ask 解析**（有真人问真人，无真人降级为 deny D#48）。loop 因此不认识 ask |
-| `core/tools/` 的 matcher | 可用 | `Tool.matcher` + `matcher_for`；bash 拆分隔符/剥包装器/词边界，fs 三件套认 `//`、`~/`、`/`（锚到规则来源）、裸名任意深度 |
+| `core/permissions.py` | 可用 | 规则解析 + **七步求值链**（deny → 危险路径 → 显式 ask → bypass → acceptEdits → allow → 兜底；顺序不许改 D#46）；兜底是**工作目录边界函数**不是常量（D#51）；权限模式四态（D#53）；两层 `settings.json` |
+| `core/boundary.py` | 可用 | 工作目录边界：启动 cwd 锚点 + `additionalDirectories`；**前缀比到分隔符**（`/tmp/proj-evil` 不算界内）；符号链接双路径；危险路径清单（shell 配置 / `.git/hooks` / `~/.ssh` / pai 自己的 settings） |
+| `core/hooks.py` | 可用 | 外部命令 hook：退出码 0/2/其他 三态、多 hook 取最严；**超时/起不来 → deny（fail-closed，D#54）**，其他退出码维持非阻断；`load_hooks` 读两层配置 |
+| `core/gate.py` | 可用 | 装配 `before_tool_call`：规则 + hook + **ask 解析**（有真人问真人；无真人 = `dontAsk` 模式，两者合流 D#48/D#53）。loop 因此不认识 ask |
+| `core/tools/` 的 matcher | 可用 | `Tool.matcher` + `matcher_for`；bash 拆分隔符/剥包装器/词边界，fs 三件套认 `//`、`~/`、`/`（锚到规则来源）、裸名任意深度。另有 `get_path`/`access` 声明供边界判定用（**bash 两个都不声明**，故结构上不参与边界 D#52） |
 | streaming / skills / mcp_client / evals | 未开始 | 路线图后续阶段，见 [roadmap.md](roadmap.md)。阶段 2 后半程 TUI 亦未开始 |
 
 ## compaction.py 里有什么
@@ -83,11 +88,15 @@ AskUserQuestion、工具状态行。`pai` 不带参数即进 REPL。
 
 ## 已知缺陷（详细条目在 [archive/devlog-2026-08.md](archive/devlog-2026-08.md)）
 
-0. **权限层不配置就等于不存在**：两层 `settings.json` 都没有时，
-   `default_decision` 是 `allow`，一律放行——而本页写着「permissions 可用」。
-   D#47 交付后已自我复议：这是**虚假安全感**，比没有权限层更危险。
-   已登记 TODO（首启时明确告知）。另外两个已知洞：**符号链接绕得开 deny**、
-   `Bash(devbox run *)` 会放行 `devbox run rm -rf .`（均有测试钉住当前行为）。
+0. **`bash` 不参与工作目录边界，且这是本功能的主要失效模式**（D#52，feature 09 复盘质疑一）。
+   洞**不在默认路径上**——bash 默认 ask，已是最保守的一档；洞在**用户为了可用性
+   必然要走的那条路上**：once 下 bash 全被 deny，用户只能配 allow 白名单或开
+   `--dangerously-skip-permissions`，而一旦配了 `allow=["Bash(cat *)"]`，
+   `cat ../../etc/passwd` 就畅通无阻。CC 靠分类器模型解决，pai 明确不做分类器。
+   已登记 TODO：`/permissions` 与首启应明确提示这条。
+   另两个已知洞：`Bash(devbox run *)` 会放行 `devbox run rm -rf .`；
+   命令拆分是正则不是 shell 词法（方向偏保守，非安全洞）。均有测试钉住当前行为。
+   ~~权限层不配置就等于不存在~~ / ~~符号链接绕得开 deny~~ 两条**已由 feature 09 关闭**。
 
 1. **锚与压缩天然冲突，重置后有读数盲区——且接进 loop 后暴露出比原评审更具体的一条约束**
    （评审 R#7，D#34 已裁决熔断器只认真实 usage，本条按接线后的实况改写）。
@@ -115,13 +124,15 @@ AskUserQuestion、工具状态行。`pai` 不带参数即进 REPL。
 
 ## 下一步
 
-阶段 2 前半程（REPL）、阶段 3（记忆）、阶段 4（权限）已交付。
+阶段 2 前半程（REPL）、阶段 3（记忆）、阶段 4（权限 + 工作目录边界）已交付。
 下一步按 roadmap 是**阶段 5 streaming**；阶段 2 后半程 TUI 暂缓。
 
-**权限层交付时留了一条要用户拍板的**（见 TODO「feature 07 遗留」前两条）：
-matcher 签名从已拍板 spec 的 3 参改成了 4 参（D#49），因为 spec 第 2 节与第 4 节
-凑不到一起——路径锚点是「规则的属性」，三参签名没有它的出口。要么认可并订正 spec，
-要么换实现。
+**两条待用户拍板**（见 TODO）：
+1. matcher 签名从已拍板 spec 的 3 参改成 4 参（D#49，feature 07 起就欠着）——
+   spec 第 2 节与第 4 节凑不到一起，路径锚点是「规则的属性」，三参没有出口。
+   要么认可并订正 spec，要么换实现。
+2. **`/mode` 命令与 shift+tab 模式切换**已拍板留给 TUI 阶段——
+   在此之前换模式只能重启 pai 加 flag。TUI 动工时要一并做。
 
 阶段 1 遗留的两条候选仍在 TODO：
 - **reserve_tokens / keep_recent_tokens 实测校准**——目前仍是从 pi 借来的经验值，

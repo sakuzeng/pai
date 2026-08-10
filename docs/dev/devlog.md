@@ -34,3 +34,4 @@
 - 2026-08-10 STATUS 数字改由机器对账——同一处漂了三次（R#2 旧账），加 test_status_reports_the_current_test_count → [STATUS](STATUS.md)
 - 2026-08-10 08-storage-layout 立项→交付——落盘布局对齐 CC：可读 slug、会话不再写当前工作目录、每条带 sessionId/cwd，顺带关掉 R#15，272 passed → [档案](features/08-20260810-storage-layout/README.md)
 - 2026-08-10 07-permissions 立项→交付——阶段 4：三态求值/匹配下放给工具/bash 四坑/路径锚点/两层设置/外部 hook 全链 TDD，三条注入反证 + 自举跑通自己的 design_gate，329 passed → [档案](features/07-20260810-permissions/README.md)
+- 2026-08-11 09-working-dir-boundary 立项→交付——补 feature 07 缺的**策略层**：默认兜底从常量 allow 改为工作目录边界函数、符号链接双路径、危险路径 bypass 免疫、权限模式四态、hook 改 fail-closed，7 task TDD + 四条注入验证，385 passed → [档案](features/09-20260810-working-dir-boundary/README.md)

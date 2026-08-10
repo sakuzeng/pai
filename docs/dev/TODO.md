@@ -82,20 +82,47 @@
 
 ## P2 · 值得改
 
+### feature 09（工作目录边界）遗留（2026-08-11 交付）
+
+- [ ] **配了 Bash allow 规则 = 该命令可越界，但没有任何提示**（复盘质疑一，D#52）。
+      洞不在默认路径上（bash 默认 ask），而在**用户为了可用性必然要走的那条路上**：
+      once 下 bash 全被 deny，用户只能配白名单或开 bypass；一配
+      `allow=["Bash(cat *)"]`，`cat ../../etc/passwd` 就畅通无阻。
+      **应在 `/permissions` 与首启明确提示这条**。这是本功能的主要失效模式。
+- [ ] **once 下用户配的 `defaultMode` 被静默忽略**（复盘质疑二，D#53）。
+      `dontAsk` 与「无真人」合流后，once 里配 `defaultMode: "default"` 与配 `dontAsk`
+      毫无区别，且无提示。行为对但不该静默——应在检测到「配置的模式需要真人、
+      而当前没有真人」时告警一次。
+- [ ] **危险路径清单硬编码且完全不可见**（复盘质疑三）。用户看不到清单内容、不能增删，
+      直到撞上为止。至少 `/permissions` 该列出来。
+- [ ] **`/permissions` 不显示当前权限模式**——用户看不到自己在哪个模式下。（小修）
+- [ ] **`/mode` 命令与 shift+tab 切换未做**（拍板：留 TUI 阶段）。
+      现在换模式只能重启 pai 加 `--permission-mode` flag。
+- [ ] **`realpath` 未缓存**：每次判定都对路径与全部工作目录做双路径展开。
+      CC 用 `memoize` 缓存工作目录的解析结果（注释说不缓存是每次检查 30 次 syscall）。
+      工作目录集合是会话级不变量，值得缓存。（perf，需先有数字）
+- [ ] **危险路径清单的 Windows 形态完全没考虑**：`.bashrc` 这类写法在 Windows 上
+      静默失效。pai 目标平台是 macOS/Linux，但「静默失效」本身该被记下来。
+- [ ] **`decisionReason` 结构化审计未做**（spec 非目标）。pai 的 `Decision.reason`
+      是人话字符串，机器读不了；CC 的 decisionReason 带 type（rule/mode/workingDir/
+      safetyCheck），是审计与「为什么被拦」排查的最小单元。
+- [ ] **plan 模式未做**（拍板：留 TUI 阶段连交互一起做）。
+- [ ] **plan 的测试数字应写成下限而非精确值**（复盘「下次怎么做更好」）。
+      本次 7 个 task 有 4 个实际数与 plan 不符，每次都要回头改 STATUS 并被机器对账
+      打红一次——把「计划的估算」当成「应该达到的事实」，制造了必然失败的对账。
+
+
 ### feature 07（权限）遗留（2026-08-10 交付，档案「遗留问题」逐条同步）
 
-- [ ] **首启无规则时应明确告知「当前无任何权限规则，一律放行」**（复盘质疑一，D#47 复议）。
-      现在两层 `settings.json` 都不存在时权限层静默全放行，而 STATUS 写着
-      「permissions 可用」——虚假安全感比没有更危险。不改默认值（破坏性 + 无只读命令集），
-      只加一句启动提示。
-- [ ] **matcher 签名 3 参 → 4 参偏离了已拍板 spec，请用户复议**（D#49）。
+- [x] ~~**首启无规则时应明确告知「一律放行」**~~ —— **2026-08-11 由 feature 09 关闭**：
+      默认不再是全放行（D#51 把兜底改成工作目录边界函数），这条的前提已不成立。
+- [ ] **matcher 签名 3 参 → 4 参偏离了已拍板 spec，请用户复议**（D#49）。**仍未复议。**
       spec 第 2 节钉的是 `(specifier, args, require_all)`，而 spec 第 4 节的路径锚点
       需要「规则来自哪个设置文件」这个信息，三参没有它的出口。已实现为
       `ctx: MatchContext`。要么认可并订正 spec，要么换实现。
-- [ ] **符号链接双路径检查未做**（feature 07 task 4）。官方语义是 allow 要求
-      「给定路径与真实路径都干净」、deny 是「任一脏就拦」；pai 只看给定路径，
-      **一条软链就能绕开 deny 规则**。`test_symlink_double_check_is_not_implemented`
-      钉的是当前（有洞的）行为，做了之后它应该变红并被改写。
+- [x] ~~**符号链接双路径检查未做**~~ —— **2026-08-11 由 feature 09 Task 4 关闭**，
+      `test_symlink_double_check_is_not_implemented` 已按设计变红并改写为
+      `test_symlink_cannot_bypass_deny`。
 - [ ] **环境运行器的洞**（feature 07 task 3）：`Bash(devbox run *)` 会放行
       `devbox run rm -rf .`。官方承认的同款取舍，已写成测试摆在明面上。
       剥离它们更糟（等于承认借壳能跑任意命令），所以这条更像「记录」而非「待修」。

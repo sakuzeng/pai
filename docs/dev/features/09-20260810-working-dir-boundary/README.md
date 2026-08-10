@@ -1,8 +1,7 @@
 # 09-20260810-working-dir-boundary —— 工作目录边界与默认安全姿态
 
-状态：已拍板（2026-08-10 用户三问全部拍板，见「候选方案与确认」；`.active` 已指向本目录）
-分支：`feat/09-working-dir-boundary`（**待开**，自 `feat/07-permissions`——09 依赖 07 的
-`permissions.py`/`hooks.py`/`gate.py`，07 合并进 main 之前只能从它开出）
+状态：已交付（2026-08-11，385 passed；复盘见 [复盘.md](复盘.md)）
+分支：`feat/09-working-dir-boundary`（自 `main`——07 已先合并进 main）
 
 ## 需求
 
@@ -132,11 +131,57 @@ superpowers 全链路：[spec.md](spec.md) → [plan.md](plan.md) → SDD。
 
 ## 结果与测试
 
-<!-- 交付后填 -->
+7 个 task 全部 TDD 交付，每 task 一条 devlog（红→绿真实数字都在 [devlog.md](devlog.md)）。
+
+**`329 passed, 3 deselected` → `385 passed, 3 deselected`**（+56），全部离线。
+
+| task | 做了什么 | 增量 |
+|---|---|---|
+| 1 | 工具自我声明 `get_path` / `access`（bash 两个都不声明） | +5 → 334 |
+| 2 | 边界判定纯函数（`core/boundary.py`） | +10 → 344 |
+| 3 | **兜底接线（分水岭：行为在此改变）** | +9 → 353 |
+| 4 | 符号链接双路径（关掉 07 TODO#3） | +6 → 359 |
+| 5 | 危险路径清单（bypass 免疫） | +9 → 368 |
+| 6 | 权限模式四态 + CLI 配置入口 | +14 → 382 |
+| 7 | hook 改 fail-closed + 注入验证 | +3 → 385 |
+
+**用户那句话的验收**（零配置，在 `<proj>` 启动）：
+
+```
+场景           REPL（有真人）      once（无真人）
+读·界内         allow             allow
+读·上级目录      弹确认 → allow      deny
+读·系统文件      弹确认 → allow      deny
+读·私钥         弹确认 → allow      deny
+写·界内         弹确认 → allow      deny
+bash           弹确认 → allow      deny
+```
+
+**注入验证四条**（roadmap 硬要求），全文见 devlog：
+边界恒 True → 12 红；写走 in_working_dir → 3 红；危险路径挪到 allow 之后 → 3 红；
+bypass 提到显式 ask 之前 → 1 红。**其中第 4 条第一次注错了**（注入点被前面的分支屏蔽，
+表现为全绿，与「测试无效」不可区分），复查后重注才生效——这条教训进了复盘。
+
+**关掉了 feature 07 的两条 TODO**：符号链接双路径（Task 4）、
+「首启无规则时告知全放行」（前提已不成立，默认不再是全放行）。
 
 ## 遗留问题
 
-<!-- 交付后填，每条同步一行进全局 TODO -->
+十条，已逐条同步进 [TODO.md](../../TODO.md) 的「feature 09（工作目录边界）遗留」小节。
+其中三条来自复盘的「我现在质疑什么」：
+
+1. **配了 Bash allow 规则 = 该命令可越界，但没有任何提示**（复盘质疑一，D#52）。
+   **这是本功能的主要失效模式**——洞不在默认路径上，而在用户为了可用性必然要走的路上。
+2. **once 下用户配的 `defaultMode` 被静默忽略**（复盘质疑二，D#53）：
+   `dontAsk` 与「无真人」合流的副作用，行为对但不该静默。
+3. **危险路径清单硬编码且完全不可见**（复盘质疑三）。
+4. `/permissions` 不显示当前权限模式（小修）。
+5. `/mode` 与 shift+tab 未做（拍板留 TUI）。
+6. `realpath` 未缓存（CC 用 memoize；perf，需先有数字）。
+7. 危险路径清单的 Windows 形态会静默失效。
+8. `decisionReason` 结构化审计未做（spec 非目标）。
+9. `plan` 模式未做（拍板留 TUI）。
+10. plan 的测试数字应写成下限而非精确值（复盘「下次怎么做更好」）。
 
 ## 用到的知识
 
