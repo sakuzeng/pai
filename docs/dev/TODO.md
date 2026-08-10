@@ -95,9 +95,22 @@
       所以没违反硬规矩，但**参照没对照**，pai 的实现与 CC 的实际做法是否一致无从判断。
       **具体悬案**（06 复盘第五节）：`findRelevantMemories` 这个名字暗示可能有**相关性筛选**，
       若属实，pai 的「全靠模型自己想起来 read_file 主题文件」就是明显更弱的设计。
-- [ ] **建档案时不要删模板的 `复盘.md`**（06 复盘）：05/06 建档时我 `rm` 掉了它，
-      等于把「验收后要写技术总结」的提示也抹了。两篇已补写，但下次 `cp -r _template`
-      之后只删真正用不到的（如中等改动无 spec/plan），`复盘.md` 留着当 TODO 用。
+- [x] ~~**建档案时不要删模板的 `复盘.md`**~~ **已升级为硬规矩 2026-08-10**（用户裁决）：
+      「交付即复盘」写进 features/README 规矩 7 与 AGENTS.md，
+      `tests/test_docs_consistency.py::test_delivered_features_have_a_retrospective` 强制
+      （状态到「已交付」必须有复盘、不能是模板占位、必须有「我现在质疑什么」节）。
+      立项日早于 2026-08-10 的既有档案不追溯。
+
+- [ ] **05 复盘质疑二：状态行不该默认改变已交付功能的输出形态**（05 复盘）：
+      Task 8 把 `run_interactive` 的默认 `on_event` 换成了状态行处理器，
+      开着就不再滚动打 `🔧`——这个行为改变从没被拍过板。考虑默认关、显式打开。
+- [ ] **06 复盘质疑三：「不读 AGENTS.md」的理由可能只在自家成立**（06 复盘，D#43 复议候选）：
+      论据是「那是给开发 pai 的 AI 的规矩」——在本仓库成立；但 pai 的立意是在**别人的项目**
+      里跑，那里的 `AGENTS.md` 恰恰是该项目写给 agent 的规矩，是最该读的上下文。
+      用只在自家成立的理由定了一条对外默认行为，值得重开。
+- [ ] **06 复盘质疑四：`MEMORY.md` 的 200 行 / 25KB 是照抄官方，没有 pai 依据**：
+      官方数字是给英文 + Claude 调的；pai 跑中文、token 密度差一倍以上。
+      与 `reserve_tokens=16384`「从 pi 借来的经验值」同一类债。
 - [x] ~~**两块硬拿的工程知识没沉淀**~~ **已补 2026-08-10**：
       [concepts/process-groups-and-interrupts.md](../../knowledge/concepts/process-groups-and-interrupts.md)、
       [concepts/terminal-width.md](../../knowledge/concepts/terminal-width.md)。

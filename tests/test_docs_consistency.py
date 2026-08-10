@@ -96,3 +96,30 @@ def test_devlog_milestone_section_is_one_liners():
             continue
         assert re.match(r"^- \d{4}-\d{2}-\d{2} ", line), \
             f"里程碑区只许「- YYYY-MM-DD 主题——一句话 → 链接」单行条目，违例: {line[:60]}"
+
+
+RETROSPECTIVE_RULE_DATE = "20260810"      # 「交付即复盘」立规之日（features/README 规矩 7）
+DELIVERED = ("已交付", "已验收")
+
+
+def test_delivered_features_have_a_retrospective():
+    """交付即复盘（2026-08-10 用户裁决）：状态到「已交付」就必须有 复盘.md。
+
+    立项日早于立规之日的档案不追溯——与「既有历史条目冻结不迁移」同一处理，
+    目录名里就带着立项日，所以这条豁免是机器可判的，不靠记性。
+    「复盘写得好不好」判不了，只判两件事：文件在不在、是不是还剩着模板占位。
+    """
+    for d in sorted(p for p in FEATURES.iterdir() if p.is_dir() and p.name != "_template"):
+        date = d.name.split("-")[1]
+        if date < RETROSPECTIVE_RULE_DATE:
+            continue
+        status = re.search(r"^状态：[^\S\n]*(\S+)", (d / "README.md").read_text(encoding="utf-8"), re.M)
+        if not status or not status.group(1).startswith(DELIVERED):
+            continue
+
+        retro = d / "复盘.md"
+        assert retro.is_file(), f"{d.name} 已交付却没有 复盘.md（features/README 规矩 7）"
+        text = retro.read_text(encoding="utf-8")
+        assert "TEMPLATE-PLACEHOLDER" not in text, f"{d.name} 的 复盘.md 还是模板占位"
+        assert "## 我现在质疑什么" in text, \
+            f"{d.name} 的 复盘.md 缺「我现在质疑什么」节——这一节是必答，留空视为没做"
