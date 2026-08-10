@@ -207,3 +207,69 @@ def test_model_error_does_not_kill_the_repl():
     printed = "\n".join(out)
     assert printed.count("401 Unauthorized") == 2      # 两轮都报错，都没退出
     assert "再见" in printed                            # 最后是被 Ctrl+D（EOF）正常结束的
+
+
+def test_repl_assembles_layered_instructions(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    (tmp_path / "PAI.md").write_text("这个项目用 pytest", encoding="utf-8")
+
+    client, _ = _run(["问一句"], [{"content": "好"}])
+    sent = client.requests[0]["messages"]
+    assert any("这个项目用 pytest" in str(m["content"]) for m in sent)
+
+
+def test_repl_shows_memory_writes(tmp_path, monkeypatch):
+    """用户有权知道 agent 往自己硬盘上写了什么（问 4 选 A：自动写但要看得见）。"""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+
+    from pai.core.events import MemoryWritten, render_text
+
+    script = [
+        {"tool_calls": [("remember", json.dumps({"topic": "构建",
+                                                 "fact": "测试用 ./test.sh"}))]},
+        {"content": "好"},
+    ]
+    events: list = []
+    client = FakeClient(script)
+    run_interactive(client=client, model="fake", reader=_reader(["记一下"]),
+                    out=lambda _: None, on_event=events.append, no_session=True)
+
+    written = [e for e in events if isinstance(e, MemoryWritten)]
+    assert [e.topic for e in written] == ["构建"]
+    assert "已记住" in render_text(written[0])
+
+
+# ---- feature 06 task 7：/memory ----
+
+
+def test_slash_memory_lists_loaded_files(tmp_path, monkeypatch):
+    """「指令没生效」的第一诊断步骤就是看文件到底加载没有——所以要列路径与行数。"""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    (tmp_path / "PAI.md").write_text("规矩一\n规矩二\n规矩三", encoding="utf-8")
+
+    client, printed = _run(["/memory"], [])
+    assert client.requests == []
+    assert "PAI.md" in printed
+    assert "3 行" in printed
+
+
+def test_slash_memory_shows_memory_dir(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    _, printed = _run(["/memory"], [])
+    assert "自动记忆" in printed and ".pai" in printed
+
+
+def test_slash_memory_says_so_when_nothing_loaded(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    _, printed = _run(["/memory"], [])
+    assert "没有加载任何指令文件" in printed        # 打印空白等于让人猜
+
+
+def test_slash_memory_is_listed_in_help():
+    _, printed = _run(["/help"], [])
+    assert "/memory" in printed

@@ -35,12 +35,28 @@ from pai.core.compaction import (
     context_tokens,
     find_cut_point,
 )
-from pai.core.events import AgentEnd, AgentEvent, ToolEnd, ToolStart, render_text
+from pai.core.events import (
+    AgentEnd,
+    AgentEvent,
+    MemoryWritten,
+    ToolEnd,
+    ToolStart,
+    render_text,
+)
 from pai.core.interrupt import InterruptFlag, set_current
 from pai.core.loop import run_agent
+from pai.core.memory import (
+    LOCAL_FILE,
+    MEMORY_INDEX,
+    PROJECT_FILE,
+    USER_DIR,
+    build_context,
+    discover,
+    memory_dir,
+)
 from pai.core.queue import PendingMessageQueue
 from pai.core.session import SessionLog
-from pai.core.tools import Tool, ask, get_tools
+from pai.core.tools import Tool, ask, get_tools, memory_tool
 from pai.modes.statusline import StatusLinePrinter
 
 PROMPT = "› "
@@ -50,6 +66,7 @@ HISTORY_BASE = Path.home() / ".pai" / "history"
 HELP = """可用命令：
   /help     这张表
   /status   上下文估算、锚点数、压缩熔断状态
+  /memory   本次加载了哪些指令文件 + 自动记忆目录在哪
   /compact  手动压缩当前对话
   /clear    清空对话（保留 system）
   /exit     退出（等同 Ctrl+D）
@@ -153,6 +170,9 @@ def run_interactive(
     flag = InterruptFlag()
     set_current(flag)                      # bash 工具从这里看见中断
     ask.set_asker(_make_asker(reader, out))
+    memory_tool.set_memory_dir(memory_dir())
+    memory_tool.set_notifier(
+        lambda topic, path: on_event(MemoryWritten(topic=topic, path=str(path))))
 
     out("pai 交互模式。/help 看命令，Ctrl+D 退出。")
     pending_exit = False
@@ -210,6 +230,7 @@ def _run_turn(task: str, *, client, model, tools, messages, anchors, state, foll
             compaction=compaction,
             # steering 在纯 REPL 无输入源（阻塞的 input 拿不到「干活时打字」），
             # 只接 followUp；注入点已在 loop 里备好，等 TUI/流式通电
+            instructions=build_context,
             get_follow_up_messages=follow_up.drain,
         )
     except Exception as e:  # noqa: BLE001 - REPL 的价值就是「对话留着」
@@ -287,12 +308,35 @@ def _handle_command(line: str, *, out, messages, anchors, state, tools, client, 
         breaker = "已熔断" if state.tripped else f"正常（失败 {state.failures} 次）"
         out(f"📊 消息 {len(messages)} 条 | 估算 {estimated} token / 窗口 {context_window}"
             f" | 锚点 {len(anchors.entries)} 个 | 压缩：{breaker}")
+    elif command == "/memory":
+        _show_memory(out)
     elif command == "/compact":
         _manual_compact(messages=messages, anchors=anchors, state=state,
                         client=client, model=model, compaction=compaction, out=out)
     else:
         out(f"未知命令 {command}，/help 看可用命令")
     return False
+
+
+def _show_memory(out: Callable[[str], None]) -> None:
+    """官方 /memory 的最小版。它首先是个调试工具：指令没生效时，
+    第一步永远是确认文件到底有没有被加载——所以列的是路径与行数，不是内容。"""
+    files = discover()
+    if not files:
+        out(f"📄 没有加载任何指令文件（找的是 {PROJECT_FILE} / {LOCAL_FILE}，"
+            f"从当前目录向上逐级，外加 ~/{USER_DIR}/{PROJECT_FILE}）")
+    else:
+        out("📄 已加载的指令文件（按加载顺序，后面的更靠近对话）：")
+        for path in files:
+            try:
+                lines = len(path.read_text(encoding="utf-8").splitlines())
+            except OSError:
+                lines = 0
+            out(f"  {path}（{lines} 行）")
+    directory = memory_dir()
+    index = directory / MEMORY_INDEX
+    state = "有索引" if index.is_file() else "还没有内容"
+    out(f"🧠 自动记忆目录：{directory}（{state}）")
 
 
 def _manual_compact(*, messages, anchors, state, client, model, compaction, out) -> None:

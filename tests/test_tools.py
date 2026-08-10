@@ -246,3 +246,96 @@ def test_get_tools_excludes_ask_by_default():
     """once 模式没有真人可问，注册了就是让模型撞空——默认工具集必须不含它。"""
     assert "ask_user_question" not in get_tools()
     assert "ask_user_question" in get_tools(["bash", "ask_user_question"])
+
+
+# ---- feature 06 task 6：remember（自动记忆写回） ----
+
+
+@contextlib.contextmanager
+def _memory_at(directory):
+    """记忆目录走注入点而不是工具参数：@tool 只认标量，Path 参数会在装饰期就报错，
+    而把目录做成 str 参数等于让模型自己挑写盘位置——那比路径穿越还糟。
+    """
+    from pai.core.tools import memory_tool
+
+    memory_tool.set_memory_dir(directory)
+    try:
+        yield
+    finally:
+        memory_tool.set_memory_dir(None)
+
+
+def test_remember_writes_topic_file_and_indexes_it(tmp_path):
+    from pai.core.tools import memory_tool
+
+    with _memory_at(tmp_path):
+        result = memory_tool.remember(topic="构建", fact="测试用 ./test.sh 跑")
+    assert "构建" in result
+    assert "测试用 ./test.sh 跑" in (tmp_path / "构建.md").read_text(encoding="utf-8")
+    assert "构建.md" in (tmp_path / "MEMORY.md").read_text(encoding="utf-8")
+
+
+def test_remember_appends_without_clobbering(tmp_path):
+    from pai.core.tools import memory_tool
+
+    with _memory_at(tmp_path):
+        memory_tool.remember(topic="构建", fact="第一条")
+        memory_tool.remember(topic="构建", fact="第二条")
+    body = (tmp_path / "构建.md").read_text(encoding="utf-8")
+    assert "第一条" in body and "第二条" in body
+
+
+def test_remember_indexes_each_topic_once(tmp_path):
+    from pai.core.tools import memory_tool
+
+    with _memory_at(tmp_path):
+        memory_tool.remember(topic="构建", fact="a")
+        memory_tool.remember(topic="构建", fact="b")
+    index = (tmp_path / "MEMORY.md").read_text(encoding="utf-8")
+    assert index.count("构建.md") == 1             # 索引有 200 行上限，别自己撑爆它
+
+
+def test_remember_rejects_path_traversal(tmp_path):
+    """topic 是**模型生成的**，且是唯一能指定写盘位置的参数——破了就是任意文件写。"""
+    from pai.core.tools import memory_tool
+
+    with _memory_at(tmp_path):
+        for evil in ("../../etc/passwd", "/tmp/evil", "sub/dir", "..", ".", "", "   "):
+            result = memory_tool.remember(topic=evil, fact="x")
+            assert "错误" in result, f"{evil!r} 应被拒绝"
+    assert list(tmp_path.iterdir()) == []          # 一个文件都不该被写出来
+
+
+def test_remember_returns_error_string_instead_of_raising(tmp_path):
+    from pai.core.tools import memory_tool
+
+    blocked = tmp_path / "file"
+    blocked.write_text("我是文件不是目录", encoding="utf-8")
+    with _memory_at(blocked):
+        result = memory_tool.remember(topic="构建", fact="x")
+    assert "错误" in result                        # 工具错误不 throw（架构约束）
+
+
+def test_remember_is_in_the_default_tool_set():
+    """与 ask_user_question 不同：写回不是交互模式独有的，once 里也该能记。"""
+    assert "remember" in get_tools()
+
+
+def test_remember_notifies_the_assembly_layer(tmp_path):
+    """写盘这件事必须能被看见。审计本身已由既有的工具消息落盘覆盖
+    （assistant.tool_calls + tool 结果都进会话 JSONL），所以这里只补「可见性」一条：
+    装配层注入一个通知回调，由它去发事件——工具不认识事件系统。
+    """
+    from pai.core.tools import memory_tool
+
+    seen: list = []
+    with _memory_at(tmp_path):
+        memory_tool.set_notifier(lambda topic, path: seen.append((topic, path)))
+        try:
+            memory_tool.remember(topic="构建", fact="x")
+            memory_tool.remember(topic="非法/名字", fact="x")     # 失败不该通知
+        finally:
+            memory_tool.set_notifier(None)
+
+    assert [topic for topic, _ in seen] == ["构建"]
+    assert seen[0][1] == tmp_path / "构建.md"

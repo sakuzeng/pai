@@ -756,3 +756,140 @@ def test_compaction_state_updates_propagate_to_caller(tmp_path, monkeypatch):
 
     assert state.failures == 1, "压缩后仍超线，失败计数必须落到调用方持有的那个对象上"
     assert state.awaiting_verify is False
+
+
+# ---------- feature 06 task 4：分层指令接线 ----------
+
+
+def test_instructions_become_the_first_user_message():
+    """官方语义：指令作为 **system prompt 之后的 user 消息**传（不是塞进 system）。"""
+    client = FakeClient([{"content": "done"}])
+    run_agent("任务", client=client, model="fake", tools={"noop": _noop_tool()},
+              instructions=lambda: "项目规矩：先跑测试", on_event=lambda _: None)
+
+    sent = client.requests[0]["messages"]
+    assert [m["role"] for m in sent] == ["system", "user", "user"]
+    assert "项目规矩：先跑测试" in sent[1]["content"]
+    assert sent[2]["content"] == "任务"
+
+
+def test_no_instructions_preserves_old_message_shape():
+    client = FakeClient([{"content": "done"}])
+    run_agent("任务", client=client, model="fake", tools={"noop": _noop_tool()},
+              on_event=lambda _: None)
+    assert [m["role"] for m in client.requests[0]["messages"]] == ["system", "user"]
+
+
+def test_empty_instructions_do_not_add_a_message():
+    """没有任何 PAI.md 时不该塞一条空 user 消息——那是白烧 token 且让模型困惑。"""
+    client = FakeClient([{"content": "done"}])
+    run_agent("任务", client=client, model="fake", tools={"noop": _noop_tool()},
+              instructions=lambda: "   ", on_event=lambda _: None)
+    assert [m["role"] for m in client.requests[0]["messages"]] == ["system", "user"]
+
+
+def test_instructions_are_loaded_once_per_run():
+    calls = []
+
+    def loader():
+        calls.append(1)
+        return "指令"
+
+    client = FakeClient([{"tool_calls": [("noop", "{}")]}, {"content": "done"}])
+    run_agent("任务", client=client, model="fake", tools={"noop": _noop_tool()},
+              instructions=loader, on_event=lambda _: None)
+    assert len(calls) == 1, "每步都重读磁盘是浪费；只有压缩后重注入才需要再读一次"
+
+
+def test_instructions_not_duplicated_when_conversation_continues():
+    """REPL 第二轮传的是同一份 messages，指令不能每轮再插一条。"""
+    conversation: list = []
+    client = FakeClient([{"content": "一"}, {"content": "二"}])
+    for task in ("第一问", "第二问"):
+        run_agent(task, client=client, model="fake", tools={"noop": _noop_tool()},
+                  messages=conversation, instructions=lambda: "项目规矩",
+                  on_event=lambda _: None)
+
+    assert [m["content"] for m in conversation].count("项目规矩") == 0 or True
+    instruction_msgs = [m for m in conversation if "项目规矩" in str(m.get("content"))]
+    assert len(instruction_msgs) == 1
+
+
+# ---------- feature 06 task 5：压缩后重注入（不做就是长会话静默失效） ----------
+
+
+def _compaction_script():
+    """两个锚点就位后触发压缩：与 test_loop_compacts_when_over_threshold 同款夹具。"""
+    return [
+        {"tool_calls": [("bash", json.dumps({"command": "true"}))], "usage": _usage(100)},
+        {"tool_calls": [("bash", json.dumps({"command": "true"}))], "usage": _usage(850)},
+        {"content": "这是摘要"},                                # ← 压缩触发的摘要请求
+        {"content": "done", "usage": _usage(300)},
+    ]
+
+
+def test_instructions_survive_compaction(tmp_path, monkeypatch):
+    """compact() 重建的是 [system]+[摘要]+[保留尾部]——指令在第一条 user 位置，
+    必然被摘掉。不重注入的话，长会话里 PAI.md 就静默失效了。
+    """
+    monkeypatch.chdir(tmp_path)
+    from pai.core.compaction import CompactionSettings
+    from pai.core.loop import INSTRUCTION_HEADER
+
+    client = FakeClient(_compaction_script())
+    run_agent("x", client=client, model="fake", tools=get_tools(),
+              instructions=lambda: "项目规矩：先跑测试",
+              context_window=1000, compaction=CompactionSettings(reserve_tokens=200,
+                                                                 keep_recent_tokens=500),
+              on_event=lambda _: None)
+
+    after = client.requests[3]["messages"]                     # 压缩后的下一次任务请求
+    assert after[0]["role"] == "system"
+    assert str(after[1]["content"]).startswith(INSTRUCTION_HEADER), \
+        "指令消息必须回到 system 之后的位置"
+    assert "项目规矩：先跑测试" in after[1]["content"]
+
+
+def test_reinjected_instructions_are_re_read_from_disk(tmp_path, monkeypatch):
+    """区分「真重读」与「缓存了启动时那个字符串」：官方原话就是「从磁盘重新读取」。"""
+    monkeypatch.chdir(tmp_path)
+    from pai.core.compaction import CompactionSettings
+
+    rules = tmp_path / "PAI.md"
+    rules.write_text("旧规矩", encoding="utf-8")
+
+    def loader():
+        return rules.read_text(encoding="utf-8")
+
+    calls = {"n": 0}
+
+    def loader_with_edit():
+        calls["n"] += 1
+        if calls["n"] == 1:                                    # 首次加载之后用户改了文件
+            rules.write_text("新规矩", encoding="utf-8")
+        return loader()
+
+    client = FakeClient(_compaction_script())
+    run_agent("x", client=client, model="fake", tools=get_tools(),
+              instructions=loader_with_edit,
+              context_window=1000, compaction=CompactionSettings(reserve_tokens=200,
+                                                                 keep_recent_tokens=500),
+              on_event=lambda _: None)
+
+    after = client.requests[3]["messages"]
+    assert "新规矩" in after[1]["content"], "重注入拿的是磁盘上的当前内容，不是启动时的快照"
+    assert calls["n"] == 2, "启动一次 + 压缩后一次，正好两次"
+
+
+def test_no_reinjection_when_instructions_not_provided(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    from pai.core.compaction import CompactionSettings
+    from pai.core.loop import INSTRUCTION_HEADER
+
+    client = FakeClient(_compaction_script())
+    run_agent("x", client=client, model="fake", tools=get_tools(),
+              context_window=1000, compaction=CompactionSettings(reserve_tokens=200,
+                                                                 keep_recent_tokens=500),
+              on_event=lambda _: None)
+    after = client.requests[3]["messages"]
+    assert not any(str(m.get("content") or "").startswith(INSTRUCTION_HEADER) for m in after)

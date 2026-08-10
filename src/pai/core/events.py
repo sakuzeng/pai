@@ -73,6 +73,12 @@ class BreakerTripped:
 
 
 @dataclass(frozen=True)
+class MemoryWritten:
+    topic: str
+    path: str
+
+
+@dataclass(frozen=True)
 class Interrupted:
     where: Literal["tool", "step"]
 
@@ -92,6 +98,7 @@ AgentEvent = Union[
     Compacted,
     CompactionSkipped,
     BreakerTripped,
+    MemoryWritten,
     Interrupted,
     AgentEnd,
 ]
@@ -116,6 +123,8 @@ def render_text(event: AgentEvent) -> Optional[str]:
                 "不压，靠预算熔断兜底")
     if isinstance(event, BreakerTripped):
         return f"⚠️ 压缩连续失败 {event.failures} 次，自动压缩已熔断"
+    if isinstance(event, MemoryWritten):
+        return f"🧠 已记住（{event.topic}）→ {event.path}"
     if isinstance(event, Interrupted):
         where = "工具执行被终止" if event.where == "tool" else "停在下一次请求之前"
         return f"⛔ 已中断：{where}，已完成的工作保留"

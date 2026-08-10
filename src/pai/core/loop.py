@@ -54,6 +54,10 @@ USAGE_RECORD_TYPE = "usage"
 
 CANCELLED_RESULT = "(已取消，用户中断)"
 
+# 分层指令与自动记忆作为 **system 之后的第一条 user 消息**注入（照官方，D#42）。
+# 靠内容前缀认出这条消息：messages 会原样发给 provider，加自定义字段是协议外的东西。
+INSTRUCTION_HEADER = "# 项目指令与记忆（来自 PAI.md 与自动记忆）"
+
 SYSTEM_PROMPT = (
     "你是一个最小化的编码 agent。你有这些工具：bash（跑命令）、read_file（读文件）、"
     "write_file（覆盖写文件）、edit_file（精确替换文件里的一段文本）。"
@@ -85,6 +89,7 @@ def run_agent(
     get_steering_messages: Optional[Callable[[], List[dict]]] = None,
     get_follow_up_messages: Optional[Callable[[], List[dict]]] = None,
     interrupt_flag: Optional[InterruptFlag] = None,
+    instructions: Optional[Callable[[], str]] = None,
     anchors: Optional[AnchorBook] = None,
     compaction_state: Optional[CompactionState] = None,
 ) -> str:
@@ -109,6 +114,9 @@ def run_agent(
         messages.append(system_entry)
         if session:
             session.append(system_entry)
+    if instructions is not None:
+        _inject_instructions(messages, instructions, session)
+
     user_entry = {"role": "user", "content": task}
     messages.append(user_entry)
     if session:
@@ -164,6 +172,11 @@ def run_agent(
                     messages, cut=cut, client=client, model=model)
                 anchors.reset()                      # 历史被改写，旧锚全部作废（D#18/32）
                 state.awaiting_verify = True         # 成败等首次真实 usage（D#34）
+                if instructions is not None:
+                    # 压缩重建的是 [system]+[摘要]+[保留尾部]，指令消息在第一条 user
+                    # 位置必然被摘掉——不重注入就是长会话里 PAI.md 静默失效（D#42）。
+                    # 重新调用 loader = 从磁盘重读（官方原话），顺带让中途改的文件生效。
+                    _inject_instructions(messages, instructions, session)
                 # 摘要请求拍平重发近全窗口，是全系统最贵的单次请求，必须计入预算熔断账
                 spent_tokens += s_usage.get("total_tokens") or 0
                 after = context_tokens(messages, tool_schemas)
@@ -263,6 +276,34 @@ def run_agent(
             _extend(messages, get_steering_messages(), session)
 
     return finish("max_steps", f"达到最大步数（{max_steps}），任务可能未完成。")
+
+
+def _instruction_message(text: str) -> dict:
+    return {"role": "user", "content": f"{INSTRUCTION_HEADER}\n\n{text.strip()}"}
+
+
+def _has_instructions(messages: List[dict]) -> bool:
+    return any(m.get("role") == "user"
+               and str(m.get("content") or "").startswith(INSTRUCTION_HEADER)
+               for m in messages)
+
+
+def _inject_instructions(messages: List[dict], loader: Callable[[], str],
+                         session: SessionLog | None) -> None:
+    """插在 system 之后。空指令不插——塞一条空 user 消息是白烧 token 且让模型困惑。
+
+    续用同一份 messages（REPL 多轮）时不重复插：靠 INSTRUCTION_HEADER 前缀识别。
+    """
+    if _has_instructions(messages):
+        return
+    text = loader() or ""
+    if not text.strip():
+        return
+    entry = _instruction_message(text)
+    at = 1 if messages and messages[0].get("role") == "system" else 0
+    messages.insert(at, entry)
+    if session:
+        session.append(entry)
 
 
 def _adopt(state: CompactionState, updated: CompactionState) -> None:

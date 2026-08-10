@@ -88,3 +88,16 @@ def test_once_default_event_handler_prints_rendered_text(capsys, tmp_path, monke
     out = capsys.readouterr().out
     assert out == "🔧 bash({'command': 'echo hi'}) → hi\n\n"
     assert "ToolEnd(" not in out
+
+
+def test_once_assembles_layered_instructions(tmp_path, monkeypatch):
+    """装配层的职责：把 PAI.md 真的送到 loop 手里（接错线要打真实 API 才发现）。"""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    (tmp_path / "PAI.md").write_text("这个项目用 pytest", encoding="utf-8")
+
+    client = FakeClient([{"content": "好"}])
+    run_once("x", client=client, model="fake", no_session=True, on_event=lambda _: None)
+
+    sent = client.requests[0]["messages"]
+    assert any("这个项目用 pytest" in str(m["content"]) for m in sent)
