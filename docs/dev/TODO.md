@@ -82,6 +82,23 @@
 
 ## P2 · 值得改
 
+### knowledge 缺口（2026-08-10 用户问「有没有归纳」时自查出来的）
+
+- [ ] **`source-walks/pi-agentloop.md` 该从「指针」升「精读」**：阶段 2 实际深读了
+      `agent.ts:123`（PendingMessageQueue 的 all/single 两种 drain 语义）与
+      `types.ts:422`（AgentEvent 扁平联合共 9 种事件），这些结论现在只活在
+      features/05 的档案里，没回流笔记。登记规约写明「指针升精读的时机：
+      动工时发现指针的结论粒度不够用」——正是这个情形。
+- [ ] **CC `src/memdir/` 源码走读没做**：roadmap 阶段 3 的「参照」栏明写了它
+      （findRelevantMemories / memoryScan），我只读了官方 memory 章节就动工了。
+      源码目录确实存在（已确认）。诚实边界：阶段 3 的「前置精读」清单里只列了官方章节，
+      所以没违反硬规矩，但**参照没对照**，pai 的实现与 CC 的实际做法是否一致无从判断。
+- [ ] **两块硬拿的工程知识没沉淀**（都有 pai 锚点，够格进 concepts/）：
+      ① 进程组中断——`start_new_session` + `killpg`，以及「只杀子进程时后台孙进程
+      仍握着 stdout 管道、`communicate` 收不到 EOF 连部分输出都丢」这条实测；
+      ② 终端列宽——`east_asian_width` 按列不按字符，以及 ANSI 转义符不占列、
+      必须先按可见文本截断再上色。两条都是这次撞出来的，不写就只活在 devlog 里。
+
 ### API key 解析（2026-08-10，K concepts/api-key-resolution.md）
 
 - [ ] **provider → env 变量名映射表**（学 pi `env-api-keys.ts`）：现在 `DEEPSEEK_API_KEY`
