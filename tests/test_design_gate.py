@@ -86,3 +86,20 @@ def test_status_regex_does_not_cross_lines():
     """「状态：」后空着时，不能把下一行首词认作状态（R3#14）。"""
     d, reason = decide("Edit", "src/pai/x.py", "02-x\n", "# 02-x\n状态：\n已拍板\n")
     assert d == "deny" and "状态" in reason
+
+
+def test_design_gate_stays_fail_open():
+    """**开发期自律门禁保持 fail-open**，与运行期权限 hook 的 fail-closed 相反。
+
+    feature 09 Task 7 复议 D#50 时明确分了场景：
+    - 运行期权限 hook 挡的是「agent 动用户的机器」，失败的代价是**安全事故** → fail-closed；
+    - `design_gate.py` 挡的是「AI 改自己源码时没走流程」，失败的代价是**流程没走到**
+      → fail-open（门禁自己崩了不该让开发整个停摆）。
+
+    这条测试是防「统一一下失败语义」的误改——两处相反是刻意的，不是遗漏。
+    """
+    gate = Path(__file__).resolve().parent.parent / "guards" / "design_gate.py"
+    source = gate.read_text(encoding="utf-8")
+
+    assert "sys.exit(0)" in source
+    assert "门禁自身异常绝不阻断工作" in source

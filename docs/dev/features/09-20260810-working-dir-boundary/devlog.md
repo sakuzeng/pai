@@ -315,3 +315,97 @@ Task 7 还要为它单加一条注入验证。
 - **`/mode` 命令与 shift+tab 未做**（拍板：留 TUI 阶段）。所以 REPL 里换模式
   当前只能重启 pai 加 flag。登记 TODO。
 - `/permissions` 不显示当前模式——用户看不到自己在哪个模式下。登记 TODO（小修）。
+
+## 2026-08-11 · Task 7：hook 改 fail-closed（复议 D#50）+ 注入验证
+
+**目标**：运行期权限 hook 的失败语义从 fail-open 改成 fail-closed，
+开发期自律门禁保持 fail-open；然后用注入反证证明前六个 task 的测试不是摆设。
+
+**改动**：
+- `src/pai/core/hooks.py`：超时 / 起不来 → `deny`；新增 `NOT_RUNNABLE_EXIT_CODES`
+- `tests/test_hooks.py`：**改写 2 条** + 新增 2 条
+- `tests/test_design_gate.py`：+1 条（钉住 design_gate 的 fail-open 不被误改）
+- `docs/dev/STATUS.md` 测试数字 382 → 385
+
+**测试**：绿 `29 passed`（hooks + design_gate）。
+全量：`382 passed, 3 deselected` → **`385 passed, 3 deselected`**。
+
+### 拍板说「崩溃 → fail-closed」，但子进程语境下「崩溃」有歧义
+
+实现时撞上的：脚本 `raise` 与脚本主动 `exit 1`，**退出码都是 1，分不出来**。
+而 CC 协议明确把「其他退出码」定义为脚本*能够表达*的一种状态（我跑完了、有问题、别拦）。
+一并改成 deny 就是改掉协议本身，且会让任何一个写得不严谨的 hook 变成一道随机的墙。
+
+所以 fail-closed 的范围收敛到**「pai 侧没拿到判定」**：
+
+| 情况 | 结果 |
+|---|---|
+| 超时 | **deny**（改了） |
+| 起不来（退出码 126/127 或 OSError） | **deny**（改了） |
+| 退出码 0 + 有效 JSON / 退出码 2 | 按脚本说的（没变） |
+| 退出码 0 无有效 JSON / **其他退出码** | 无意见（**没变**） |
+
+**与 pi 的差异如实记**：pi 的钩子是进程内 JS 函数，异常能被 `runner.ts` 捕获转拦截，
+它**区分得出**「没跑完」；pai 的 hook 是子进程，只有退出码可看。
+`test_nonzero_exit_is_still_non_blocking_and_this_differs_from_pi` 把这条差异钉成测试。
+
+**`shell=True` 让「起不来」这条差点是死代码**：原本写的是捕获 `OSError`，
+但用 `shell=True` 起子进程时命令不存在**不会抛 OSError**——shell 自己吞掉并返回 127。
+测试 `test_hook_cannot_be_started_blocks` 当场红了，才发现这条分支实际触发不到。
+补上 126/127（shell 的标准约定）之后才真正生效。
+代价如实记在常量注释里：hook 脚本**内部**调了个不存在的命令并透传 127 时会被误判。
+
+### 注入验证（roadmap 硬要求）
+
+**注入 1：`path_in_working_path` 恒 `True`**（边界形同虚设）
+
+```
+FAILED tests/test_boundary.py::test_relative_paths_resolve_against_current_cwd_not_the_boundary
+FAILED tests/test_boundary.py::test_all_paths_must_be_inside
+FAILED tests/test_boundary.py::test_dotdot_traversal_is_normalized
+FAILED tests/test_boundary.py::test_symlink_out_of_boundary_is_outside
+FAILED tests/test_permissions.py::test_read_outside_cwd_asks
+FAILED tests/test_permissions.py::test_once_degrades_boundary_ask_to_deny
+FAILED tests/test_permission_modes.py::test_accept_edits_still_respects_boundary
+======================== 12 failed, 70 passed in 0.58s =========================
+```
+
+**注入 2：写也走 `in_working_dir`**（写不再一律 ask）
+
+```
+FAILED tests/test_permissions.py::test_write_always_asks_even_inside
+FAILED tests/test_permissions.py::test_once_degrades_boundary_ask_to_deny
+FAILED tests/test_permission_modes.py::test_default_mode_is_the_baseline
+========================= 3 failed, 59 passed in 0.45s =========================
+```
+
+**注入 3：危险路径检查挪到 allow 规则之后**（bypass 免疫失效）
+
+```
+FAILED tests/test_permissions.py::test_dangerous_write_is_blocked_even_with_allow_rule
+FAILED tests/test_permissions.py::test_dangerous_write_reason_names_the_path
+FAILED tests/test_permission_modes.py::test_bypass_is_immune_to_dangerous_paths
+========================= 3 failed, 59 passed in 0.46s =========================
+```
+
+**注入 4：第一次注错了，这条值得单记。**
+
+原本想验「第 3 步（显式 ask）与第 7 步（兜底 ask）的区分」，
+第一次把 `bypassPermissions` 从第 4 步挪到第 7 步之前——**结果 14 条全绿**。
+
+一瞬间以为这个区分没被测住。复查后发现是**注入没打中**：显式 ask 的检查仍在
+bypass 之前，所以它照样先命中返回，区分根本没被破坏。
+改成把 bypass 提到**显式 ask 之前**（注入 4b），才真正取消区分：
+
+```
+FAILED tests/test_permission_modes.py::test_bypass_is_immune_to_explicit_ask_rules
+========================= 1 failed, 13 passed in 0.41s =========================
+```
+
+**教训**：注入验证本身也会写错，而且**注错的表现与「测试无效」一模一样**（都是全绿）。
+区分方法只有一个——注入之后先问「我改的这行，在目标场景里真的会被执行到吗」。
+feature 07 的三条注入没撞上这个问题是运气好。这条进复盘。
+
+四次注入还原后复跑：**`385 passed, 3 deselected`**，`grep` 确认无残留。
+
+**遗留**：无（本 task 的遗留已并入下面的交付清单）。
