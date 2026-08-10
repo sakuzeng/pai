@@ -89,12 +89,22 @@
       `types.ts:422`（AgentEvent 扁平联合共 9 种事件），这些结论现在只活在
       features/05 的档案里，没回流笔记。登记规约写明「指针升精读的时机：
       动工时发现指针的结论粒度不够用」——正是这个情形。
-- [ ] **CC `src/memdir/` 源码走读没做**：roadmap 阶段 3 的「参照」栏明写了它
-      （findRelevantMemories / memoryScan），我只读了官方 memory 章节就动工了。
-      源码目录确实存在（已确认）。诚实边界：阶段 3 的「前置精读」清单里只列了官方章节，
-      所以没违反硬规矩，但**参照没对照**，pai 的实现与 CC 的实际做法是否一致无从判断。
-      **具体悬案**（06 复盘第五节）：`findRelevantMemories` 这个名字暗示可能有**相关性筛选**，
-      若属实，pai 的「全靠模型自己想起来 read_file 主题文件」就是明显更弱的设计。
+- [x] ~~**CC `src/memdir/` 源码走读没做**~~ **已补 2026-08-10**，见
+      [K source-walks/cc-memdir.md](../../knowledge/source-walks/cc-memdir.md)。
+      **悬案裁决：属实**——CC 的召回是**框架主动做的**（便宜模型按 header manifest
+      选 ≤5 篇塞进上下文），不是「模型自己想起来 read_file」。pai 少的是一整层机制。
+      衍生出下面三条。
+- [ ] **`remember` 写入时带 `description` frontmatter**（K cc-memdir 第五节，零成本）：
+      CC 的召回全靠它（只读文件前 30 行拿 description 拼 manifest）。
+      即使暂不做召回层，不写就是给未来挖坑——届时现存记忆文件都要回填。
+- [ ] **记忆的新鲜度提示**（K cc-memdir 第四节，零成本，写入日期 pai 已经有了）：
+      CC 用「47 days ago」而非 ISO 时间戳，注释直说**模型不擅长日期算术，
+      原始时间戳不会触发陈旧性推理**；>1 天的记忆附一句「记忆是时间点观察不是实时状态，
+      file:line 引用可能已过期」。动机是真实事故：**带 file:line 的引用会让过期声明
+      听起来更权威而不是更不权威**。pai 迟早会踩，CC 已替我们踩过。
+- [ ] **记忆召回层做不做**（K cc-memdir 第五节，**要拍板**）：CC 每次查询多打一次模型
+      （Sonnet 档、max_tokens 256、JSON schema 约束）。pai 有预算熔断文化，这是实打实的钱。
+      选项：不做 / 做 / 只在 MEMORY.md 索引放不下时才召回。建议单独立档案，别塞进阶段 4。
 - [x] ~~**建档案时不要删模板的 `复盘.md`**~~ **已升级为硬规矩 2026-08-10**（用户裁决）：
       「交付即复盘」写进 features/README 规矩 7 与 AGENTS.md，
       `tests/test_docs_consistency.py::test_delivered_features_have_a_retrospective` 强制
