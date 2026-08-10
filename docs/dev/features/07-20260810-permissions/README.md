@@ -1,7 +1,7 @@
 # 07-20260810-permissions —— 权限层（三态规则 + 工具级匹配 + hooks）
 
 状态：讨论中（等用户拍板；拍板后改「已拍板」，`.active` 已指向本目录）
-分支：`feat/memory`（前置精读 + spec/plan）；实现分支待拍板后开
+分支：`feat/07-permissions`（自 `main` 开出）
 
 ## 需求
 
@@ -64,7 +64,7 @@ anna 门禁思想回流：ask 只用在必须真人拍板的节点、**门禁必
 ## 实施
 
 superpowers 全链路：[spec.md](spec.md) → [plan.md](plan.md) → SDD。
-分支：待拍板后开 `feat/permissions`。
+分支：`feat/07-permissions`（已开，自 `main`）。
 
 ## 结果与测试
 
