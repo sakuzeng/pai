@@ -1,16 +1,15 @@
-"""上下文压缩的地基三件套：token 秤、警戒线、对话拍平机。
+"""上下文压缩全链路：token 秤、警戒线、真实 usage 锚簿、切点、摘要、重建、熔断。
 
-阶段 1 的第 1-2 步。全是纯函数——不联网、不读文件、不改 messages——
-这样第 3 步 find_cut_point 和最终的自动压缩才有可测的立足点。
-
-刻意还没有的：find_cut_point（在哪下刀）、summarize（调模型摘要）、compact（把两者接起来）。
+阶段 1 全部落地：estimate_tokens/context_tokens 做估算与锚定，should_compact 是警戒线，
+AnchorBook/find_cut_point 按真实 usage 差值定切点，summarize/compact 负责摘要与重建，
+CompactionState/verify_compaction 是压缩失败熔断器（D#34）。loop.py 负责接线触发。
 """
 
 from __future__ import annotations
 
 import json
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Iterable, Mapping, Sequence
 
 # 官方换算系数，来源 refs/deepseek-api/quick_start/token_usage.md：
@@ -50,10 +49,36 @@ class CompactionSettings:
     注意它不是按模型输出上限算的：deepseek-v4-flash 输出上限 384K，
     但摘要实际长度远小于此（CC 统计其摘要 p99.99 为 17,387 token）。
     这个数目前无实测依据，待 usage 落盘后用真实摘要长度校准。
+
+    keep_recent_tokens 照 pi，与 reserve 同样待实测校准。
     """
 
     reserve_tokens: int = 16384
     enabled: bool = True
+    keep_recent_tokens: int = 20000
+
+
+@dataclass
+class AnchorBook:
+    """真实 usage 锚点簿（D#32）：单锚只够判「该不该压」，切点计算需要完整列表。
+
+    entries[i] = (锚覆盖到的 message 下标, 累计真实 token)；相邻差值 = 该轮真实成本。
+    压缩会改写历史，必须 reset()——锚定法假设 append-only。
+    """
+
+    entries: list[tuple[int, int]] = field(default_factory=list)
+
+    def record(self, message_index: int, real_tokens: int) -> None:
+        self.entries.append((message_index, real_tokens))
+
+    def latest(self) -> tuple[int | None, int]:
+        if not self.entries:
+            return None, 0
+        index, tokens = self.entries[-1]
+        return tokens, index
+
+    def reset(self) -> None:
+        self.entries.clear()
 
 
 def estimate_tokens(message: Mapping[str, object]) -> int:
@@ -144,6 +169,32 @@ def should_compact(tokens: int, window: int, settings: CompactionSettings) -> bo
     return tokens > window - settings.reserve_tokens
 
 
+def find_cut_point(
+    messages: Sequence[Mapping[str, object]],
+    anchors: Sequence[tuple[int, int]],
+    *,
+    keep_recent_tokens: int = 20000,
+) -> int:
+    """在哪下刀（D#32）：从最新锚往回累计真实差值，够 keep_recent_tokens 即停。
+
+    只在锚点边界下刀——真实成本只能按轮次反推，粒度天然对齐。返回保留段起点；
+    1 = 无可压（锚不足两个 / keep_recent_tokens 吞下全部历史）。调用方按锚数分流：
+    锚不足两个是压缩节奏里的正常一步，走静默进度；锚已够两个才是真无可压，才升级为警告。
+    落点若是 tool 消息则前移，绝不让保留段以孤儿 tool_result 开头。
+    """
+    if len(anchors) < 2:
+        return 1
+    _, latest_total = anchors[-1]
+    cut = 1
+    for index, total in reversed(anchors[:-1]):
+        if latest_total - total >= keep_recent_tokens:
+            cut = index
+            break
+    while 0 < cut < len(messages) and messages[cut].get("role") == "tool":
+        cut -= 1                       # 前移方向 = 多保留，宁多勿孤儿
+    return max(cut, 1)
+
+
 def serialize_conversation(
     messages: Iterable[Mapping[str, object]],
     max_chars: int = MAX_CHARS_PER_FIELD,
@@ -187,3 +238,113 @@ def _truncate(text: str, max_chars: int) -> str:
     if len(text) <= max_chars:
         return text
     return f"{text[:max_chars]}\n[... {len(text) - max_chars} more characters truncated]"
+
+
+SUMMARY_INSTRUCTIONS = (
+    "你在为一段编码 agent 的对话历史写交接摘要，续任者只靠它接着干活。必须保留：\n"
+    "1) 用户的请求与意图 2) 关键技术概念 3) 检查/修改过的文件与重要代码片段\n"
+    "4) 出过的错误与修法 5) 未完成的待办 6) 当前正在做的事。\n"
+    "只输出摘要正文，不要评论任务本身，更不要继续执行任务。"
+)
+
+
+def usage_fields(response) -> dict:
+    """取 provider 回传的 usage 字段；没有就返回空 dict。
+
+    只透传不归一化——归一化会丢掉 DeepSeek 专有的 prompt_cache_hit/miss_tokens，
+    而那正是缓存命中率的唯一来源。
+    SDK 回的是 pydantic 对象（非标字段也在里面），model_dump 拿得全；
+    退化路径覆盖 dict 与 SimpleNamespace。
+    """
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return {}
+    if hasattr(usage, "model_dump"):
+        return usage.model_dump()
+    if isinstance(usage, dict):
+        return dict(usage)
+    return {k: v for k, v in vars(usage).items() if not k.startswith("_")}
+
+
+def summarize(
+    messages: Sequence[Mapping[str, object]],
+    *,
+    client,
+    model: str,
+    style: str = "flat",
+    instructions: str | None = None,
+) -> tuple[str, dict]:
+    """调模型生成摘要。style 由实测裁决默认值（spec 问 1）：flat=拍平，raw=原样发。
+
+    不带 tools——摘要请求绝不该触发工具调用；这也是「继续干活」误解的第一道防线。
+    """
+    prompt = instructions or SUMMARY_INSTRUCTIONS
+    if style == "flat":
+        body = serialize_conversation(m for m in messages if m.get("role") != "system")
+        request: list[dict] = [
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": f"待摘要的对话记录：\n{body}"},
+        ]
+    elif style == "raw":
+        request = [dict(m) for m in messages if m.get("role") != "system"]
+        request.append({"role": "user", "content": f"停下手头任务。{prompt}\n现在输出上面全部对话的摘要。"})
+    else:
+        raise ValueError(f"未知 style: {style!r}（只认 flat / raw）")
+
+    response = client.chat.completions.create(model=model, messages=request)
+    text = response.choices[0].message.content or ""
+    return text, usage_fields(response)
+
+
+MAX_COMPACT_FAILURES = 3   # 对齐 CC（D#14）：没有熔断时真实事故是数千次连续失败
+
+
+@dataclass
+class CompactionState:
+    """熔断状态机（D#34）：压缩后不立即判成败，等首次真实 usage 回传。"""
+
+    failures: int = 0
+    awaiting_verify: bool = False
+    tripped: bool = False
+
+
+def verify_compaction(
+    prompt_tokens: int,
+    window: int,
+    settings: CompactionSettings,
+    state: CompactionState,
+) -> CompactionState:
+    """压缩后首次真实 prompt_tokens 才是裁决依据——估算在此刻低估 33%，信它必炸（D#34）。"""
+    still_over = prompt_tokens > window - settings.reserve_tokens
+    failures = state.failures + 1 if still_over else 0
+    return CompactionState(
+        failures=failures,
+        awaiting_verify=False,
+        tripped=state.tripped or failures >= MAX_COMPACT_FAILURES,
+    )
+
+
+def compact(
+    messages: Sequence[Mapping[str, object]],
+    *,
+    cut: int,
+    client,
+    model: str,
+    style: str = "flat",
+    instructions: str | None = None,
+) -> tuple[list[dict], str, dict]:
+    """切 + 摘 + 重建。调用方随后必须 anchors.reset() 并置 state.awaiting_verify。
+
+    摘要消息用 user role：OpenAI 兼容协议下多条 system 支持度参差，user 前缀最稳。
+
+    返回 (rebuilt, summary, usage)：usage 是摘要请求自己的真实用量，调用方必须把它并入
+    max_total_tokens 预算与会话统计——摘要请求拍平重发近全窗口，是全系统最贵的单次请求，
+    丢掉它的账会让预算熔断与会话统计都对不上实际花费。
+    """
+    summary, usage = summarize(
+        messages[:cut], client=client, model=model, style=style, instructions=instructions
+    )
+    rebuilt: list[dict] = [dict(messages[0])]
+    rebuilt.append({"role": "user", "content": f"[早前对话的摘要，供延续任务用]\n{summary}"})
+    rebuilt.extend(dict(m) for m in messages[cut:])
+    return rebuilt, summary, usage

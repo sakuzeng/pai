@@ -5,6 +5,8 @@
 """
 import re
 import subprocess
+
+import pytest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -96,3 +98,49 @@ def test_devlog_milestone_section_is_one_liners():
             continue
         assert re.match(r"^- \d{4}-\d{2}-\d{2} ", line), \
             f"里程碑区只许「- YYYY-MM-DD 主题——一句话 → 链接」单行条目，违例: {line[:60]}"
+
+
+RETROSPECTIVE_RULE_DATE = "20260810"      # 「交付即复盘」立规之日（features/README 规矩 7）
+DELIVERED = ("已交付", "已验收")
+
+
+def test_delivered_features_have_a_retrospective():
+    """交付即复盘（2026-08-10 用户裁决）：状态到「已交付」就必须有 复盘.md。
+
+    立项日早于立规之日的档案不追溯——与「既有历史条目冻结不迁移」同一处理，
+    目录名里就带着立项日，所以这条豁免是机器可判的，不靠记性。
+    「复盘写得好不好」判不了，只判两件事：文件在不在、是不是还剩着模板占位。
+    """
+    for d in sorted(p for p in FEATURES.iterdir() if p.is_dir() and p.name != "_template"):
+        date = d.name.split("-")[1]
+        if date < RETROSPECTIVE_RULE_DATE:
+            continue
+        status = re.search(r"^状态：[^\S\n]*(\S+)", (d / "README.md").read_text(encoding="utf-8"), re.M)
+        if not status or not status.group(1).startswith(DELIVERED):
+            continue
+
+        retro = d / "复盘.md"
+        assert retro.is_file(), f"{d.name} 已交付却没有 复盘.md（features/README 规矩 7）"
+        text = retro.read_text(encoding="utf-8")
+        assert "TEMPLATE-PLACEHOLDER" not in text, f"{d.name} 的 复盘.md 还是模板占位"
+        assert "## 我现在质疑什么" in text, \
+            f"{d.name} 的 复盘.md 缺「我现在质疑什么」节——这一节是必答，留空视为没做"
+
+
+def test_status_reports_the_current_test_count(request):
+    """STATUS 的测试数字漂了三次（R#2 是「严重」级别的旧账，2026-08-10 又漂两次）。
+
+    人肉对账靠不住：每次补完一个漏就该回头改 STATUS，而那正是最容易忘的一步。
+    `testscollected` 是**选中**的用例数（不含 deselected），全绿时恰等于 passed 数。
+    跑子集时这个数当然对不上，所以只在完整跑（无 -k、无显式路径）时校验。
+    """
+    if request.config.option.keyword or request.config.args != ["tests"]:
+        pytest.skip("只在完整跑 ./test.sh 时对账")
+
+    text = (ROOT / "docs" / "dev" / "STATUS.md").read_text(encoding="utf-8")
+    m = re.search(r"\*\*(\d+) passed", text)
+    assert m, "STATUS 里应有「**N passed」这样的测试数字"
+    assert int(m.group(1)) == request.session.testscollected, (
+        f"STATUS 写着 {m.group(1)} passed，实际选中 {request.session.testscollected} 条——"
+        "补完漏别忘了回头改 STATUS"
+    )

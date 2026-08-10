@@ -325,7 +325,7 @@ git commit -m "feat(compaction): find_cut_point 用真实 usage 差值定切点�
 - Test: `tests/test_compaction.py`（离线部分）
 
 **Interfaces:**
-- Produces: `summarize(messages: Sequence[Mapping[str, object]], *, client, model: str, style: str = "flat", instructions: str | None = None) -> tuple[str, dict]`——返回 `(摘要文本, usage_dict)`；`style="flat"` 拍平喂料（serialize_conversation，跳过 system——R#16），`style="raw"` 原样发消息数组；`instructions` 覆盖默认保留清单（官方 compact 自定义指令同款能力）。usage 用 `loop._usage_fields` 同款提取逻辑——为避免跨模块 import 私有函数，把 `_usage_fields` **从 loop.py 移到 compaction.py 并改名 `usage_fields`**，loop 改为 `from pai.core.compaction import usage_fields`（函数体一字不动，既有 loop 测试守护此迁移）。
+- Produces: `summarize(messages: Sequence[Mapping[str, object]], *, client, model: str, style: str = "flat", instructions: str | None = None) -> tuple[str, dict]`——返回 `(摘要文本, usage_dict)`；`style="flat"` 拍平喂料（serialize_conversation，跳过 system——R#16），`style="raw"` 原样发消息数组（**同样不含 system**——用户仲裁 2026-08-09：两模式同跳 system 才是公平对照，且原 system 会人为放大「继续干活」风险；重建时 compact 另行放回）；`instructions` 覆盖默认保留清单（官方 compact 自定义指令同款能力）。usage 用 `loop._usage_fields` 同款提取逻辑——为避免跨模块 import 私有函数，把 `_usage_fields` **从 loop.py 移到 compaction.py 并改名 `usage_fields`**，loop 改为 `from pai.core.compaction import usage_fields`（函数体一字不动，既有 loop 测试守护此迁移）。
 - `SUMMARY_INSTRUCTIONS`：模块常量，官方六项保留清单（context-management.md 笔记）。
 
 - [ ] **Step 1: 写失败测试（离线）**

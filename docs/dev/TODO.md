@@ -35,19 +35,19 @@
       ① 绝对预算切法下比例抵消不成立；② **偏差根本不均匀**——实测短 tool 结果低估 4-5 倍
       （固定的每条约 25-30 token 框架开销占比暴涨），长消息只低估约 2%。
       → 衍生出下面这条实现要求。
-- [ ] **find_cut_point 用真实 usage 差值，不用字符估算**（D#32）
-      `第 N 轮后新增消息的真实 token = prompt_{N+1} − (prompt_N + completion_N)`，
-      实测 4 步任务得 42 / 33 / 43，全部真实值。切点只能落轮次边界，而真实用量也只能按轮次
-      反推——粒度天然匹配。
-      **实现要求**：`loop` 需保留**锚点列表** `[(message_index, real_tokens), ...]` 而非只留最新一个；
-      仅未锚定的尾部用字符估算。压缩后旧锚点全部作废需清空（与 D#18 的 anchor 重置同一件事）。
+- [x] ~~**find_cut_point 用真实 usage 差值，不用字符估算**（D#32）~~ **已完成
+      2026-08-09**（compaction 阶段 1 task 3）：`AnchorBook.entries` 保留锚点列表，
+      `find_cut_point` 按相邻真实差值反推切点，绝不切在孤儿 tool_result 上；
+      单锚（锚不足两个）如实返回 1（无可压），任务 6 的 e2e 撞出这条约束的实际影响
+      （见 STATUS 缺陷 1）。
 - [x] ~~**锚重置后的读数盲区补进 STATUS 缺陷 1**（R#7）~~ **已完成 2026-08-03**：
       STATUS 缺陷 1 已改写（含"低估会让压缩后上下文看起来更小 → 误判成功 → 下轮爆窗口"
       这条具体后果），裁决见 D#34。
-- [ ] **实现熔断器时：失败计数只认压缩后首次真实 usage**（D#34）
-      `compact()` 后不立即判成败，标记"等待压缩后首次真实读数"；
-      以该次 API 响应的真实 `prompt_tokens` 为准，仍超阈值才计一次失败；
-      连续失败达上限（CC 用 3）→ 停止自动压缩。代价是熔断判断推迟一个来回。
+- [x] ~~**实现熔断器时：失败计数只认压缩后首次真实 usage**（D#34）~~ **已完成
+      2026-08-09**（compaction 阶段 1 task 5+6）：`CompactionState`/`verify_compaction`
+      标记 `awaiting_verify`，等压缩后首次真实 `prompt_tokens` 才判成败；
+      `MAX_COMPACT_FAILURES=3` 接进 loop 触发块，连续 3 次仍超线即 tripped，
+      `test_breaker_stops_auto_compaction` 覆盖。
 - [x] ~~**给 loop 层锚簿记补测试**（R#8）~~ **早在 2026-08-03 已完成，本条漏勾，
       2026-08-09 对账核销**。tests/test_loop.py:238 `test_anchor_bookkeeping_is_exact`
       与 :272 反向钉死双计入；注入 off-by-one（`len(messages)-1`）实测会红。
@@ -56,21 +56,157 @@
       2026-08-09 对账核销**。`FROZEN_TOOL_SCHEMAS`（test_compaction.py:450），
       改工具 docstring 实测不再假失败。
 
-## P1 · 主线（阶段 1 压缩）
+## P1 · 主线（阶段 1 压缩）—— **已全部完成 2026-08-09**（compaction task 1-6，feat/compaction 分支）
 
-- [ ] `find_cut_point`（在哪下刀）。约束：绝不在 tool 结果上切，否则产生孤儿 tool_result。
-- [ ] `summarize`（调模型摘要）。届时一并决定：
-      - 拍平 vs 原样发（D#12/D#16，R#12）——需实测 DeepSeek 上的「不听话率」，
-        并把「0.64 系数来自单条小轨迹」「原样发要求 tools 逐字节一致」两个虚项补进实验设计
-      - `serialize_conversation` 是否跳过 system 消息（R#16）——不跳则 system 会同时出现在
-        拍平文本与新上下文里，浪费摘要预算
-      - 用真实摘要长度校准 `reserve_tokens=16384`（目前照搬 pi，无实测依据）
-- [ ] `compact`（把两者接起来），必须同时带**熔断器**（D#14）：连续压缩失败达上限即停。
-- [ ] 把 `should_compact` 真正接进 loop——目前 `context_tokens` 算出来只落盘、不决策。
-- [ ] **压缩会改写历史，必须让 anchor 失效**：`compact()` 里把 `anchor` 重置为 `None`，
-      否则拿旧锚算新对话。锚定法假设 append-only，与压缩天然冲突。
+- [x] ~~`find_cut_point`（在哪下刀）~~。约束落实：绝不在 tool 结果上切
+      （`test_never_starts_kept_segment_with_tool_result`）。
+- [x] ~~`summarize`（调模型摘要）~~。届时决定的三件事均已定：
+      - 拍平 vs 原样发（D#12/D#16，R#12）——**已实测裁决 D#37，默认 `style="flat"`**，
+        loop 调 `compact` 不传 style 用默认值；数据存 evidence/20260809-拍平vs原样发实测/
+      - `serialize_conversation` 跳过 system 消息（R#16）——已实现，见函数调用处
+      - 用真实摘要长度校准 `reserve_tokens=16384`——**仍未做**，见 STATUS 缺陷 3，
+        单独登记在下面
+- [x] ~~`compact`（把两者接起来），必须同时带**熔断器**（D#14）~~：
+      `CompactionState`/`verify_compaction`/`MAX_COMPACT_FAILURES=3` 已实现并接进 loop。
+- [x] ~~把 `should_compact` 真正接进 loop~~：`run_agent` 新增 `context_window`/`compaction`
+      两个 keyword-only 参数（都给才启用；默认 `None` 时行为与接线前完全一致），
+      触发块在 `estimated` 计算之后、`create` 调用之前；`once.run_once` 透传
+      `context_window()`（读 `PAI_CONTEXT_WINDOW`，默认 1_000_000）与 `CompactionSettings()`。
+- [x] ~~**压缩会改写历史，必须让 anchor 失效**~~：`compact()` 后调用方立即
+      `anchors.reset()`（`AnchorBook.reset()`），不是把单个 `anchor` 置 `None`——
+      阶段 1 的最终设计是保留**锚点列表**（D#32），reset 清空整个列表。
+- [ ] **reserve_tokens=16384 / keep_recent_tokens=20000 实测校准**（登记自 STATUS 缺陷 3）：
+      两个数字仍是从 pi 借来的经验值，接线阶段的 e2e 测试只验证了阈值公式本身
+      （`tokens > window - reserve`）与切点算法的正确性，没有真实摘要长度/真实触发频率
+      数据。需要 `--llm` 冒烟测试或生产使用积累后再回来定。
 
 ## P2 · 值得改
+
+### knowledge 缺口（2026-08-10 用户问「有没有归纳」时自查出来的）
+
+- [ ] **`source-walks/pi-agentloop.md` 该从「指针」升「精读」**：阶段 2 实际深读了
+      `agent.ts:123`（PendingMessageQueue 的 all/single 两种 drain 语义）与
+      `types.ts:422`（AgentEvent 扁平联合共 9 种事件），这些结论现在只活在
+      features/05 的档案里，没回流笔记。登记规约写明「指针升精读的时机：
+      动工时发现指针的结论粒度不够用」——正是这个情形。
+- [x] ~~**CC `src/memdir/` 源码走读没做**~~ **已补 2026-08-10**，见
+      [K source-walks/cc-memdir.md](../../knowledge/source-walks/cc-memdir.md)。
+      **悬案裁决：属实**——CC 的召回是**框架主动做的**（便宜模型按 header manifest
+      选 ≤5 篇塞进上下文），不是「模型自己想起来 read_file」。pai 少的是一整层机制。
+      衍生出下面三条。
+- [ ] **`remember` 写入时带 `description` frontmatter**（K cc-memdir 第五节，零成本）：
+      CC 的召回全靠它（只读文件前 30 行拿 description 拼 manifest）。
+      即使暂不做召回层，不写就是给未来挖坑——届时现存记忆文件都要回填。
+- [ ] **记忆的新鲜度提示**（K cc-memdir 第四节，零成本，写入日期 pai 已经有了）：
+      CC 用「47 days ago」而非 ISO 时间戳，注释直说**模型不擅长日期算术，
+      原始时间戳不会触发陈旧性推理**；>1 天的记忆附一句「记忆是时间点观察不是实时状态，
+      file:line 引用可能已过期」。动机是真实事故：**带 file:line 的引用会让过期声明
+      听起来更权威而不是更不权威**。pai 迟早会踩，CC 已替我们踩过。
+- [ ] **记忆召回层做不做**（K cc-memdir 第五节，**要拍板**）：CC 每次查询多打一次模型
+      （Sonnet 档、max_tokens 256、JSON schema 约束）。pai 有预算熔断文化，这是实打实的钱。
+      选项：不做 / 做 / 只在 MEMORY.md 索引放不下时才召回。建议单独立档案，别塞进阶段 4。
+- [x] ~~**建档案时不要删模板的 `复盘.md`**~~ **已升级为硬规矩 2026-08-10**（用户裁决）：
+      「交付即复盘」写进 features/README 规矩 7 与 AGENTS.md，
+      `tests/test_docs_consistency.py::test_delivered_features_have_a_retrospective` 强制
+      （状态到「已交付」必须有复盘、不能是模板占位、必须有「我现在质疑什么」节）。
+      立项日早于 2026-08-10 的既有档案不追溯。
+
+- [ ] **05 复盘质疑二：状态行不该默认改变已交付功能的输出形态**（05 复盘）：
+      Task 8 把 `run_interactive` 的默认 `on_event` 换成了状态行处理器，
+      开着就不再滚动打 `🔧`——这个行为改变从没被拍过板。考虑默认关、显式打开。
+- [ ] **06 复盘质疑三：「不读 AGENTS.md」的理由可能只在自家成立**（06 复盘，D#43 复议候选）：
+      论据是「那是给开发 pai 的 AI 的规矩」——在本仓库成立；但 pai 的立意是在**别人的项目**
+      里跑，那里的 `AGENTS.md` 恰恰是该项目写给 agent 的规矩，是最该读的上下文。
+      用只在自家成立的理由定了一条对外默认行为，值得重开。
+- [ ] **06 复盘质疑四：`MEMORY.md` 的 200 行 / 25KB 是照抄官方，没有 pai 依据**：
+      官方数字是给英文 + Claude 调的；pai 跑中文、token 密度差一倍以上。
+      与 `reserve_tokens=16384`「从 pi 借来的经验值」同一类债。
+- [x] ~~**两块硬拿的工程知识没沉淀**~~ **已补 2026-08-10**：
+      [concepts/process-groups-and-interrupts.md](../../knowledge/concepts/process-groups-and-interrupts.md)、
+      [concepts/terminal-width.md](../../knowledge/concepts/terminal-width.md)。
+      顺带把 knowledge/ 的分类标准从「按主题」改成**「按来源」**（原先 concepts/ 是
+      否定式定义「不专属某家源码的」，边界靠猜，当天就误放了一篇双源走读进去），
+      并在 README 与 AGENTS.md 里写明：开发知识里「只关于 pai 的」进 docs/dev/，
+      「换个项目仍成立的」才进 concepts/。
+
+### API key 解析（2026-08-10，K source-walks/pi-cc-api-keys.md）
+
+- [ ] **provider → env 变量名映射表**（学 pi `env-api-keys.ts`）：现在 `DEEPSEEK_API_KEY`
+      硬编码在 config.py，换 provider 要改代码。一张表 + `find_env_keys(provider)`。
+- [ ] **key 带来源**（学 CC `getAnthropicApiKeyWithSource`）：返回 `(key, source)`，
+      `/status` 显示「这次用的是哪来的 key」。2026-08-10 那次误诊断就栽在不知道 .env 从哪加载的。
+- [ ] **key 解析可注入**（学 pi 的 `getApiKey` 钩子）：`make_client` 收可选回调，core 不碰 env。
+- [ ] **apiKeyHelper（key 来自一条命令）**：价值在密钥轮转/企业网关，pai 暂无此场景；
+      带 TTL 缓存 + stale-while-revalidate + 并发去重一整套复杂度，等真需要再做。
+
+### feature 06（记忆）遗留 —— 2026-08-10
+
+- [ ] **收割后台进程组存在 pgid 重用的误杀窗口**（2026-08-10 补漏三）：
+      `_SPAWNED_GROUPS` 登记的是 pgid，若某个组早已结束、pgid 被系统重用，
+      退出时的 `killpg` 会误杀无关进程。真实风险低（macOS pid 空间大、回绕慢）
+      但不为零。可行的收紧：登记时一并记 `proc`，收割前用 `proc.poll()` 确认
+      我们那个子进程还在（组仍属于我们）。
+
+- [ ] **REPL 主循环应兜一层「任何异常都回提示符」**（2026-08-10，同类问题第三次）：
+      401 炸会话、Ctrl+C 打断 `!命令` 炸会话，两次都是「某条路径漏了保护」，
+      两次都靠「发现一处补一处」修。REPL 这一层的价值就是**对话留着**，
+      任何逃逸的异常都在毁掉这个价值。应在主循环上兜底，让「哪条路径漏了」
+      不再需要逐条排查——注意别把 EOFError（Ctrl+D 正常退出）也吞掉。
+
+- [x] ~~**API key 只能放项目 .env，无用户级配置**~~ **已修 2026-08-10**（用户提出）。
+      **过程中我先给了一个错误诊断**，如实留痕：最初说「`.env` 只在仓库目录找得到，
+      `cd /tmp && pai` 起不来」——那是用 `python3 -c` 测出来的假象（python-dotenv 对
+      `-c`/交互走「按 cwd 找」分支，真实 `pai` 走「按调用方文件找」分支，正好摸到仓库 .env）。
+      **真正的问题比这个更隐蔽**：`find_dotenv()` 默认从**调用方所在文件**（`src/pai/config.py`）
+      向上找，所以「项目级 .env」实际解析成 **pai 仓库自己那份**——在别的项目里跑读的是错的那个，
+      装成 wheel 之后直接找不到；它现在能工作纯粹是 editable 安装的巧合。
+      修法：`load_dotenv(find_dotenv(usecwd=True))`（项目级真按当前目录找）+
+      `~/.pai/.env` 用户级兜底，优先级 真实环境变量 > 项目 > 用户。测试 4 条钉死。
+
+- [ ] **REPL 中途改 `PAI.md` 不生效**（06 task 4）：`_inject_instructions` 认出已有指令
+      消息就直接返回，**连 loader 都不调**——所以多轮 REPL 只在第一轮读盘，改了文件要等
+      一次压缩（重注入会重读）或重启。可加 `/memory reload`，几行的事。
+- [ ] **`MEMORY.md` 无自动剪枝**（06 spec 非目标）：写多了会撞 200 行上限被截断
+      （有提示，不静默）。等它真长起来再设计「谁来剪、剪掉的进哪个主题文件」。
+- [ ] **`memory_dir` 的 key 是 hash，不可读**（06 task 3）：调试时得靠 `/memory` 才知道
+      记忆写到哪去了。可考虑 `<仓库名>-<hash 前 8 位>` 兼顾可读与唯一。
+- [ ] **`.claude/rules/` 式的 `paths` 条件加载未做**（06 spec 非目标，K memory.md 第六节）：
+      本质是按需加载，与阶段 6 skills 同一机制，届时一起做。
+- [ ] **指令消息作为普通 user 消息参与压缩切点计算**（06 task 5）：它可能被切掉——
+      现在靠重注入兜住了，但切点算法并不知道这条消息「特殊」。若将来指令很长，
+      值得让 `find_cut_point` 显式跳过它。
+- [ ] **`set_memory_dir` / `set_notifier` 是进程级全局**（06 task 6，同 D#40 的老问题）：
+      测试靠 contextmanager 复位；一旦有并发（阶段 5）就要重新考虑。
+
+### feature 05（REPL）遗留 —— 2026-08-10
+
+- [ ] **`Tool.run` 的返回契约分不出错误**（05 task 1）：`ToolEnd.is_error` 只标得出
+      loop 自己造的错（参数非法 / 未知工具），工具内部异常被 `Tool.run` 吸收成
+      「错误：...」字符串，状态行因此标不出红叉。要真区分得改 `Tool.run` 返回
+      `(text, is_error)` 或抛受控异常——影响面到每个工具，单独立项。
+- [ ] **steering 队列在 REPL 阶段无真实输入源**（05 拍板问 2，诚实边界）：
+      结构与注入点已在 loop 里备好、有假回调测试钉死位置，但阻塞的 `input()` 拿不到
+      「agent 干活时打字」。TUI/流式阶段接真实输入源时才通电。
+- [ ] **`AgentStart.task` 在多轮 REPL 里语义歧义**（05 task 5）：字段是「本轮的任务」
+      而非「整个会话的任务」，多轮时名字容易误读。改名或拆事件，小事。
+- [ ] **`statusline._preview` 只取第一个参数值**（05 task 8）：`bash` 只有 command 正好，
+      `edit_file` 这类多参数工具的预览只显示 path，够用但不精确。
+- [ ] **REPL 无会话恢复**（05 spec 非目标）：`messages` 只活在进程内，
+      落盘仍是 append-only JSONL，没有 `/resume`。要做得先有会话树。
+- [ ] **`_install_sigint` 在非主线程装不上**（05 task 7）：已 try/ValueError 兜住并退化为
+      不可中断，但真出现（未来 TUI 把 REPL 跑在子线程里）时中断会静默失效，需要显式告警。
+
+
+- [ ] **verify_compaction 的 tripped 单向性补测试**（02 终审延后项）：置位后降线不回落，
+      实现已双重审查确认正确（表达式 + 熔断后触发块整体跳过），3 行测试即可。
+- [ ] **AnchorBook.latest() 返回序与 entries 存储序相反**（02 终审 Minor#6）：
+      (tokens, index) vs (index, tokens)，未来调用者的坑；namedtuple 或统一序。
+- [ ] **context_window() 对非法 PAI_CONTEXT_WINDOW 裸抛 ValueError**（02 终审 Minor#7）：
+      make_client 有清晰报错先例，对齐。
+- [ ] **压缩后 session 审计流不含重建摘要消息**（02 终审 Minor#8）：可由 cut+summary
+      重建，但「每条消息落盘」字面已不成立，补一行注释说明重建规则。
+- [ ] **压缩后首个响应无 usage 时 awaiting_verify 永挂**（02 终审 Minor#9）：与预算
+      退化取舍一致属预期，补注释说明这是设计而非事故。
 
 - [ ] **SYSTEM_PROMPT 硬编码四个工具名，与依赖注入矛盾**（R3#5）：get_tools() 子集
       被真用到的第一天，提示词就在向模型撒谎。改为从 tools 注册表生成清单行。
@@ -156,7 +292,8 @@
 - [ ] **面试准备仓库加反向链接指向 pai knowledge/**（2026-08-09，D#35）：
       在其 04_Harness 专题 README 加一行即可。属另一仓库的独立小改动，在这里备忘。
 - [ ] **microcompact 评估**（2026-08-09，K source-walks/cc-compaction.md）：
-      阶段 1 压缩闭环跑通后评估——pai 的 4 个工具全部可重放，按 tool_call_id 清旧结果
+      **触发条件已满足**（阶段 1 压缩闭环 2026-08-09 已跑通接进 loop）——pai 的 4 个工具
+      全部可重放，按 tool_call_id 清旧结果
       不用调模型，可能是性价比最高的第二级压缩。
 - [x] ~~**R2#1 残余：anna 披露边界的最终确认**~~ **已裁决 2026-08-09：不入库，本地保留**。
       `knowledge/anna/` 与 `reviews/2026-08-09-体系评审.md` 进 .gitignore；
@@ -176,8 +313,10 @@
       「模型自报读过不可信 → PostToolUse 记内容哈希 + 收尾判定」。当前评审流程用
       逐字核验顶着，等评审常态化或出现「引用落空」事故再上——记录器先行（成本低）、
       判定器后置。
-- [ ] **model-config 页的 auto-compact 阈值未查**（R2 未核实节）：context-window 页把
-      阈值指向 model-config 页，届时实现 should_compact 接线时顺手查证。
+- [x] ~~**model-config 页的 auto-compact 阈值未查**~~（R2 未核实节）**已查证 2026-08-10**：
+      官方给数字——Sonnet 5 的 1M 窗口默认 ~967K 触发（预留 ~33K，
+      `CLAUDE_CODE_AUTO_COMPACT_WINDOW` 可调）。pai 的 16384 约其一半、同数量级；
+      已录 K claude-docs/context-management.md，作为 reserve 校准参照之一。
 
 ---
 

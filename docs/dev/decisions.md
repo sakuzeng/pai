@@ -42,6 +42,13 @@
 | 34 | 压缩成败只认压缩后首次真实 usage 回传 |
 | 35 | 知识入仓 knowledge/ 不建独立仓库；补记：主要代价是雇主内容披露，裁决 anna 篇不入库 |
 | 36 | 功能档案按目录组织；注记：devlog 下沉、decisions 保持全局 |
+| 37 | 拍平 vs 原样发实测裁决：默认 flat 维持；raw 缓存优势待大轨迹复测（evidence 归档） |
+| 38 | 阶段 2「core 不动」作废：core 可动但只加不改语义 |
+| 39 | 事件流用 dataclass 扁平联合，砍掉不流式就没意义的 turn_end |
+| 40 | 工具的运行期上下文走进程级注入点，不进函数签名 |
+| 41 | 中断按「回填已取消结果」实现，不抛异常 |
+| 42 | 指令进第一条 user 消息（照官方），代价是必须自己实现压缩后重注入 |
+| 43 | 只读 PAI.md 三层，不读 AGENTS.md/CLAUDE.md |
 
 ## 种子版（2026-08-02）
 
@@ -371,3 +378,72 @@
     （理由：D#n 编号被全库引用、取舍常跨功能、全局检索对比是其核心价值）。
     既有历史条目一律冻结原样，不迁移。
 
+37. 拍平 vs 原样发实测裁决（2026-08-09，关闭 D#12/D#16 悬案）：**默认 flat（拍平）维持**。
+    实测（各 3 次真实 DeepSeek 摘要请求，原始数据归档
+    features/02-20260803-compaction/evidence/20260809-拍平vs原样发实测/）：
+    - 不听话率 **0/6**，两种模式全部输出真摘要——CC 自陈的「原样发有百分之几误解成
+      继续干活」在 DeepSeek 上未复现（样本小、轨迹短，不能下强结论，如实记）。
+    - prompt 成本 flat 520 vs raw 507 token，短轨迹上无差；**raw 的真正优势
+      （复用主对话缓存前缀，50 倍价差）本实验设计测不出**——实验是独立会话，
+      两种模式都只吃到自己前一轮的缓存（flat 512 / raw 384 hit）。理论账保留。
+    - 质量：flat 三次全是结构完整的交接摘要；raw 波动大（completion 345~1671，
+      raw-run1 仅 406 字符偏简略）。
+    裁决理由：不听话顾虑未现但 flat 结构更稳；成本差在当前量级可忽略；raw 留作
+    大轨迹真实压缩场景的复测选项（届时缓存优势才兑现，值得重开）。
+    顺带首个实测参照：摘要 completion ≤ 1671（含 reasoning），
+    `reserve_tokens=16384` 充裕（STATUS 缺陷 3 从「无实测依据」改「有实测参照，维持」）。
+
+
+38. **roadmap 阶段 2「core 不动」正式作废**（2026-08-10，feature 05 拍板）：
+    原文写「`modes/interactive.py` 纯 REPL 先行（core 不动）」，但同一段的范围又写
+    「事件流定型 + steering/followUp 双队列」——后者必然要改 `loop.on_event` 的签名，
+    用户拍板中断做到「工具执行中途可断」又必然要改 `tools/shell.py`。两者不可兼得。
+    改为：**core 可动，但只加不改语义**——新参数一律 keyword-only 且默认值维持旧行为
+    （沿用压缩接线的先例），唯一的破坏性改动是 `on_event` 的参数类型，用户已知情选择。
+    对照：pi 把可变性全部收进 `AgentLoopConfig` 钩子（K source-walks/pi-agentloop.md），
+    pai 用「keyword-only + 默认 None」达到同样效果而不引入配置对象——工具少时更直接。
+
+39. **事件流用 frozen dataclass 扁平联合，且砍掉 `turn_end`/`message_update`**
+    （2026-08-10，feature 05 task 1）：pi 的 `AgentEvent` 有三层生命周期
+    （agent/turn/message）共 9 种事件，pai 只取 8 种并去掉 `turn_end` 与 `message_update`。
+    理由：**不流式时 `turn_end` 与 `AssistantMessage` 是同一时刻的同一信息**，
+    设了只是为了凑 pi 的形状；`message_update` 更是纯流式产物。阶段 5 真出现
+    「一轮内多次增量」时再补——那时它们才承载新信息。
+    代价如实记：阶段 5 补事件时，REPL/状态行的渲染层要跟着改一次。
+
+40. **工具需要的运行期上下文走进程级注入点，不进函数签名**（2026-08-10，
+    feature 05 task 3/6）：`@tool` 从函数签名生成 schema（架构约束「schema 与代码同源」），
+    所以给 `bash` 加个 `interrupt_flag` 参数、给 `ask_user_question` 加个 `asker` 参数，
+    **模型就会看见一个它不该填的参数**。取舍：本仓库其他地方一律依赖注入，这里破例用
+    模块级单例（`interrupt.set_current` / `ask.set_asker`），代价是全局状态——
+    靠「`current()` 永不返回 None」+ 测试用 contextmanager 复位兜住。
+    这是「schema 与代码同源」这条约束的**直接代价**，不是偷懒；真要消除它得让 Tool
+    携带运行期上下文对象，那是比全局状态更大的改动。
+
+41. **中断按「剩余工具各回填一条已取消」实现，不抛异常**（2026-08-10，feature 05 task 5）：
+    直觉做法是让中断抛异常一路弹出 loop。但 D#2 已经定下「`tool_call_id` 配对由 loop
+    唯一负责，任何分支都回填 tool 消息」——一轮 3 个 tool_calls 只回 1 条，
+    下一轮请求就是 400（R#11 有真实复现）。所以中断是**数据路径**不是异常路径：
+    置标志 → 剩余 tool_calls 各回一条「(已取消，用户中断)」→ 在下一次 create() 前干净返回。
+    同理 REPL 里干活期间的 SIGINT 只置标志不抛 KeyboardInterrupt——抛了会把
+    已完成的工作连同栈一起丢掉，而官方对中断的承诺恰恰是「保留迄今完成的工作」
+    （K claude-docs/interactive-mode.md）。
+
+42. **分层指令进「system 之后的第一条 user 消息」，不塞进 system**（2026-08-10，
+    feature 06 拍板问 1）：CC 就是这么做的，并自陈「因此没有严格遵守的保证」。
+    被否掉的 A 方案（拼进 system）其实有三个工程好处：**压缩后自动存活**
+    （`compact()` 重建的就是 `[system]+[摘要]+[保留尾部]`）、system 是稳定前缀对缓存友好
+    （实测命中率 91.6%，50 倍价差）、遵守度更高。
+    **选 B 是为了把 CC 的真实机制连同它的代价完整实现一遍**——代价就是
+    「压缩后必须从磁盘重读并重注入指令」，不做就是长会话里 PAI.md 静默失效。
+    实现要点：重注入**重新调用 loader**（= 从磁盘重读，官方原话），不复用启动时的字符串；
+    `test_reinjected_instructions_are_re_read_from_disk` 中途改文件来区分这两者——
+    其余测试对二者表现一致，只有这条分辨得出。
+
+43. **只读 `PAI.md` / `PAI.local.md` / `~/.pai/PAI.md`，不读 `AGENTS.md`、`CLAUDE.md`**
+    （2026-08-10，feature 06 拍板问 2）：通行的 `AGENTS.md` 看似能白捡「零配置可用」，
+    但它写的是**给开发这个仓库的 AI 的规矩**（先写测试跑红、留痕、档案门禁）——
+    pai 自己当 agent 跑起来读到，会把开发规约当成任务指令。
+    官方对 AGENTS.md 的处理也不是直接读，而是让用户写 `@AGENTS.md` 导入；
+    pai 同样保留这条路，主动权在用户手里。`test_agents_md_is_not_read` 钉死这条，
+    否则以后有人「顺手加上」。

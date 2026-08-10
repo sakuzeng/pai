@@ -1,19 +1,42 @@
 # knowledge —— 学习沉淀
 
-官方文档精读、pi/CC 源码走读、方法论回流。与 `docs/dev/`（开发证据）正交：
-那边记「pai 做了什么、为什么」，这边记「外面的世界怎么做、我学到了什么」。
+与 `docs/dev/`（开发证据）正交：那边记「**pai** 做了什么、为什么」，
+这边记「**外面的世界**怎么做、我学到了什么」。
 
-## 结构
+## 结构：按「这篇知识从哪来」分
+
+分类标准是**来源**，不是主题——主题会重叠，来源不会。
+（2026-08-10 修正：原先 `concepts/` 定义成「不专属某家源码的」，
+是个否定式定义，边界靠猜；那天就把一篇双源走读误放进去了。）
 
 ```
-claude-docs/     Claude Code 官方文档按模块精读笔记，一模块一文件
-source-walks/    源码走读，文件名前缀 cc-/pi- 区分来源，不建子目录
-concepts/        横切概念笔记（hooks/门禁这类不专属某家源码的），一概念一文件
-anna/            anna 工作区方法论回流（本地不入库，R2#1 裁决）
-inbox.md         待消化收件箱：看到但还不知道怎么用的工具/想法，一行一项
+claude-docs/     来源 = Claude Code 官方文档。一模块一文件，头部带原文 URL
+source-walks/    来源 = 别人的源码（pi / CC）。文件名前缀标来源：
+                 单源 cc-/pi-，对照两家用 pi-cc-（如 pi-cc-api-keys.md）
+concepts/        来源 = 没有单一外部原文可链的整理，三类：
+                 ① 横切概念（hooks/门禁这种跨多家的机制）
+                 ② 方法论回流
+                 ③ **开发中撞出来的通用工程知识**（见下「能不能落这里」）
+anna/            来源 = anna 工作区方法论（本地不入库，R2#1 裁决）
+inbox.md         还写不出锚点的：新工具/想法一行一项待消化
 ```
 
 目录随第一篇笔记创建，禁止空目录占位；不嵌套二级目录。
+
+## 开发中用到的知识，能不能落这里？
+
+**能，但要先分两种**——判据是「换个项目还成不成立」：
+
+| 这条知识 | 落哪 | 例子 |
+|---|---|---|
+| **只关于 pai 自己**：为什么这么设计、踩了什么坑、当时怎么选的 | **不进 knowledge**。进 `docs/dev/`：过程写 features 档案的 devlog、取舍写 decisions、教训写复盘 | 「compact 后指令消息会被摘掉，所以要重注入」 |
+| **可迁移的通用工程知识**：换个语言/项目依然成立的事实与机制 | **`concepts/`** | POSIX 进程组与 `killpg`、东亚宽字符占两列、gitignore 匹配语义 |
+
+判断卡壳时问一句：**这段话如果出现在别人的项目里，还有用吗？**
+有用 → `concepts/`；只有 pai 的人看得懂 → `docs/dev/`。
+
+两边可以互链，但**不要互抄**：`concepts/` 写机制本身，档案里写「pai 在哪儿用到它、
+当时撞出什么」，中间用一行链接连起来（指针优先，规约 4）。
 
 ## 使用规约
 
@@ -49,10 +72,18 @@ inbox.md         待消化收件箱：看到但还不知道怎么用的工具/�
 | 笔记 | 一句话 | 状态 | pai 锚点 |
 |---|---|---|---|
 | [claude-docs/context-management.md](claude-docs/context-management.md) | 官方上下文窗口与 compact 机制，对照 pai 压缩现状 | 精读 | src/pai/core/compaction.py |
+| [claude-docs/interactive-mode.md](claude-docs/interactive-mode.md) | 官方交互契约（中断两级 / 干活时输入 / `!` shell 模式 / 历史），及 pai REPL 取舍 | 精读 | roadmap 阶段 2 |
+| [claude-docs/memory.md](claude-docs/memory.md) | 官方两套记忆（人写的分层指令 / 模型自写的自动记忆）、加载算法，及压缩重注入这条 pai 尚不存在的 bug | 精读 | roadmap 阶段 3 |
+| [claude-docs/permissions-hooks.md](claude-docs/permissions-hooks.md) | 权限三态求值顺序、Bash 匹配四个坑、「语义下放给工具」的官方原文、hooks 决策协议 | 精读 | roadmap 阶段 4 |
 | [claude-docs/map.md](claude-docs/map.md) | 官方文档章节 → pai 归属/不做 的覆盖图 | 沉淀 | docs/dev/roadmap.md |
 | [source-walks/cc-compaction.md](source-walks/cc-compaction.md) | CC 四级递进压缩策略要点 | 指针 | roadmap 阶段 1 |
-| [source-walks/pi-agentloop.md](source-walks/pi-agentloop.md) | pi 四层分层 + 钩子 + 双队列 | 指针 | roadmap 阶段 2 |
+| [source-walks/pi-cc-api-keys.md](source-walks/pi-cc-api-keys.md) | pi 的映射表+注入钩子 vs CC 的带来源+apiKeyHelper；结论：key 留 .env 不进 settings.json | 精读 | src/pai/config.py |
+| [source-walks/cc-memdir.md](source-walks/cc-memdir.md) | **记忆召回是框架主动做的**：便宜模型按 header manifest 选 ≤5 篇；外加 memoryAge 的陈旧警告 | 精读 | src/pai/core/memory.py |
+| [source-walks/pi-agentloop.md](source-walks/pi-agentloop.md) | pi 四层分层 + 十种事件 + 双队列注入时机 + AgentLoopConfig 全部钩子 | 精读 | roadmap 阶段 2 |
 | [concepts/hooks-gates.md](concepts/hooks-gates.md) | hooks 事件与工具调用门禁模式（阶段 4 设计输入） | 沉淀 | roadmap 阶段 4 |
+| [concepts/process-groups-and-interrupts.md](concepts/process-groups-and-interrupts.md) | 独立进程组 + killpg 才杀得干净；杀不净的第一个症状是**输出丢失**不是资源泄漏 | 沉淀 | src/pai/core/tools/shell.py |
+| [concepts/terminal-width.md](concepts/terminal-width.md) | 中文占两列、ANSI 不占列；必须先按可见文本截断再上色 | 沉淀 | src/pai/modes/statusline.py |
+| [concepts/context-management.md](concepts/context-management.md) | 上下文管理全梯度 + 「窗口用不满≠不用管」的实测认知 | 沉淀 | src/pai/core/compaction.py |
 | [inbox.md](inbox.md) | 待消化收件箱（准入豁免区，一行一项） | 常驻 | 升格前豁免 |
 | [anna/gates.md](anna/gates.md) | anna 确定性门禁方法论（含短板教训）。**本地不入库**（R2#1 裁决，.gitignore 排除）——克隆本仓库的读者看不到此文件 | 沉淀 | roadmap 阶段 4 |
 

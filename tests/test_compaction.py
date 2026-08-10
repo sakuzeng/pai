@@ -593,3 +593,177 @@ def test_anchored_estimate_beats_pure_estimate_on_real_usage():
             assert abs(estimate_request_tokens(msgs, schemas) - real) / real > 0.30
         anchor = real + usage["completion_tokens"]
         anchor_index = count + 1  # +1：那条 assistant 消息已被 completion_tokens 覆盖
+
+
+# ---------- AnchorBook ----------
+
+
+class TestFindCutPoint:
+    def _msgs(self, n):
+        out = [{"role": "system", "content": "s"}]
+        for i in range((n - 1) // 2):
+            out.append({"role": "assistant", "content": None,
+                        "tool_calls": [{"id": f"c{i}", "type": "function",
+                                        "function": {"name": "bash", "arguments": "{}"}}]})
+            out.append({"role": "tool", "tool_call_id": f"c{i}", "content": "ok"})
+        return out
+
+    def test_cuts_at_anchor_keeping_recent_budget(self):
+        from pai.core.compaction import find_cut_point
+
+        msgs = self._msgs(9)                       # system + 4 轮 (assistant, tool)
+        anchors = [(3, 100), (5, 300), (7, 600), (9, 1000)]
+        # 从最新往回累计真实差值：9←7 是 400，>=350 即停 → 切在下标 7
+        assert find_cut_point(msgs, anchors, keep_recent_tokens=350) == 7
+
+    def test_never_starts_kept_segment_with_tool_result(self):
+        """切点铁律：落在 role=tool 上就前移到该轮 assistant——绝不产生孤儿 tool_result。"""
+        from pai.core.compaction import find_cut_point
+
+        msgs = self._msgs(9)
+        anchors = [(4, 100), (6, 300), (8, 600)]   # 锚故意落在 tool 消息下标上
+        cut = find_cut_point(msgs, anchors, keep_recent_tokens=250)
+        assert msgs[cut]["role"] != "tool"
+
+    def test_returns_1_when_nothing_can_be_cut(self):
+        """锚不足两个 / 预算大到全保留 → 返回 1（无可压）。调用方按锚数分流：
+        锚不足两个是压缩节奏里的正常一步，走静默进度；锚已够两个才是真无可压，才升级为警告。"""
+        from pai.core.compaction import find_cut_point
+
+        msgs = self._msgs(9)
+        assert find_cut_point(msgs, [], keep_recent_tokens=100) == 1
+        assert find_cut_point(msgs, [(9, 50)], keep_recent_tokens=100) == 1
+        anchors = [(3, 100), (9, 200)]
+        assert find_cut_point(msgs, anchors, keep_recent_tokens=99999) == 1
+
+
+class TestAnchorBook:
+    def test_records_and_latest(self):
+        from pai.core.compaction import AnchorBook
+
+        book = AnchorBook()
+        assert book.latest() == (None, 0)      # 无锚时 context_tokens 走纯估算
+        book.record(3, 1000)                   # 第 1 轮后：messages 前 3 条 = 1000 真实 token
+        book.record(5, 1075)
+        assert book.latest() == (1075, 5)
+        assert book.entries == [(3, 1000), (5, 1075)]
+
+    def test_turn_cost_is_adjacent_difference(self):
+        """D#32：第 N 轮新增消息的真实成本 = 相邻锚差值——实测 42/33/43 的那套语义。"""
+        from pai.core.compaction import AnchorBook
+
+        book = AnchorBook()
+        book.record(3, 100)
+        book.record(5, 142)
+        book.record(7, 175)
+        costs = [b - a for (_, a), (_, b) in zip(book.entries, book.entries[1:])]
+        assert costs == [42, 33]
+
+    def test_reset_clears_everything(self):
+        """压缩改写历史后旧锚全部作废（D#18/D#32 前提：append-only）。"""
+        from pai.core.compaction import AnchorBook
+
+        book = AnchorBook()
+        book.record(3, 1000)
+        book.reset()
+        assert book.latest() == (None, 0)
+        assert book.entries == []
+
+
+# ---------- TestSummarize ----------
+
+
+class TestSummarize:
+    def _msgs(self):
+        return [
+            {"role": "system", "content": "sys"},
+            {"role": "user", "content": "建个文件"},
+            {"role": "assistant", "content": "好的，done"},
+        ]
+
+    def test_flat_style_feeds_serialized_text_without_system(self):
+        from fake_llm import FakeClient
+        from pai.core.compaction import summarize
+
+        client = FakeClient([{"content": "摘要文本", "usage": {"prompt_tokens": 10,
+                             "completion_tokens": 5, "total_tokens": 15}}])
+        text, usage = summarize(self._msgs(), client=client, model="fake", style="flat")
+        assert text == "摘要文本"
+        assert usage["total_tokens"] == 15
+        sent = client.requests[0]["messages"]
+        assert len(sent) == 2                       # system(指令) + user(拍平文本)
+        assert "sys" not in sent[1]["content"]      # R#16：原 system 不进拍平文本
+        assert "建个文件" in sent[1]["content"]
+        assert "tools" not in client.requests[0]    # 摘要请求不带工具
+
+    def test_raw_style_sends_original_messages(self):
+        from fake_llm import FakeClient
+        from pai.core.compaction import summarize
+
+        client = FakeClient([{"content": "s", "usage": {"total_tokens": 1}}])
+        summarize(self._msgs(), client=client, model="fake", style="raw")
+        sent = client.requests[0]["messages"]
+        assert {"role": "user", "content": "建个文件"} in sent   # 原消息原样在场
+        assert sent[-1]["role"] == "user" and "摘要" in sent[-1]["content"]  # 末尾追加摘要指令
+        assert all(m["role"] != "system" for m in sent)  # 仲裁 2026-08-09：raw 同样不带 system——原 system 会诱导「继续干活」
+
+    def test_instructions_override_default(self):
+        from fake_llm import FakeClient
+        from pai.core.compaction import SUMMARY_INSTRUCTIONS, summarize
+
+        client = FakeClient([{"content": "s", "usage": {}}])
+        summarize(self._msgs(), client=client, model="fake", instructions="只保留文件名")
+        joined = "".join(m["content"] for m in client.requests[0]["messages"])
+        assert "只保留文件名" in joined and SUMMARY_INSTRUCTIONS[:8] not in joined
+
+
+# ---------- TestCompactAndBreaker ----------
+
+
+class TestCompactAndBreaker:
+    def _msgs(self):
+        return [
+            {"role": "system", "content": "sys"},
+            {"role": "user", "content": "old"},
+            {"role": "assistant", "content": "old reply"},
+            {"role": "user", "content": "recent"},
+        ]
+
+    def test_compact_rebuilds_with_summary_as_user(self):
+        from fake_llm import FakeClient
+        from pai.core.compaction import compact
+
+        client = FakeClient([{"content": "这是摘要",
+                              "usage": {"prompt_tokens": 30, "completion_tokens": 12,
+                                        "total_tokens": 42}}])
+        new, summary, usage = compact(self._msgs(), cut=3, client=client, model="fake")
+        assert summary == "这是摘要"
+        assert usage["total_tokens"] == 42     # 摘要请求自己的 usage 也要透传给调用方入账
+        assert new[0] == {"role": "system", "content": "sys"}       # system 原样保留
+        assert new[1]["role"] == "user" and "这是摘要" in new[1]["content"]
+        assert new[2:] == self._msgs()[3:]                           # 保留尾原样
+        assert all(m["role"] != "tool" for m in new[:3])
+
+    def test_verify_counts_failure_only_on_real_usage_still_over(self):
+        """D#34：成败只认压缩后首次真实 usage；降回线内清零计数。"""
+        from pai.core.compaction import (CompactionSettings, CompactionState,
+                                         verify_compaction)
+
+        settings = CompactionSettings(reserve_tokens=200)
+        state = CompactionState(awaiting_verify=True)
+        state = verify_compaction(950, 1000, settings, state)        # 仍超线（>800）
+        assert state.failures == 1 and not state.awaiting_verify
+        state.awaiting_verify = True
+        state = verify_compaction(500, 1000, settings, state)        # 降回线内
+        assert state.failures == 0
+
+    def test_breaker_trips_after_three_consecutive_failures(self):
+        from pai.core.compaction import (CompactionSettings, CompactionState,
+                                         verify_compaction)
+
+        settings = CompactionSettings(reserve_tokens=200)
+        state = CompactionState()
+        for _ in range(3):
+            state.awaiting_verify = True
+            state = verify_compaction(999, 1000, settings, state)
+        assert state.tripped                                          # 第 3 次即熔断

@@ -54,3 +54,50 @@ def test_run_once_respects_max_steps():
     answer = run_once("x", client=FakeClient(script), model="fake", max_steps=3,
                       no_session=True, on_event=lambda _: None)
     assert "最大步数" in answer
+
+
+def test_once_event_output_is_byte_identical(tmp_path, monkeypatch):
+    """事件流改造的硬约束：once 模式打到屏幕上的字，与改造前一模一样。
+
+    LEGACY 串抄自改造前的 loop.py:182，任何一个字的漂移都算行为变更。
+    """
+    monkeypatch.chdir(tmp_path)
+    from pai.core.events import render_text
+
+    events: list = []
+    client = FakeClient([
+        {"tool_calls": [("bash", json.dumps({"command": "echo hi"}))]},
+        {"content": "done"},
+    ])
+    answer = run_once("x", client=client, model="fake", no_session=True,
+                      on_event=events.append)
+
+    printed = [text for text in (render_text(e) for e in events) if text is not None]
+    assert printed == ["🔧 bash({'command': 'echo hi'}) → hi\n"]
+    assert answer == "done"
+
+
+def test_once_default_event_handler_prints_rendered_text(capsys, tmp_path, monkeypatch):
+    """默认 on_event 必须是渲染器而不是 print——否则用户屏幕上是一串 dataclass repr。"""
+    monkeypatch.chdir(tmp_path)
+    client = FakeClient([
+        {"tool_calls": [("bash", json.dumps({"command": "echo hi"}))]},
+        {"content": "done"},
+    ])
+    run_once("x", client=client, model="fake", no_session=True)
+    out = capsys.readouterr().out
+    assert out == "🔧 bash({'command': 'echo hi'}) → hi\n\n"
+    assert "ToolEnd(" not in out
+
+
+def test_once_assembles_layered_instructions(tmp_path, monkeypatch):
+    """装配层的职责：把 PAI.md 真的送到 loop 手里（接错线要打真实 API 才发现）。"""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    (tmp_path / "PAI.md").write_text("这个项目用 pytest", encoding="utf-8")
+
+    client = FakeClient([{"content": "好"}])
+    run_once("x", client=client, model="fake", no_session=True, on_event=lambda _: None)
+
+    sent = client.requests[0]["messages"]
+    assert any("这个项目用 pytest" in str(m["content"]) for m in sent)
