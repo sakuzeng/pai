@@ -82,6 +82,16 @@
 
 ## P2 · 值得改
 
+### API key 解析（2026-08-10，K concepts/api-key-resolution.md）
+
+- [ ] **provider → env 变量名映射表**（学 pi `env-api-keys.ts`）：现在 `DEEPSEEK_API_KEY`
+      硬编码在 config.py，换 provider 要改代码。一张表 + `find_env_keys(provider)`。
+- [ ] **key 带来源**（学 CC `getAnthropicApiKeyWithSource`）：返回 `(key, source)`，
+      `/status` 显示「这次用的是哪来的 key」。2026-08-10 那次误诊断就栽在不知道 .env 从哪加载的。
+- [ ] **key 解析可注入**（学 pi 的 `getApiKey` 钩子）：`make_client` 收可选回调，core 不碰 env。
+- [ ] **apiKeyHelper（key 来自一条命令）**：价值在密钥轮转/企业网关，pai 暂无此场景；
+      带 TTL 缓存 + stale-while-revalidate + 并发去重一整套复杂度，等真需要再做。
+
 ### feature 06（记忆）遗留 —— 2026-08-10
 
 - [x] ~~**API key 只能放项目 .env，无用户级配置**~~ **已修 2026-08-10**（用户提出）。

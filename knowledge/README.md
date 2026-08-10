@@ -56,6 +56,7 @@ inbox.md         待消化收件箱：看到但还不知道怎么用的工具/�
 | [source-walks/cc-compaction.md](source-walks/cc-compaction.md) | CC 四级递进压缩策略要点 | 指针 | roadmap 阶段 1 |
 | [source-walks/pi-agentloop.md](source-walks/pi-agentloop.md) | pi 四层分层 + 钩子 + 双队列 | 指针 | roadmap 阶段 2 |
 | [concepts/hooks-gates.md](concepts/hooks-gates.md) | hooks 事件与工具调用门禁模式（阶段 4 设计输入） | 沉淀 | roadmap 阶段 4 |
+| [concepts/api-key-resolution.md](concepts/api-key-resolution.md) | pi 的映射表+注入钩子 vs CC 的带来源+apiKeyHelper；结论：key 留 .env 不进 settings.json | 沉淀 | src/pai/config.py |
 | [concepts/context-management.md](concepts/context-management.md) | 上下文管理全梯度 + 「窗口用不满≠不用管」的实测认知 | 沉淀 | src/pai/core/compaction.py |
 | [inbox.md](inbox.md) | 待消化收件箱（准入豁免区，一行一项） | 常驻 | 升格前豁免 |
 | [anna/gates.md](anna/gates.md) | anna 确定性门禁方法论（含短板教训）。**本地不入库**（R2#1 裁决，.gitignore 排除）——克隆本仓库的读者看不到此文件 | 沉淀 | roadmap 阶段 4 |
