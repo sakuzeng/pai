@@ -228,3 +228,34 @@ w= 24 列宽= 24 | ◐ bash: echo "=== impro…
 **诚实边界**：macOS 系统 Python 的 readline 是 libedit 后端，历史文件格式与 GNU readline
 略有差异；读失败按「没有历史」处理。**这条只能在真终端上验证，我在这个环境里验不了**——
 需要用户本机确认 ↑ 真的能翻出上一轮的输入。
+
+## 2026-08-10 · 补漏二：Ctrl+C 打断 `!命令` 会掀掉整个 REPL
+
+**怎么发现的**：给用户写手工测试清单时，我正要写「用 `!sleep 300` 省钱测中断」，
+顺手核了一下那条路径有没有被中断保护覆盖——`grep` 出来 `_install_sigint` 只在
+`_run_turn` 里装（249 行），而 `!` 分支在 233 行**在它外面**。
+
+**症状**：`!` 分支跑 bash 时没有 SIGINT 处理器，Ctrl+C 直接抛 `KeyboardInterrupt`，
+而 `except KeyboardInterrupt` 只包了 `_read_line`——异常一路逃出 `run_interactive`。
+写成测试时它的破坏力一目了然：**KeyboardInterrupt 把整个 pytest 进程都中止了**
+（`31 deselected` 之后直接崩），这就是它在真终端里的样子。
+
+**改动**：抽出 `_interruptible(flag)` 上下文管理器（clear 标志 → 装处理器 → finally 还原），
+模型轮次与 `!` 分支**共用**；`!` 分支另加一层 `except KeyboardInterrupt` 兜底
+（信号可能落在装处理器前后的缝隙里）。顺带把 `_run_turn` 里那段 try/except/finally
+拆成 `_guarded_run(out, ...)`，读起来不再是三层嵌套。
+
+**测试**：红——`KeyboardInterrupt` 中止 pytest 全程 → 绿 **`247 passed, 3 deselected`**
+（245 → 247，+2）。两条新测试：中断后 REPL 能继续正常对话；
+`!` 期间 `signal.getsignal(SIGINT)` **不是** `default_int_handler`
+（还是默认处理器就等于没修）。
+
+**同一类第三次了**：401 炸会话（Task 7）、这次的 Ctrl+C 炸会话，根因都是
+**「REPL 这一层的价值是对话留着，任何逃逸的异常都是在毁掉这个价值」**。
+前两次都是「补一处 catch」，这次改成了共用作用域——但仍然是**发现一处补一处**。
+真正的做法应该是在 REPL 主循环上兜一层「任何异常都回提示符」，
+把「哪条路径漏了」变成不需要逐条排查的问题。已登记 TODO。
+
+**诚实边界**：这条修的是「不崩」。至于 Ctrl+C 之后 bash 的进程组是否真被杀干净，
+测试里是用假的 `_run_shell` 验的调用契约，**真信号 + 真 sleep 的组合仍然只能在真终端验**
+（用户手工清单第 2 条）。

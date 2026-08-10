@@ -18,6 +18,7 @@ r"""交互模式：纯 REPL（对应 pi 的 interactive 模式，TUI 是阶段 2
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import os
 import signal
@@ -230,7 +231,16 @@ def run_interactive(
         _append_history(history, line)
 
         if line.startswith("!"):
-            _run_shell(line[1:].strip(), messages=messages, session=session, out=out)
+            # 也要进可中断作用域：Ctrl+C 打断 `!sleep 300` 时让 bash 看见标志、
+            # 自己杀掉进程组并回填结果，而不是抛 KeyboardInterrupt 掀掉整个 REPL
+            with _interruptible(flag):
+                try:
+                    _run_shell(line[1:].strip(), messages=messages,
+                               session=session, out=out)
+                except KeyboardInterrupt:
+                    # 信号可能落在装处理器之前/之后的缝隙里（或非主线程装不上），
+                    # 这是最后一道：宁可少收一条输出，也不能让 REPL 死掉
+                    out("⛔ 已中断")
             continue
 
         _run_turn(line, client=client, model=model, tools=tools, messages=messages,
@@ -242,13 +252,27 @@ def run_interactive(
     out("再见。")
 
 
-def _run_turn(task: str, *, client, model, tools, messages, anchors, state, follow_up,
-              flag, session, on_event, out, max_steps, max_total_tokens,
-              context_window, compaction) -> None:
+@contextlib.contextmanager
+def _interruptible(flag: InterruptFlag):
+    """在这个作用域里，Ctrl+C 只置标志不抛异常——执行侧（loop / bash 轮询）自己找地方收尾。
+
+    模型轮次与 `!命令` **两条路径都必须进来**：`!` 分支曾经漏在外面，
+    于是 Ctrl+C 打断 `!sleep 300` 会把整个 REPL 带栈掀掉（同 401 炸会话那一类）。
+    """
     flag.clear()
     previous = _install_sigint(flag)
     try:
-        answer = run_agent(
+        yield
+    finally:
+        _restore_sigint(previous)
+
+
+def _run_turn(task: str, *, client, model, tools, messages, anchors, state, follow_up,
+              flag, session, on_event, out, max_steps, max_total_tokens,
+              context_window, compaction) -> None:
+    with _interruptible(flag):
+        answer = _guarded_run(
+            out,
             task, client=client, model=model, tools=tools, messages=messages,
             anchors=anchors, compaction_state=state, interrupt_flag=flag,
             session=session, on_event=on_event, max_steps=max_steps,
@@ -259,14 +283,18 @@ def _run_turn(task: str, *, client, model, tools, messages, anchors, state, foll
             instructions=build_context,
             get_follow_up_messages=follow_up.drain,
         )
+    if answer is not None:
+        out(f"🤖 {answer}")
+
+
+def _guarded_run(out: Callable[[str], None], *args, **kwargs):
+    """401 / 超时 / 限流不该把整个会话带栈掀掉——once 崩了无所谓（本就跑完即退），
+    REPL 崩了等于把上下文一起丢掉（冒烟实测撞到过）。返回 None 表示这轮没有答案。"""
+    try:
+        return run_agent(*args, **kwargs)
     except Exception as e:  # noqa: BLE001 - REPL 的价值就是「对话留着」
-        # 401 / 超时 / 限流让整个会话带栈退出，等于把上下文一起丢掉（冒烟实测撞到过）。
-        # once 模式崩了无所谓——它本来就跑完即退；这里必须回到提示符。
         out(f"❌ 请求失败：{type(e).__name__}: {e}\n（对话已保留，可以直接重试或换个说法）")
-        return
-    finally:
-        _restore_sigint(previous)
-    out(f"🤖 {answer}")
+        return None
 
 
 def _install_sigint(flag: InterruptFlag):

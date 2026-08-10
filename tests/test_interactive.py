@@ -317,3 +317,43 @@ def test_read_history_into_readline_survives_a_missing_file(tmp_path):
     from pai.modes import interactive
 
     interactive._read_history_into_readline(tmp_path / "从来没有过的文件")   # 不抛
+
+
+def test_ctrl_c_during_shell_mode_does_not_kill_the_repl(monkeypatch):
+    """`!命令` 走的分支在 _run_turn 之外，没装 SIGINT 处理器——
+    于是 Ctrl+C 打断 `!sleep 300` 会抛 KeyboardInterrupt 把整个 REPL 带栈掀掉。
+    与 401 炸会话是同一类：REPL 这一层的全部价值就是「对话留着」。
+    """
+    from pai.modes import interactive
+
+    def boom(*args, **kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(interactive, "_run_shell", boom)
+    client, printed = _run(["!sleep 300", "问一句"], [{"content": "好"}])
+
+    assert "中断" in printed
+    assert len(client.requests) == 1, "被中断之后还应该能继续正常对话"
+    assert "再见" in printed
+
+
+def test_shell_mode_runs_under_the_interrupt_flag(monkeypatch):
+    """正确的中断姿势不是捕获异常，而是让 bash 看见标志、自己杀掉进程组再回填结果
+    （D#41：中断是数据路径不是异常路径）。所以 `!` 分支必须也在标志作用域内跑。
+    """
+    import signal
+
+    from pai.modes import interactive
+
+    seen = {}
+
+    def spy(command, **kwargs):
+        seen["handler"] = signal.getsignal(signal.SIGINT)
+
+    monkeypatch.setattr(interactive, "_run_shell", spy)
+    _run(["!echo hi"], [])
+
+    handler = seen.get("handler")
+    assert callable(handler), "跑 `!命令` 期间必须装着自定义 SIGINT 处理器"
+    assert handler is not signal.default_int_handler, \
+        "还是默认处理器 = Ctrl+C 仍会抛 KeyboardInterrupt 掀掉 REPL"
