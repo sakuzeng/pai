@@ -11,7 +11,7 @@
 
 ---
 
-## 阶段 1 · 上下文压缩收尾（进行中）
+## 阶段 1 · 上下文压缩收尾（已交付 2026-08-09，tag `compaction-v1`）
 
 - **目标**：`find_cut_point` → `summarize` → `compact`（带熔断器）接进 loop，压缩闭环在真实会话轨迹上跑通。
 - **范围**：做——三函数 + `should_compact` 接线 + 锚点列表（D#32）+ 压缩后首次真实 usage 裁决（D#34）+ 并行 tool_calls 测试补齐（R#11，有真实 400 复现）。不做——microcompact（阶段 1 完成后单独评估，见 cc-compaction 笔记）、流式下的 usage 归一化（阶段 5 前置）。
@@ -21,6 +21,11 @@
   - [x] [knowledge/source-walks/cc-compaction.md](../../knowledge/source-walks/cc-compaction.md)
 - **流程**：superpowers 全链路（brainstorm → spec → plan → SDD → 合并 → tag `compaction-v1`）。
 - **完成定义**：压缩在真实轨迹夹具上跑通；锚定退化空窗有测试钉死；`./test.sh` 全绿。
+- **档案**：[features/02-20260803-compaction/](features/02-20260803-compaction/README.md)。
+  ⚠️ **诚实边界（2026-08-10 用户实测暴露）**：压缩链路在**真实使用中一次都没被走到过**——
+  `keep_recent_tokens`（默认 20000）没有环境变量可调，小会话里切点条件永远不成立，
+  连 REPL 的 `/compact` 也压不动。离线测试全绿是因为测试直接传了 `keep_recent_tokens=1`
+  把这道坎绕过去了。三条已记 TODO「压缩链路的可验证性」。
 
 ## 阶段 2 · REPL → TUI（REPL 已交付 2026-08-10，TUI 未开始）
 
