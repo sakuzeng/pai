@@ -99,7 +99,7 @@
       ② 终端列宽——`east_asian_width` 按列不按字符，以及 ANSI 转义符不占列、
       必须先按可见文本截断再上色。两条都是这次撞出来的，不写就只活在 devlog 里。
 
-### API key 解析（2026-08-10，K concepts/api-key-resolution.md）
+### API key 解析（2026-08-10，K source-walks/pi-cc-api-keys.md）
 
 - [ ] **provider → env 变量名映射表**（学 pi `env-api-keys.ts`）：现在 `DEEPSEEK_API_KEY`
       硬编码在 config.py，换 provider 要改代码。一张表 + `find_env_keys(provider)`。

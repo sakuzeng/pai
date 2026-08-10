@@ -1,4 +1,6 @@
-# API key 从哪来：pi 与 CC 的两种解法
+# pi / CC 的 API key 解析走读
+
+对照两家源码，回答一个问题：一个 coding agent 该怎么找到它的 API key。
 
 - 来源：pi-mono（[外部参照 5](../README.md#外部参照本机路径对外部读者是死链笔记正文以外部参照-n引用)）
   `packages/ai/src/env-api-keys.ts`、`packages/ai/src/compat.ts`、`packages/agent/src/agent.ts`；
@@ -7,7 +9,8 @@
 - pai 锚点：`src/pai/config.py`、roadmap 阶段 4（用户级配置归在那里）
 
 起因：2026-08-10 修 `~/.pai/.env` 兜底时，用户问「pi 和 CC 怎么做的，能借鉴吗」。
-本篇只回答一个问题：**一个 coding agent 该怎么找到它的 API key**。
+（本篇初版误放在 `concepts/`——那里是「不专属某家源码」的横切概念，
+而这是实打实的两家源码走读，用户指出后迁至此，并顺带补齐了对照类走读的命名规约。）
 
 ## 一、pi：一张映射表 + 一个注入钩子，core 不碰环境
 
