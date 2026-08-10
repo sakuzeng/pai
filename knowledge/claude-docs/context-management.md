@@ -23,8 +23,11 @@ MEMORY.md（只载前 200 行或 25KB，先到为准）~680、环境信息 ~280�
 - 支持**自定义压缩指令**：`/compact Focus on code samples` 或 CLAUDE.md 里写
   `# Compact instructions` 节。→ pai 的 `summarize` 可以从第一版就把「保留什么」
   做成参数而非硬编码 prompt。
-- auto-compact 在接近上下文限制时自动触发（context-window 页不给阈值数字，
-  指向 model-config 页，那页未查）。
+- auto-compact 阈值（model-config 页查证 2026-08-10，关闭 R2 未核实项）：Sonnet 5
+  的 1M 窗口「默认约 **967K** 令牌」时自动压缩，即预留 ~33K，可用
+  `CLAUDE_CODE_AUTO_COMPACT_WINDOW` 调整；200K 预算配置在该边界同样自动压缩。
+  → 对照 pai：`reserve_tokens=16384` 约为 CC 预留量的一半，同一数量级
+  （校准 TODO 的参照点之一，另一个是实测摘要 completion ≤1671，见 D#37）。
 
 **costs 页列出的省 token 手段**（页面本身不做优先级排序，还包括模型选择、MCP 开销、
 扩展思考等本表未列项）：任务间 `/clear`（陈旧上下文在之后每条消息上重复付费）、

@@ -198,8 +198,10 @@
       「模型自报读过不可信 → PostToolUse 记内容哈希 + 收尾判定」。当前评审流程用
       逐字核验顶着，等评审常态化或出现「引用落空」事故再上——记录器先行（成本低）、
       判定器后置。
-- [ ] **model-config 页的 auto-compact 阈值未查**（R2 未核实节）：context-window 页把
-      阈值指向 model-config 页，届时实现 should_compact 接线时顺手查证。
+- [x] ~~**model-config 页的 auto-compact 阈值未查**~~（R2 未核实节）**已查证 2026-08-10**：
+      官方给数字——Sonnet 5 的 1M 窗口默认 ~967K 触发（预留 ~33K，
+      `CLAUDE_CODE_AUTO_COMPACT_WINDOW` 可调）。pai 的 16384 约其一半、同数量级；
+      已录 K claude-docs/context-management.md，作为 reserve 校准参照之一。
 
 ---
 
