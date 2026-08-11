@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
+import time
 import os
 import signal
 import sys
@@ -49,7 +50,15 @@ from pai.core.interrupt import InterruptFlag, set_current
 from pai.core.gate import make_before_tool_call
 from pai.core.hooks import load_hooks
 from pai.core.loop import run_agent
-from pai.core.permissions import RuleSet, load_rules, visible_tools
+from pai.core.permissions import (
+    DEFAULT_MODE,
+    MODE_CYCLE,
+    MODES,
+    PermissionModeState,
+    RuleSet,
+    load_rules,
+    visible_tools,
+)
 from pai.core.paths import sessions_dir
 from pai.core.memory import (
     LOCAL_FILE,
@@ -66,6 +75,15 @@ from pai.core.session import SessionLog
 from pai.core.tools import Tool, ask, get_tools, memory_tool
 from pai.modes.echo import make_stream_echo
 from pai.modes.statusline import StatusLinePrinter
+from pai.tui.app import (
+    COMMAND, CYCLE_MODE, EOF, EXPAND, INTERRUPT, REDRAW, SUBMIT, TuiApp,
+)
+from pai.tui.dialog import CANCELLED, Dialog
+from pai.tui.keys import KeyDecoder
+from pai.tui.driver import TuiDriver
+from pai.tui.renderer import DockRenderer
+from pai.tui.terminal import TerminalSession, tui_available
+from pai.tui import theme
 
 PROMPT = "› "
 CONTINUATION_PROMPT = "… "
@@ -75,6 +93,7 @@ HELP = """可用命令：
   /help     这张表
   /status   上下文估算、锚点数、压缩熔断状态
   /memory   本次加载了哪些指令文件 + 自动记忆目录在哪
+  /mode     查看/切换权限模式（TUI 里也可按 shift+tab 轮转）
   /permissions  当前生效的权限规则与各自来源
   /compact  手动压缩当前对话
   /clear    清空对话（保留 system）
@@ -131,12 +150,50 @@ def _read_history_into_readline(history: Path) -> None:
         pass                        # 文件不存在或格式不认，都当作没有历史
 
 
+def _use_tui(reader: Callable[..., str]) -> bool:
+    """进不进 TUI。三个条件缺一不可：
+
+    - 没注入 reader（注入了说明是测试或脚本在驱动，别抢它的 stdin）
+    - stdin 是 tty（要 raw mode）
+    - stdout 是 tty（要画得出来）——**这条判的是 stdout，与 CC 同口径**
+
+    任何一条不成立就退回今天的 REPL：管道、CI、`pai | cat` 的行为一个字不变。
+    """
+    return (reader is input and sys.stdin.isatty() and tui_available())
+
+
 def _read_line(reader: Callable[..., str]) -> str:
     r"""`\` + Enter 是唯一在所有终端都可用的多行方式（其余靠终端 key protocol，属 TUI）。"""
     line = reader(PROMPT)
     while line.endswith("\\"):
         line = line[:-1] + "\n" + reader(CONTINUATION_PROMPT)
     return line
+
+
+class AskerRef:
+    """**可变**的真人问答通道。
+
+    存在的理由与 `PermissionModeState` 一模一样：`make_before_tool_call(..., asker=fn)`
+    会把函数烤进闭包，于是 TUI 起来之后换不掉——2026-08-11 真跑时权限框因此走了
+    REPL 的老 asker 去调 `input()`，而 stdin 已在 raw mode，**整个程序死住**。
+
+    `get()` 返回 None 表示「现在没有真人」，与 `dontAsk` 合流（D#48/D#53）——
+    这个包装不能把那条降级路径遮住。
+    """
+
+    def __init__(self, fn=None) -> None:
+        self._fn = fn
+
+    def get(self):
+        return self._fn
+
+    def set(self, fn) -> None:
+        self._fn = fn
+
+    def __call__(self, question: str, options: List[str]) -> str:
+        if self._fn is None:
+            raise RuntimeError("没有可问的真人")
+        return self._fn(question, options)
 
 
 def _make_asker(reader: Callable[..., str], out: Callable[[str], None], state: dict):
@@ -239,14 +296,18 @@ def run_interactive(
     flag = InterruptFlag()
     set_current(flag)                      # bash 工具从这里看见中断
     asker_state = {"exit": False}
-    human_asker = _make_asker(reader, out, asker_state)
-    ask.set_asker(human_asker)
+    # 装配期只放一个**可变持有者**：TUI 起来后要把它换成对话框通道。
+    asker_ref = AskerRef(_make_asker(reader, out, asker_state))
+    ask.set_asker(asker_ref)
     # 权限（feature 07）。REPL 有真人，所以 ask 走真人通道而不是降级为 deny（拍板问 1）。
     rules = rules if rules is not None else load_rules(warn=out)
     hooks = load_hooks(warn=out)
     tools = visible_tools(tools, rules)            # 裸名 deny 的工具压根不摆给模型
+    # 模式必须是**可变持有者**：传字符串会被烤进 gate 的闭包，`/mode` 与 shift+tab
+    # 就永远改不动了（feature 12 T5 动工前撞见的结构问题）。
+    mode_state = PermissionModeState(mode or DEFAULT_MODE)
     gate = make_before_tool_call(
-        rules, hooks=hooks, tools=tools, asker=human_asker, warn=out, mode=mode)
+        rules, hooks=hooks, tools=tools, asker=asker_ref, warn=out, mode=mode_state)
     directory = memory_dir()
     memory_tool.set_memory_dir(directory)
     memory_tool.set_notifier(
@@ -258,6 +319,18 @@ def run_interactive(
                          directory=directory, state=RecallState(),
                          on_failure=lambda f: on_event(RecallFailed(
                              reason=f.reason, detail=f.detail, disabled=f.disabled)))
+
+    common = dict(
+        client=client, model=model, tools=tools, messages=messages, anchors=anchors,
+        state=state, follow_up=follow_up, flag=flag, session=session,
+        max_steps=max_steps, max_total_tokens=max_total_tokens,
+        context_window=context_window, compaction=compaction, gate=gate,
+        recall=recall, rules=rules, hooks=hooks, mode_state=mode_state,
+        history=history, asker_state=asker_state, asker_ref=asker_ref,
+    )
+    if _use_tui(reader):
+        _run_tui(out=out, **common)
+        return
 
     if _is_real_terminal_input(reader):
         _read_history_into_readline(history)
@@ -286,7 +359,7 @@ def run_interactive(
             if _handle_command(line, out=out, messages=messages, anchors=anchors,
                                state=state, tools=tools, client=client, model=model,
                                compaction=compaction, context_window=context_window,
-                               rules=rules, hooks=hooks):
+                               rules=rules, hooks=hooks, mode_state=mode_state):
                 break
             continue
 
@@ -305,11 +378,18 @@ def run_interactive(
                     out("⛔ 已中断")
             continue
 
-        _run_turn(line, client=client, model=model, tools=tools, messages=messages,
-                  anchors=anchors, state=state, follow_up=follow_up, flag=flag,
-                  session=session, on_event=on_event, out=out, max_steps=max_steps,
-                  max_total_tokens=max_total_tokens, context_window=context_window,
-                  compaction=compaction, before_tool_call=gate, recall=recall)
+        try:
+            _run_turn(line, client=client, model=model, tools=tools, messages=messages,
+                      anchors=anchors, state=state, follow_up=follow_up, flag=flag,
+                      session=session, on_event=on_event, out=out, max_steps=max_steps,
+                      max_total_tokens=max_total_tokens, context_window=context_window,
+                      compaction=compaction, before_tool_call=gate, recall=recall)
+        except (EOFError, KeyboardInterrupt):
+            raise                       # Ctrl+D / Ctrl+C 是正常控制流，不吞
+        except Exception as e:          # noqa: BLE001 - REPL 这一层的价值就是「对话留着」
+            # 06 遗留「同类问题第三次」：401 炸会话、Ctrl+C 打断 `!命令` 炸会话，
+            # 两次都是「某条路径漏了保护」。兜在这里，让「哪条路径漏了」不再需要逐条排查。
+            out(f"❌ 本轮出错：{type(e).__name__}: {e}\n（对话已保留，可以直接重试）")
 
         if asker_state["exit"]:      # 用户在模型提问时选了 /exit——本轮收尾后再退
             break
@@ -410,7 +490,8 @@ def _system_prompt() -> str:
 
 
 def _handle_command(line: str, *, out, messages, anchors, state, tools, client, model,
-                    compaction, context_window, rules=None, hooks=()) -> bool:
+                    compaction, context_window, rules=None, hooks=(),
+                    mode_state=None) -> bool:
     """返回 True 表示要退出 REPL。"""
     command = line.split()[0]
     if command in ("/exit", "/quit"):
@@ -431,8 +512,10 @@ def _handle_command(line: str, *, out, messages, anchors, state, tools, client, 
             f" | 锚点 {len(anchors.entries)} 个 | 压缩：{breaker}")
     elif command == "/memory":
         _show_memory(out)
+    elif command == "/mode":
+        _handle_mode(line, out=out, mode_state=mode_state)
     elif command == "/permissions":
-        _show_permissions(out, rules, hooks)
+        _show_permissions(out, rules, hooks, mode_state=mode_state)
     elif command == "/compact":
         _manual_compact(messages=messages, anchors=anchors, state=state,
                         client=client, model=model, compaction=compaction, out=out)
@@ -441,8 +524,33 @@ def _handle_command(line: str, *, out, messages, anchors, state, tools, client, 
     return False
 
 
-def _show_permissions(out: Callable[[str], None], rules, hooks=()) -> None:
+def _handle_mode(line: str, *, out: Callable[[str], None], mode_state=None) -> None:
+    """`/mode` —— 快捷键之外必须有的那条路径。
+
+    CC 明说组合键在部分终端不可靠（Windows 无 VT mode 时 shift+tab 收不到），
+    所以模式切换**命令与快捷键都要有**，不是二选一。
+    """
+    if mode_state is None:
+        out("🔐 权限模式：未装配（该模式下模式不可切）")
+        return
+    parts = line.split()
+    if len(parts) == 1:
+        out(f"🔐 当前权限模式：{mode_state()}")
+        out(f"   可选：{', '.join(MODES)}")
+        out(f"   shift+tab 轮转顺序：{' → '.join(MODE_CYCLE)}"
+            "（dontAsk 不在环里：它与「无真人」是同一件事）")
+        return
+    try:
+        out(f"🔐 权限模式 → {mode_state.set(parts[1])}")
+    except ValueError as e:
+        out(f"❌ {e}")
+
+
+def _show_permissions(out: Callable[[str], None], rules, hooks=(), *,
+                      mode_state=None) -> None:
     """列出规则与来源。「被哪条规则挡的、那条从哪来」是用户能自己修的前提。"""
+    if mode_state is not None:
+        out(f"🔐 当前权限模式：{mode_state()}")
     if rules is None:
         out("🔒 权限：未装配规则")
         return
@@ -508,3 +616,203 @@ def _manual_compact(*, messages, anchors, state, client, model, compaction, out)
     state.awaiting_verify = True           # 成败仍只认压缩后首次真实 usage（D#34）
     out(f"🗜️ 已压缩：切于 {cut}，消息 {before} → {len(messages)} 条，"
         f"摘要 {len(summary)} 字，摘要请求用了 {usage.get('total_tokens') or 0} token")
+
+
+# ---------------------------------------------------------------------------
+# TUI 主循环（feature 12）。非 tty / 注入 reader 时走不到这里——上面那条闸门挡着。
+# ---------------------------------------------------------------------------
+
+def _run_tui(*, out, client, model, tools, messages, anchors, state, follow_up, flag,
+             session, max_steps, max_total_tokens, context_window, compaction, gate,
+             recall, rules, hooks, mode_state, history, asker_state, asker_ref) -> None:
+    """scrollback 在上、dock 在下。
+
+    与纯 REPL 的**唯一**语义差别在输入层：谁拥有键盘由 `InputArbiter` 算出来，
+    而不是「谁先 read() 谁拿到」。跨轮状态、命令、shell 模式、压缩、召回全部照旧。
+    """
+    color = theme.use_color(is_tty=sys.stdout.isatty())
+    app = TuiApp(renderer=DockRenderer(write=_stdout_write, width=lambda: term.columns),
+                 history=_history_lines(history), color=color)
+    app.editor.color = color
+    term = TerminalSession(on_resize=app.refresh)
+    driver = TuiDriver(app)
+    app.dock.set_mode(mode_state())
+    app.dock.set_cwd(os.getcwd())
+    app.dock.set_model(model)
+
+    def refresh_context() -> None:
+        """上下文占用：pai 早就在算（压缩用的就是它），只是此前没给人看。"""
+        anchor, anchor_index = anchors.latest()
+        used = context_tokens(messages, [t.schema() for t in tools.values()],
+                              anchor=anchor, anchor_index=anchor_index)
+        app.dock.set_context(used, context_window)
+
+    refresh_context()
+
+    def commit(text: str) -> None:
+        app.commit(str(text))          # 拆换行与折行都在 app.commit 里做
+
+    def ask_human(question: str, options: List[str]) -> str:
+        """真人问答：排一个对话框，然后**继续读键盘**直到它被答掉。
+
+        提问期间敲的 `!命令` / `/命令` 会经 handoff 交回这里执行——
+        这正是 08 遗留那条铁证（`!echo 我是命令` 被当成答案）的修法。
+        """
+        # 权限框与提问框长得不一样（记号与配色都不同）。判据是选项——
+        # `gate._ask_the_human` 固定传「允许这次 / 拒绝」。
+        kind = "permission" if options and options[0].startswith("允许") else "question"
+        app.enqueue_dialog(Dialog(question=question, options=options,
+                                  kind=kind, color=color))
+        answered = {"value": None, "done": False}
+
+        def on_action(kind, payload):
+            if kind == COMMAND:
+                _dispatch_command(payload, commit=commit, out=commit, messages=messages,
+                                  anchors=anchors, state=state, tools=tools,
+                                  client=client, model=model, compaction=compaction,
+                                  context_window=context_window, rules=rules,
+                                  hooks=hooks, mode_state=mode_state, session=session,
+                                  flag=flag, app=app)
+            elif kind == INTERRUPT:
+                flag.set()
+                answered["done"] = True
+            elif kind == EOF:
+                asker_state["exit"] = True
+                answered["done"] = True
+
+        while not answered["done"]:
+            driver.pump_until(lambda: app.arbiter.current() is None
+                              or answered["done"], on_action)
+            if app.arbiter.current() is None:
+                answered["value"] = app.take_answer()
+                answered["done"] = True
+        if answered["value"] is None:
+            return "用户没有作答（跳过或取消），请自行判断或换个方式推进。"
+        return answered["value"]
+
+    # **一处换、两处生效**：`ask_user_question` 与权限 gate 用的是同一个持有者。
+    # 只换其中一个正是 2026-08-11 那次卡死的根因。
+    asker_ref.set(ask_human)
+
+    def on_event(event) -> None:
+        app.on_event(event)
+        # 干活期间也读键盘：字符本来就在内核 tty 缓冲区里等着（反向对照实测），
+        # 只是纯 REPL 从不去读。这里每个事件顺手取一次。
+        for kind, payload in driver.poll(timeout=0):
+            if kind == SUBMIT:
+                # 拍板问 4：干活时打的字**排队**，本轮结束后依次发出（CC 的 queued commands）
+                follow_up.enqueue({"role": "user", "content": payload})
+                app.dock.set_queued(_queue_size(follow_up))
+            elif kind == INTERRUPT:
+                flag.set()
+
+    term.start()
+    # **不能用 out（print）**：终端此刻在 raw mode，`\n` 不回列首，会打成阶梯状。
+    for warning in term.warnings:
+        commit(f"⚠️ {warning}")
+    try:
+        # 开场：logo 流光扫一遍再定格进 scrollback（动画只改配色，几何不动）
+        app.start_intro()
+        while app.intro_tick():
+            time.sleep(0.04)
+        app.commit([theme.paint(
+            "/help 看命令 · shift+tab 切权限模式 · ^O 展开工具输出 · Ctrl+D 退出",
+            theme.GREY, color=color)])
+        app.refresh()
+        pending_exit = False
+        while True:
+            actions = driver.poll()
+            for kind, payload in actions:
+                if kind == EOF:
+                    return
+                if kind == INTERRUPT:
+                    if pending_exit:
+                        return
+                    pending_exit = True
+                    commit("(输入已清空，再按一次 Ctrl+C 退出)")
+                    continue
+                pending_exit = False
+                if kind == REDRAW:
+                    app.refresh()
+                elif kind == EXPAND:
+                    app.expand_last()
+                elif kind == CYCLE_MODE:
+                    mode_state.cycle(bypass_available=True)
+                    app.dock.set_mode(mode_state())
+                    commit(f"🔐 权限模式 → {mode_state()}")
+                elif kind == COMMAND:
+                    if _dispatch_command(payload, commit=commit, out=commit,
+                                         messages=messages, anchors=anchors,
+                                         state=state, tools=tools, client=client,
+                                         model=model, compaction=compaction,
+                                         context_window=context_window, rules=rules,
+                                         hooks=hooks, mode_state=mode_state,
+                                         session=session, flag=flag, app=app):
+                        return
+                elif kind == SUBMIT:
+                    _append_history(history, payload)
+                    app.busy = True
+                    try:
+                        _run_turn(payload, client=client, model=model, tools=tools,
+                                  messages=messages, anchors=anchors, state=state,
+                                  follow_up=follow_up, flag=flag, session=session,
+                                  on_event=on_event, out=commit, max_steps=max_steps,
+                                  max_total_tokens=max_total_tokens,
+                                  context_window=context_window, compaction=compaction,
+                                  before_tool_call=gate, recall=recall)
+                    except (EOFError, KeyboardInterrupt):
+                        raise
+                    except Exception as e:      # noqa: BLE001 - 对话留着
+                        commit(f"❌ 本轮出错：{type(e).__name__}: {e}（对话已保留）")
+                    finally:
+                        app.busy = False
+                        app.dock.set_queued(_queue_size(follow_up))
+                        refresh_context()
+                        app.refresh()
+                    if asker_state["exit"]:
+                        return
+    finally:
+        term.stop()
+        app.renderer.clear()
+        out("再见。")
+
+
+def _dispatch_command(line: str, *, commit, app, session, flag, **kw) -> bool:
+    """`/命令` 与 `!命令`。返回 True 表示要退出。"""
+    if line.startswith("!"):
+        with _interruptible(flag):
+            try:
+                _run_shell(line[1:].strip(), messages=kw["messages"],
+                           session=session, out=commit)
+            except KeyboardInterrupt:
+                commit("⛔ 已中断")
+        app.refresh()
+        return False
+    return _handle_command(line, out=commit, messages=kw["messages"],
+                           anchors=kw["anchors"], state=kw["state"], tools=kw["tools"],
+                           client=kw["client"], model=kw["model"],
+                           compaction=kw["compaction"],
+                           context_window=kw["context_window"], rules=kw["rules"],
+                           hooks=kw["hooks"], mode_state=kw["mode_state"])
+
+
+def _queue_size(queue) -> int:
+    """队列没有暴露长度（05 的 API 只有 enqueue/has_items/drain），这里只读内部表。
+
+    不给 PendingMessageQueue 加公开方法：它是 05 交付的东西，
+    「只加不改语义」的范围里，为一个显示需求改它的公开面不划算。
+    """
+    return len(queue._messages)
+
+
+def _stdout_write(data: str) -> None:
+    sys.stdout.write(data)
+    sys.stdout.flush()
+
+
+def _history_lines(path: Path) -> List[str]:
+    """把 05 已交付的历史文件喂给编辑器的 ↑/↓（readline 没了，得自己读）。"""
+    try:
+        return path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []

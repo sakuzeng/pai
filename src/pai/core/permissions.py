@@ -48,6 +48,54 @@ DONT_ASK = "dontAsk"                  # 一切 ask 直接变 deny（不在链上
 BYPASS = "bypassPermissions"          # 全放行，但 deny/显式 ask/危险路径三条免疫
 MODES = (DEFAULT_MODE, ACCEPT_EDITS, DONT_ASK, BYPASS)
 
+# shift+tab 的轮转表（feature 12 T5）。**是数据不是 if 链**——`plan` 单独立项时
+# 只需在这里插一行（本档案问 2 的改判要求）。照 CC 的 getNextPermissionMode，
+# 但去掉两个：`plan`（本轮不做）与 `dontAsk`（D#53 它与「无真人」合流，
+# 不该出现在给真人按的快捷键上；CC 的注释同样写着它「尚未暴露在 UI 环里」）。
+MODE_CYCLE = (DEFAULT_MODE, ACCEPT_EDITS, BYPASS)
+
+# 需要额外可用性判定才进环的档。危险档不是白给的：不可用就跳过，不是报错。
+_GATED_MODES = {BYPASS: "bypass_available"}
+
+
+def next_mode(current: str, *, bypass_available: bool = False) -> str:
+    """轮转到下一个模式。不在环里的（含未知值）一律回 `default`。"""
+    available = {"bypass_available": bypass_available}
+    try:
+        start = MODE_CYCLE.index(current)
+    except ValueError:
+        return DEFAULT_MODE
+    for step in range(1, len(MODE_CYCLE) + 1):
+        candidate = MODE_CYCLE[(start + step) % len(MODE_CYCLE)]
+        gate_key = _GATED_MODES.get(candidate)
+        if gate_key is None or available[gate_key]:
+            return candidate
+    return DEFAULT_MODE
+
+
+class PermissionModeState:
+    """**可变**的当前模式。
+
+    存在的理由：`make_before_tool_call(..., mode="default")` 会把值烤进闭包，
+    于是 `/mode` 与 shift+tab 运行时改不动（feature 12 T5 动工前撞见）。
+    它可调用（`state()` 返回当前模式），gate 因此既能收字符串也能收它。
+    """
+
+    def __init__(self, mode: str = DEFAULT_MODE) -> None:
+        self.set(mode)
+
+    def __call__(self) -> str:
+        return self.mode
+
+    def set(self, mode: str) -> str:
+        if mode not in MODES:
+            raise ValueError(f"未知权限模式 {mode!r}，只认 {MODES}")
+        self.mode = mode
+        return self.mode
+
+    def cycle(self, *, bypass_available: bool = False) -> str:
+        return self.set(next_mode(self.mode, bypass_available=bypass_available))
+
 # "Bash" / "Bash(git push *)"：工具名后可选一个括号包起来的 specifier。
 # specifier 内部允许任意字符（含括号，如 Bash(echo (x))），所以贪婪匹配到最后一个 `)`。
 _RULE_RE = re.compile(r"^(?P<tool>[^(]+?)\s*(?:\(\s*(?P<spec>.*?)\s*\))?$", re.S)

@@ -31,10 +31,34 @@ NO_HUMAN_REASON = (
 )
 
 
+# 参数值最多显示这么长。`write_file` 的 content 可能几千字符——整段倒进问题里，
+# 用户根本看不到自己在批什么（2026-08-11 用户实测指出）。
+MAX_ARG_CHARS = 160
+
+
+def _describe(tool_name: str, args: dict) -> str:
+    """把一次工具调用写成**人能读的问题**，不是 Python 的 repr。
+
+    `repr()` 会把 shell 命令里的引号转义成 `\'`，一条正常的命令看起来像乱码——
+    用户要看的是**命令本身**，不是字符串字面量。
+    """
+    if tool_name == "bash" and "command" in args:
+        # 问号收在第一行，命令**独占一行**——问号跟在命令屁股后面会被当成命令的一部分
+        return f"是否允许 {tool_name} 执行？\n$ {_clip(str(args['command']))}"
+    if not args:
+        return f"是否允许 {tool_name}？"
+    parts = [f"{k}={_clip(str(v))}" for k, v in args.items()]
+    return f"是否允许 {tool_name}（{'，'.join(parts)}）？"
+
+
+def _clip(text: str) -> str:
+    text = text.replace("\n", " ⏎ ")
+    return text if len(text) <= MAX_ARG_CHARS else text[:MAX_ARG_CHARS] + "…"
+
+
 def _ask_the_human(decision: Decision, tool_name: str, args: dict, asker: Asker) -> Decision:
-    detail = ", ".join(f"{k}={v!r}" for k, v in args.items())
     answer = asker(
-        f"是否允许 {tool_name}({detail})？\n{decision.reason}",
+        f"{_describe(tool_name, args)}\n{decision.reason}",
         [ALLOW_LABEL, DENY_LABEL],
     )
     if answer == ALLOW_LABEL:
@@ -52,7 +76,7 @@ def make_before_tool_call(
     asker: Optional[Asker] = None,
     warn: Optional[Callable[[str], None]] = None,
     working_dirs: Optional[WorkingDirs] = None,
-    mode: Optional[str] = None,
+    mode=None,
 ) -> Callable[[str, dict], Decision]:
     """造一个交给 `run_agent(before_tool_call=...)` 的判定函数。
 
@@ -65,21 +89,29 @@ def make_before_tool_call(
     """
 
     def gate(tool_name: str, args: dict) -> Decision:
+        # 模式**每次判定现取**，不能捕获成常量：`/mode` 与 shift+tab 要能当场改
+        # （feature 12 T5）。收字符串（once 的老调用路径）也收可调用的
+        # PermissionModeState，两者同源，不另开参数。
+        current = mode() if callable(mode) else mode
         decision = decide_with_hooks(
             tool_name, args, rules, hooks=hooks,
             tools=tools, cwd=cwd, home=home, warn=warn,
-            working_dirs=working_dirs, mode=mode,
+            working_dirs=working_dirs, mode=current,
         )
         if decision.kind != "ask":
             return decision
         # dontAsk 不在求值链上：它是对**最终结果**的后处理。
         # 与「无真人可问」合流——两者对模型是同一件事（拿不到人的确认）。
-        if asker is None or mode == DONT_ASK:
+        # asker 同样**每次判定现取**：TUI 会在装配之后把它换成对话框通道。
+        # 烤成常量的后果 2026-08-11 真跑撞过——权限框走老路径调 `input()`，
+        # 而 stdin 已在 raw mode，整个程序死住。
+        current_asker = asker.get() if hasattr(asker, "get") else asker
+        if current_asker is None or current == DONT_ASK:
             return Decision(
                 kind="deny",
                 reason=f"{decision.reason}；{NO_HUMAN_REASON}",
                 rule=decision.rule,
             )
-        return _ask_the_human(decision, tool_name, args, asker)
+        return _ask_the_human(decision, tool_name, args, current_asker)
 
     return gate

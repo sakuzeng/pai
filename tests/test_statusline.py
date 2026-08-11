@@ -164,3 +164,23 @@ def test_statusline_is_cleared_when_the_turn_ends():
     handle(ToolStart(tool_call_id="c", name="bash", args={"command": "ls"}))
     handle(AgentEnd(reason="final", text="好"))
     assert stream.chunks[-1] == "\r\x1b[K"   # 一轮结束把状态行擦掉，别粘在屏幕上
+
+
+def test_display_width_ignores_escape_sequences():
+    """转义序列不占列。
+
+    今天状态行不会撞上（它**先按可见文本截断再上色**），但 TUI 的 CURSOR_MARKER
+    是嵌在组件文本里的 APC 序列，宽度算错光标列就漂。pi 的 visibleWidth 同样
+    显式处理 APC（K source-walks/pi-tui-main-screen.md 第六节）。
+    """
+    assert display_width("\x1b[36m中文\x1b[0m") == 4          # CSI（颜色）
+    assert display_width("ab\x1b_pai:c\x07cd") == 4           # APC（CURSOR_MARKER）
+    assert display_width("\x1b]8;;http://x\x07链接\x1b]8;;\x07") == 4   # OSC（超链接）
+
+
+def test_display_width_of_plain_text_is_unchanged_by_escape_stripping():
+    """回归护栏：既有调用方全部传纯文本，剥转义不许改变它们的结果。"""
+    for text in ("", "abc", "中文", "a中b", "◐ read_file: a.py", "🎉"):
+        assert display_width(text) == sum(
+            2 if __import__("unicodedata").east_asian_width(c) in ("W", "F") else 1
+            for c in text)
