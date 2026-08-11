@@ -16,8 +16,7 @@ from __future__ import annotations
 
 from typing import Callable, List, Optional
 
-from pai.modes.statusline import display_width
-from pai.tui.component import CURSOR_MARKER, Component
+from pai.tui.component import Component, extract_cursor as _extract_cursor
 
 SYNC_START = "\x1b[?2026h"      # DEC synchronized output：整帧写完再刷新，防撕裂
 SYNC_END = "\x1b[?2026l"
@@ -55,12 +54,17 @@ class DockRenderer:
         self._write(SYNC_START + self._repaint(lines, cursor) + SYNC_END)
         self._height = len(lines)
 
-    def commit(self, lines: List[str], root: Optional[Component] = None) -> None:
-        """把 lines 从 dock **上交**到 scrollback：清 dock → 当普通输出打 → 重画 dock。
+    def commit(self, lines, root: Optional[Component] = None) -> None:
+        """把内容从 dock **上交**到 scrollback：清 dock → 当普通输出打 → 重画 dock。
+
+        收 `TranscriptEntry` 或裸行数组。**上交之后 pai 就够不着了**——
+        这正是 alt 屏那条路径存在的理由（feature 13）。
 
         顺序不能反：先打印再清 dock，上交的内容会与 dock 残影叠在一起。
         打完每行都带换行，于是结束时光标停在一个空行的行首——正好是 dock 的新起点。
         """
+        if hasattr(lines, "render"):
+            lines = lines.render(self._width())
         buf = SYNC_START + self._erase()
         for line in lines:
             buf += line + "\r\n"
@@ -136,18 +140,4 @@ class DockRenderer:
         return buf
 
 
-def _extract_cursor(lines: List[str]):
-    """找出 CURSOR_MARKER 的（行, 可见列），并把标记从行里剥掉。
-
-    列用 `display_width` 算标记之前的可见文本——不是字符数。
-    一个中文两列，按字符数算会让光标停在半个字上。
-    """
-    for row, line in enumerate(lines):
-        index = line.find(CURSOR_MARKER)
-        if index == -1:
-            continue
-        col = display_width(line[:index])
-        stripped = list(lines)
-        stripped[row] = line[:index] + line[index + len(CURSOR_MARKER):]
-        return stripped, (row, col)
-    return lines, None
+# `_extract_cursor` 已挪进 component.py（feature 13：alt 屏渲染器也要用同一份）。

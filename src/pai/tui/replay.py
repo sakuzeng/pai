@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from typing import List, Optional, Tuple
 
@@ -100,6 +101,9 @@ def width_segments(records: List[dict]) -> List[Tuple[int, int]]:
     return out
 
 
+_CUP = re.compile(r"\x1b\[\d+;\d+H")   # 绝对定位 = 整屏帧，高度不能靠猜
+
+
 def replay(records: List[dict], *, rows: Optional[int] = None,
            whole: bool = False) -> VirtualScreen:
     """把录制喂进模拟器。
@@ -118,6 +122,15 @@ def replay(records: List[dict], *, rows: Optional[int] = None,
     if len(segments) > 1 and not whole:
         records = records[segments[-1][0]:]
     cols = records[-1].get("cols", 80)
+    # **备用屏的录制必须按录下来的真实高度回放**（feature 13）：
+    # alt 屏下每帧走绝对坐标（`CSI r;1H`）且一个换行都不写，于是「按换行数估高度」
+    # 估出来的是 24——比真实终端矮，末尾几行全被钳到最后一行叠在一起。
+    # 症状是「dock 少了几行」，看起来像渲染器画错了，其实是回放放错了
+    # （与 feature 14 复盘那条「验证工具自己也要被验证」同一类）。
+    absolute = any("\x1b[?1049h" in r["data"] or _CUP.search(r["data"])
+                   for r in records)
+    if rows is None and absolute:
+        rows = records[-1].get("rows") or 24
     total = sum(r["data"].count("\n") for r in records) + 4
     screen = VirtualScreen(cols=cols, rows=rows or max(24, min(total, 400)),
                            strict=False)

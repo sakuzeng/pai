@@ -92,3 +92,16 @@ raw mode、bracketed paste、鼠标上报、隐藏光标——这些都是**对�
 
 - [terminal-width.md](terminal-width.md)（中文占两列、ANSI 不占列）
 - [process-groups-and-interrupts.md](process-groups-and-interrupts.md)（`ISIG` 关掉之后，中断只能靠自己在读循环里认 `0x03`）
+
+
+## 五、进了 raw mode 之后，下一个问题通常是「要不要连屏幕一起接管」
+
+raw mode 解决的是「按键怎么进来」，**没解决「画在哪儿」**。
+应用只画屏幕底部若干行（main-screen）还是整屏都归自己（备用屏），
+是另一个独立的选择，它带来另一批坑：DECSET 1049 不幂等、鼠标上报三档互斥、
+拿走鼠标就等于拿走终端原生的选中复制、备用屏 resize 后不重绘就是脏的。
+见 [alt-screen-and-mouse.md](alt-screen-and-mouse.md)。
+
+一条容易漏的顺序约束：**「进备用屏」必须早于「画第一帧」**——
+顺序反了的话第一帧落在主屏上并被保存下来，**退出备用屏之后**才作为一坨脏东西出现。
+症状离故障点隔了整整一个会话。

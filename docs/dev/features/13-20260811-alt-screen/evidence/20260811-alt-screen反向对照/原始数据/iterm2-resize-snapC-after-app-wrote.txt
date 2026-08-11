@@ -1,0 +1,6 @@
+Last login: Tue Aug 11 15:07:58 on ttys026 
+~ ᐅ /usr/bin/python3 /private/tmp/claude-501/-Users-sakuzeng-improve-codALT-RESIZE-2 横向填充横向填充横向填充横向填充横向填充横向填充横向填充横向填充横向填充横向填充横向填充横向填充 末尾标记END 
+ALT-RESIZE-3 短行 
+--- 上面三行是 resize 之前画的，我不会重画它们 --- 
+ 
+AFTER-RESIZE 现在是 72x15（上面那几行我一个字节都没重画）

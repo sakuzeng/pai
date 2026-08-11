@@ -10,19 +10,32 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import List, Optional
+
+from pai.tui.mouse import MouseEvent, parse as _parse_mouse
 
 PASTE_START = b"\x1b[200~"
 PASTE_END = b"\x1b[201~"
 
+# SGR 1006：`CSI < 按钮 ; 列 ; 行 M|m`。**只认这一种编码**——
+# 1015/1016 那些扩展 pai 不发也不解析（认不出的一律丢弃，不猜）。
+_SGR_MOUSE = re.compile(r"<(\d+);(\d+);(\d+)$")
+
 
 @dataclass(frozen=True)
 class Key:
-    """一次按键。`text` 只在 `char`（字符）/`paste`（粘贴内容）/`unknown`（原始序列）时有值。"""
+    """一次按键。`text` 只在 `char`（字符）/`paste`（粘贴内容）/`unknown`（原始序列）时有值；
+    `mouse` 只在 `name == "mouse"` 时有值（feature 16）。
+
+    鼠标事件走这条路而不是另开一个解码器：它与按键**共用一条字节流**，
+    也同样会被 `os.read` 拆包——分片拼包的逻辑只该有一份。
+    """
 
     name: str
     text: str = ""
+    mouse: Optional["MouseEvent"] = None
 
 
 _CTRL = {
@@ -36,7 +49,11 @@ _CSI_FINAL = {
     "A": "up", "B": "down", "C": "right", "D": "left",
     "H": "home", "F": "end", "Z": "shift_tab",
 }
-_CSI_TILDE = {"1": "home", "4": "end", "3": "delete", "7": "home", "8": "end"}
+_CSI_TILDE = {"1": "home", "4": "end", "3": "delete", "7": "home", "8": "end",
+              "5": "page_up", "6": "page_down"}
+# 带修饰键的 CSI：`CSI 1;5H` 是 Ctrl+Home。滚到顶/底走 Ctrl 组合而不是裸 Home/End——
+# 裸的那两个是行首/行尾，归行编辑器（照 CC 的分工）。
+_CSI_MODIFIED = {("1;5", "H"): "ctrl_home", ("1;5", "F"): "ctrl_end"}
 _SS3 = {"H": "home", "F": "end", "A": "up", "B": "down", "C": "right", "D": "left"}
 
 
@@ -147,6 +164,16 @@ class KeyDecoder:
             return Key(_CSI_FINAL[final]), i + 1
         if final == "~" and params in _CSI_TILDE:
             return Key(_CSI_TILDE[params]), i + 1
+        if (params, final) in _CSI_MODIFIED:
+            return Key(_CSI_MODIFIED[(params, final)]), i + 1
+        if final in ("M", "m"):
+            m = _SGR_MOUSE.match(params)
+            if m:
+                event = _parse_mouse(int(m.group(1)), int(m.group(2)) - 1,
+                                     int(m.group(3)) - 1, final)
+                # 认不出的鼠标形状（横向滚动等）**整条吞掉**：留成 unknown 的话
+                # 它会以原始序列的形态出现在调试输出里，看着像 pai 漏了个按键
+                return (Key("mouse", mouse=event) if event else None), i + 1
         return Key("unknown", raw), i + 1
 
 
