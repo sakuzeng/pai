@@ -88,9 +88,25 @@ src/pai/
     streaming.py   流式
     skills.py      skills
     mcp_client.py  MCP client
+  tui/             终端 UI（阶段 2 后半程）：scrollback 在上、pai 接管的 dock 在下
+                   **只有 renderer.py 与 terminal.py 碰终端**，其余全是纯函数或纯状态机——
+                   这条边界是本模块可测性的全部来源
+    component.py   Component 契约（render(width) -> list[str]）/ Container / CURSOR_MARKER
+    renderer.py    dock 整块重绘 + commit（dock 与 scrollback 之间唯一的通道）
+    keys.py        字节 → 按键（带状态：多字节字符与转义序列会被拆成两次 read 送达）
+    editor.py      行编辑器（纯状态机，替掉 readline）
+    arbiter.py     **输入归属仲裁**——治「一个输入流两个消费者抢」的病
+    dialog.py      权限 ask 与 AskUserQuestion 共用一套
+    dock.py        活动区 / 队列区 / 状态行 / footer
+    theme.py       配色与字形（**不用 emoji**：字体缺字 + 宽度不确定）
+    logo.py        启动 logo 与流光动画（同一份字形，每帧只改配色）
+    terminal.py    raw mode 进出 / SIGWINCH / 退出无条件复原 / 非 tty 闸门
+    screen.py      终端模拟器（字节 → 屏幕）——**测试断言与回放出图共用同一份**
+    record.py      PAI_TUI_RECORD 录下写给终端的字节
+    replay.py      回放成屏幕并出 PNG（pai-replay），让 AI 自己看得见界面
   modes/           交互形态——同一套 core，不同的进入与输出方式（学 pi 的 modes/）
     once.py        单次任务，跑完即退出（对应 pi 的 print-mode）
-    interactive.py REPL：历史 / 续行 / `!` shell 模式 / `/` 命令 / 两级 Ctrl+C
+    interactive.py 交互模式接线：真 tty 走 TUI，非 tty 退回纯 REPL（行为一个字不变）
     statusline.py  工具调用状态行（纯函数 render，按终端列宽算中文宽度）
   viz/             架构可视化：pai-viz 起本地网页，结构图（工具自动自省）+ 阶段路线图（解析 STATUS.md）
 evals/             评测集与跑批

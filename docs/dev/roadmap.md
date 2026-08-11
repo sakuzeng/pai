@@ -186,3 +186,11 @@ feature 12 又撞出六条，其中一条**改写了一条已登记遗留的定�
   （用户层 + 项目层两级规则），两件事共用同一套加载与合并逻辑，一起做最省。
   归属确定前不要另起炉灶。
 - microcompact（清可重放工具的旧结果）→ 阶段 1 完成后评估，见 [cc-compaction 笔记](../../knowledge/source-walks/cc-compaction.md)
+- ~~**自测闭环**~~ → **已交付 2026-08-11**（不占阶段，是给所有阶段用的基建）：
+  [features/14](features/14-20260811-session-capture/README.md) 录制与回放
+  （`PAI_TUI_RECORD` + `pai-replay` 出 PNG，让 AI 自己看得见界面）、
+  [features/15](features/15-20260811-fake-provider/README.md) 本地假 provider + 真 pty e2e
+  （「需要模型开口」的功能也能自动测）。
+  **它俩是上面「反向对照（交付前）」那条固定项能被真正执行的前提**——
+  在此之前「跑一个完整的真实回合」意味着花钱、慢、不可复现，于是它必然被绕开
+  （features/14 复盘：「为了省钱而绕开的路径，正是唯一没被验过的路径」）。

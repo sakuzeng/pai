@@ -34,6 +34,11 @@ usage 的取法按实测重写（D#58）：`include_usage` 在 DeepSeek 上是�
 于是提问期间敲 `!命令` 就是执行命令——08 那条真实事故关掉了；
 `/mode` 与 shift+tab 可切权限模式；干活时打的字进 followUp 队列；
 并发按动作聚合计数**看得见**。非 tty（管道/CI/注入 reader）整个不进 TUI，行为不变。
+随后 feature 14/15 补上**自测闭环**：`PAI_TUI_RECORD` 录下写给终端的字节、
+`pai-replay` 回放成 PNG（**让 AI 自己看得见界面**，不必每次让用户截图）；
+本地假 provider 说 OpenAI 兼容协议，于是真 pai 进程能在真 pty 里跑完整回合
+（真 SSE / 真 gate / 真 TUI），**「需要模型开口」的功能也能自动测了**——
+feature 12 被用户打回的三条 bug 各钉了一条 e2e。
 功能全貌见 [features/02](features/02-20260803-compaction/README.md)、
 [features/05](features/05-20260810-repl/README.md)、
 [features/07](features/07-20260810-permissions/README.md)。
@@ -75,6 +80,7 @@ usage 的取法按实测重写（D#58）：`include_usage` 在 DeepSeek 上是�
 | `tui/dialog.py` | 可用 | 权限 ask 与 AskUserQuestion 共用；`handoff()` 把 `!`/`/` 交回主循环执行（08 铁证的修法）；Esc 取消 |
 | `tui/dock.py` | 可用 | 活动区（按动作聚合计数）/ 队列区 / 状态行（转圈 + 已用时 + token + 模式 + 待决数）；`AgentEnd` 吐一行摘要给 commit |
 | `tui/app.py` / `tui/driver.py` | 可用 | app 粘合各组件（可测）；driver 读真 stdin（`select` 轮询，空闲时靠 `needs_tick()` 不白刷）。**driver 无单测**，靠 playground 冒烟顶着 |
+| `tui/theme.py` / `tui/logo.py` | 可用 | 配色与字形（**不用 emoji**，D#63：字体缺字 + 宽度不确定；有测试遍历所有字形卡死「码位 < U+1F000 且非宽字符且宽度为 1」）；启动 logo 与流光动画（同一份字形每帧只改配色，于是动画离线可测） |
 | `tui/screen.py` | 可用 | 最小终端模拟器（字节 → 屏幕，含 SGR 配色跟踪）。**测试断言与回放出图共用同一份**——分成两份的话「测试全绿」与「图上是对的」会各说各话 |
 | `tui/record.py` / `tui/replay.py` | 可用 | `PAI_TUI_RECORD=<路径>` 录下写给终端的字节（含尺寸与 resize）；`pai-replay <文件> -o 图.png` 回放成 PNG，**让 AI 自己看得见界面**（feature 14） |
 | `tui/terminal.py` | 可用 | raw mode 进出、`SIGWINCH` **同步不去抖 + 同尺寸丢弃**、退出无条件复原、非 tty 闸门（判 stdout）、非主线程明确告警 |
