@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Callable, List, Optional, Sequence, Tuple
 
 from pai.core.events import (
@@ -25,8 +26,15 @@ from pai.tui import logo, theme
 from pai.tui.arbiter import EDITOR, InputArbiter
 from pai.tui.component import Container, Component
 from pai.tui.dialog import CANCELLED, Dialog
+from pai.tui.keys import Key
 from pai.tui.dock import Dock
+from pai.tui.clipboard import copy as _copy_to_clipboard
+from pai.tui.scroll import ScrollState
+from pai.tui.selection import Selection
+from pai.tui.transcript import (Transcript, TranscriptEntry, dynamic_entry,
+                                expandable_entry, text_entry)
 from pai.tui.editor import LineEditor
+from pai.tui.mouse import MouseEvent, merge as _merge_mouse
 
 # feed() 吐出来的动作。用 (kind, payload) 而不是各种回调——
 # 主循环拿着它走 if/elif，读起来就是「用户干了什么」。
@@ -50,18 +58,29 @@ class _Root(Component):
 
     def __init__(self, app: "TuiApp") -> None:
         self.app = app
+        self.editor_offset: Optional[int] = None
 
     def render(self, width: int) -> List[str]:
         app = self.app
         # 分隔线放最上面：它划出的是「这几行归 pai 管」，不是「输入框的边」。
         if app._intro > 0:               # 开场：logo 占住 dock，输入行还没上场
             return logo.banner(width, frame=logo.FRAMES - app._intro, color=app.color)
-        lines = [app.dock.rule(width)]
+        lines: List[str] = []
+        notice = app.dock.notice_line(width)
+        if notice:
+            # **在分隔线上面**：落在线下面就成了「输入框里」（用户对照 CC 指出）
+            lines.append(notice)
+        lines.append(app.dock.rule(width))
         lines += app.dock.activity_lines(width) + app.dock.queue_lines(width)
+        # 滚动态**每次渲染现取**：存一份在 dock 里再定期同步的话，
+        # 「什么时候同步」会与「什么时候组帧」错开一帧（装配期捕获的近亲）。
+        app.dock.set_scroll(app.scroll.scrolled_up, app.scroll.has_unseen)
         status = app.dock.status_line(width)
         if status:
             lines.append(status)
         dialog = app.arbiter.current()
+        # 输入行在 dock 里的位置——点击定位光标要用它换算屏幕行
+        self.editor_offset = len(lines) if dialog is None else None
         lines.extend(dialog.render(width) if dialog is not None
                      else app.editor.render(width))
         lines.extend(app.dock.footer_lines(width))
@@ -73,9 +92,18 @@ class TuiApp:
                  editor: Optional[LineEditor] = None,
                  arbiter: Optional[InputArbiter] = None,
                  history: Optional[Sequence[str]] = None,
+                 transcript: Optional[Transcript] = None,
+                 scroll: Optional[ScrollState] = None,
+                 selection: Optional[Selection] = None,
+                 now: Optional[Callable[[], float]] = None,
                  color: bool = False) -> None:
         self.renderer = renderer
         self.color = color
+        # alt 屏下 pai 自己持有整份会话文档；main-screen 下这两个是闲置的
+        # （`keeps_transcript` 为假时 commit 不往里塞，不白涨内存）。
+        self.transcript = transcript if transcript is not None else Transcript()
+        self.scroll = scroll if scroll is not None else ScrollState()
+        self.selection = selection if selection is not None else Selection()
         self.dock = dock if dock is not None else Dock(color=color)
         self.editor = editor if editor is not None else LineEditor(history=history)
         self.arbiter = arbiter if arbiter is not None else InputArbiter()
@@ -87,6 +115,13 @@ class TuiApp:
         # 被折叠的工具结果。**有界**——长会话里全留着是白涨内存，
         # 而用户真正会回头看的只有最近几条。
         self._collapsed: List = []
+        # 一次鼠标手势归谁：按下时定，松开时清。**不能靠「编辑器手里还有没有锚点」猜**——
+        # 锚点在上一次点输入框之后一直留着，会把之后 transcript 的松开也吞掉
+        # （用户 2026-08-11：「我从后往前移动复制不了」）。
+        self._grab: Optional[str] = None
+        self._now = now or time.monotonic
+        self._drag_at: Optional[float] = None   # 最后一条拖动事件的时刻
+        self._copied: str = ""                  # 上次放进剪贴板的内容（避免重复复制）
         self._expanded = 0                 # 已经展开到倒数第几条
 
     # --- 屏幕 ---------------------------------------------------------
@@ -108,7 +143,7 @@ class TuiApp:
         if self._intro > 0:
             self.refresh()
             return True
-        self.commit(logo.settled(self._width(), color=self.color))
+        self.commit(dynamic_entry(lambda w: logo.settled(w, color=self.color)))
         return False
 
     def _width(self) -> int:
@@ -125,34 +160,42 @@ class TuiApp:
         只有两件事是随时间变化的：转圈动画、以及「停手 1500ms 放行对话框」。
         """
         return (self._intro > 0 or self.dock.is_running()
-                or self.arbiter.is_suppressing())
+                or self.arbiter.is_suppressing() or self.dock.has_notice()
+                or self._drag_at is not None)      # 没人来敲，拖动收尾永远不会发生
 
     def refresh(self) -> None:
         self.dock.set_pending(self.arbiter.pending_count()
                               if self.arbiter.is_suppressing() else 0)
         self.renderer.draw(self.root)
 
-    def commit(self, lines) -> None:
-        """把内容上交给 scrollback。dock 与 scrollback 之间唯一的通道。
+    def commit(self, payload) -> None:
+        """把内容交出去。**两种模式的落点不同，这里是唯一的分叉点**（feature 13）。
 
-        **必须拆换行、必须折行**：交上去的东西一旦超过一行的量，
-        终端会自己折，而 dock 的相对光标移动是按「我写了几行」算的——
-        差一行整块就漂（用户 2026-08-11 满屏阶梯的根因）。
+        - main-screen：交给终端打进 scrollback，从此 pai 够不着（12 的形态）；
+        - alt-screen：**没有「交出去」这回事**——进 transcript，永远归 pai 所有，
+          这正是它能滚、能按新宽度重排的原因。
+
+        收 `TranscriptEntry` 或纯文本。纯文本一律**按宽度折行**：
+        main 下是因为「差一行整块就漂」（12 满屏阶梯的根因），
+        alt 下是因为终端的自动折行被关掉了（`?7l`），不折就是截断。
         """
-        if isinstance(lines, str):
-            lines = [lines]
-        width = self._width()
-        out: List[str] = []
-        for line in lines:
-            out.extend(theme.wrap(line, width))
-        self.renderer.commit(out, root=self.root)
+        entry = payload if isinstance(payload, TranscriptEntry) else text_entry(
+            [payload] if isinstance(payload, str) else list(payload))
+        if getattr(self.renderer, "keeps_transcript", False):
+            self.transcript.append(entry)
+        self.renderer.commit(entry, root=self.root)
 
     # --- 输入 ---------------------------------------------------------
 
     def feed(self, data: bytes, decoder) -> List[Tuple[str, object]]:
-        """喂字节，吐动作。**输入归属在这里裁决**，不在调用方。"""
+        """喂字节，吐动作。**输入归属在这里裁决**，不在调用方。
+
+        鼠标事件先按批合并（实测一次滚动手势 142 条）。
+        **末尾只 refresh 一次**——这条 feature 12 就有的结构才是挡住事件洪水的那道防线，
+        合并是第二道（挡「将来有人在事件处理里直接 refresh」）。
+        """
         actions: List[Tuple[str, object]] = []
-        for key in decoder.feed(data):
+        for key in _merge_mouse_runs(decoder.feed(data)):
             actions.extend(self._key(key))
         self.refresh()
         return actions
@@ -167,6 +210,15 @@ class TuiApp:
             return [(EXPAND, None)]
         if name == "shift_tab":
             return [(CYCLE_MODE, None)]
+        if name == "mouse":
+            return self._mouse(key.mouse)
+        if name in _SCROLL_KEYS:
+            # **只在 alt 屏下管用**：main-screen 下滚动归终端，pai 假装自己能滚
+            # 只会让「屏幕没反应」变成「屏幕乱跳」。
+            if getattr(self.renderer, "keeps_transcript", False):
+                _SCROLL_KEYS[name](self.scroll)
+                return []
+            return []
 
         dialog = self.arbiter.current()
         if dialog is not None:
@@ -179,6 +231,149 @@ class TuiApp:
         if submitted is None:
             return []
         return self._submitted(submitted)
+
+    def _mouse(self, event: Optional[MouseEvent]) -> List[Tuple[str, object]]:
+        """鼠标事件的落点。**只在 alt 屏下有意义**——main-screen 下 pai 不拥有屏幕。
+
+        即便如此也不许崩：终端可能残留着上一个程序开的鼠标模式，
+        字节会照样送进来（这正是 feature 13 那条「我以为我在，其实不在」的镜像）。
+        """
+        if event is None or not getattr(self.renderer, "keeps_transcript", False):
+            return []
+        if event.kind == "wheel":
+            self.scroll.scroll_by(event.delta * WHEEL_LINES)
+            return []
+        if self._input_click(event):
+            return []
+        row = self._logical_row(event.row)
+        if event.kind == "press":
+            self._finish_drag()                     # 上一次手势若没收到释放，先给它收掉
+            self._grab = "transcript"
+            self.selection.clear()
+            self.editor.clear_selection()           # 换个地方按下，输入框那边的选区作废
+            if row is not None:
+                self.selection.start(row, event.col)
+            return []
+        if event.kind == "move":
+            return []                        # 纯移动：本轮不做 hover，直接丢
+        if event.kind == "drag":
+            self._drag_at = self._now()
+            if row is not None:
+                self.selection.update(row, event.col)
+            return []
+        if event.kind == "release":
+            had = self.selection.has_selection
+            self._finish_drag()
+            if not had and row is not None:
+                # **没拖动才算点击**（照 CC）：否则「选一段」与「点一下」
+                # 会用同一个动作触发两件事
+                self._click(row)
+        return []
+
+    def _input_click(self, event: MouseEvent) -> bool:
+        """点在输入行上：把光标挪过去，**并且不启动 transcript 选区**。
+
+        拿走鼠标之后，终端原生的「点一下定位光标」也一并没了——
+        这是接管鼠标的连带代价，得自己补回来（2026-08-11 真跑打回来的第三条）。
+        """
+        top = getattr(self.renderer, "input_row", None)
+        if top is None or self.arbiter.current() is not None:
+            return False
+        height = len(self.editor.render(self._width()))
+        line = event.row - top
+        inside = 0 <= line < height
+        col = event.col - self.editor.prompt_width()
+        if event.kind == "press":
+            if not inside:
+                return False
+            self._finish_drag()
+            self._grab = "input"                    # 这次手势归输入框
+            index = self.editor.point_at(line, col)
+            self.editor.cursor = index
+            self.editor.start_selection(index)      # 只记锚点；裸点击不选中任何东西
+            return True
+        if self._grab != "input":
+            return False
+        # 拖动可以拖出输入框（手一抖就出去了），**整次手势仍归它**——
+        # 判据是「从哪儿开始的」，不是「指针现在在哪」。
+        if event.kind == "drag":
+            self._drag_at = self._now()
+            self.editor.extend_selection(
+                self.editor.point_at(max(0, min(height - 1, line)), col))
+            return True
+        if event.kind == "release":
+            self._finish_drag()
+            return True
+        return False
+
+    def tick(self) -> None:
+        """随时间发生的事。驱动在空闲那一拍调它。
+
+        目前只有一件：**拖动中停手了，先把选中的放进剪贴板**。
+        """
+        if self._drag_at is None or self._now() - self._drag_at < DRAG_PAUSE_SECONDS:
+            return
+        self._autocopy()
+
+    def _autocopy(self) -> None:
+        """停手时的**不破坏性**复制：放进剪贴板 + 给提示，
+        **但不结束拖动、也不清高亮**。
+
+        为什么只能这样：释放事件真的会丢（向上/向左拖很容易把指针带出窗口，
+        而终端只在窗口内上报），可**「停手」与「松开」在应用这边分不出来**——
+        第一版把停手当成结束，用户当场打回：「如果我慢慢的移动，我还在按就结束了」。
+        所以停手只做「把剪贴板刷成当前选中的」这件事，随后接着拖照样继续。
+
+        内容没变就不再复制：不然停着不动的每一拍都要起一个 `pbcopy` 子进程。
+        """
+        text = (self.editor.selected_text() if self._grab == "input"
+                else self.selection.text(self.transcript, self._width()))
+        if not text or text == self._copied:
+            return
+        self._copied = text
+        self._copy_text(text)
+
+    def _finish_drag(self) -> None:
+        """真正结束一次手势：复制 + 清掉高亮。只在**收到释放**或**下一次按下**时走。
+
+        判据是 `_grab`（这次手势归谁）而不是 `_drag_at`——后者会被停手时的
+        自动复制用掉，用它判会漏掉「停过手、随后释放丢了、用户直接点了别处」这条路。
+        """
+        if self._grab is None:
+            return
+        self._drag_at = None
+        grab, self._grab = self._grab, None
+        if grab == "input":
+            self._copy_text(self.editor.selected_text())
+            return
+        self.selection.finish()
+        if self.selection.has_selection:
+            self._copy_selection()
+            # **复制完把高亮清掉**（照 CC 的 `finishSelection` 注释：留着只是为了能复制）。
+            # 不清的话用户会一直以为自己还选着东西——2026-08-11 真跑打回来的第一条。
+            self.selection.clear()
+        self._copied = ""
+
+    def _logical_row(self, screen_row: int) -> Optional[int]:
+        getter = getattr(self.renderer, "logical_row", None)
+        return getter(screen_row) if getter is not None else None
+
+    def _click(self, row: int) -> None:
+        entry = self.transcript.owner_at(self._width(), row)
+        if entry is not None:
+            entry.toggle()
+
+    def _copy_selection(self) -> None:
+        self._copy_text(self.selection.text(self.transcript, self._width()))
+
+    def _copy_text(self, text: str) -> None:
+        """只管复制与提示。**清高亮不在这里**——它属于「这次手势结束了」，
+        而停手时的自动复制并不结束手势（停手 ≠ 松开，两者分不出来）。
+        混在一起的后果是：慢慢拖到一半，高亮被自动复制清掉了。"""
+        if not text:
+            return
+        result = _copy_to_clipboard(text, write=self.renderer._write)
+        self.dock.set_notice(result.message)
 
     def _dialog_key(self, dialog: Dialog, key) -> List[Tuple[str, object]]:
         result = dialog.handle(key)
@@ -205,10 +400,10 @@ class TuiApp:
         # 最不显眼的东西（用户 2026-08-11 指出）。可它是长对话里最重要的导航锚点：
         # 一眼扫下来要先找到「我问了什么」。所以它加粗、走亮色，且**前面留一个空行**
         # 把轮次分开——没有留白，一屏文字会糊成一片。
-        width = self._width()
-        rows = theme.wrap(f"{theme.PROMPT} {text}", width)
-        self.commit([""] + [theme.band(row, width, theme.USER_BG, color=self.color)
-                            for row in rows])
+        # **按宽度动态渲染**：色带要铺满整行，存成行的话窗口一变宽就露出半截底色
+        self.commit(dynamic_entry(lambda w: [""] + [
+            theme.band(row, w, theme.USER_BG, color=self.color)
+            for row in theme.wrap(f"{theme.PROMPT} {text}", w)]))
         if text.startswith(("/", "!")) and not self.busy:
             return [(COMMAND, text)]
         return [(SUBMIT, text)]
@@ -274,7 +469,7 @@ class TuiApp:
                 self._collapsed.append(event)
                 del self._collapsed[:-MAX_COLLAPSED]
                 self._expanded = 0          # 有新东西了，展开游标回到最新
-            self.commit(_tool_lines(event, self._width(), color=self.color))
+            self.commit(_tool_entry(event, color=self.color))
             return
         text = render_text(event)
         if text is not None:
@@ -305,7 +500,38 @@ def _hidden_rows(event) -> int:
     return len([r for r in rows[1:] if r.strip()])
 
 
-def _tool_lines(event, width: int, *, color: bool = False) -> List[str]:
+def _tool_entry(event, *, color: bool = False) -> TranscriptEntry:
+    """工具结果的条目。**有被折叠的行才做成可展开的**——
+    没东西可展开却能点，是给用户一个点了没反应的东西。"""
+    if not _hidden_rows(event):
+        return dynamic_entry(lambda w: _tool_lines(event, w, color=color))
+
+    def render(width: int, expanded: bool) -> List[str]:
+        if not expanded:
+            return _tool_lines(event, width, color=color)
+        # **命令要留在第一行**：展开是「把输出挂到命令下面」，不是「把命令换掉」。
+        # 换掉之后用户看不出这段输出是哪条命令跑出来的（真跑打回来的）。
+        head = _tool_lines(event, width, color=color, suffix=" (^O 收起)")[0]
+        body: List[str] = []
+        room = max(8, width - len(_OUTPUT_INDENT))
+        for line in (event.result or "").split("\n"):
+            body.extend(theme.wrap(line, room))
+        # 引出符只在第一行，其余对齐——与正文混成一片是上一版最难读的地方
+        out = [head]
+        for i, line in enumerate(body):
+            lead = _OUTPUT_LEAD if i == 0 else _OUTPUT_INDENT
+            out.append(theme.paint(lead + line, theme.GREY, color=color))
+        return out
+
+    return expandable_entry(render)
+
+
+_OUTPUT_LEAD = "  ⎿ "        # 输出块的引出符（照 CC 的形状；非 emoji，宽度 1）
+_OUTPUT_INDENT = "    "
+
+
+def _tool_lines(event, width: int, *, color: bool = False,
+                suffix: str = "") -> List[str]:
     """工具结果**默认折叠成一行**（照 CC）。
 
     全量倒进 scrollback 会把对话本身冲走——用户 2026-08-11 的截图里
@@ -320,8 +546,52 @@ def _tool_lines(event, width: int, *, color: bool = False) -> List[str]:
     first = (event.result or "").split("\n")[0].strip()
     hidden = _hidden_rows(event)
     line = f"{head} → {first}" if first else head
-    if hidden:
-        # 折叠而不说怎么看全，等于把内容藏了
-        line += f" … 还有 {hidden} 行 · ^O 展开"
+    if suffix:
+        line = f"{head}{suffix}"          # 展开态：只留命令 + 收起提示
+    elif hidden:
+        # 折叠而不说怎么看全，等于把内容藏了。
+        # 形状照 CC（`FileWriteTool/UI.tsx` + `CtrlOToExpand.tsx`）：
+        # `… +12 lines (ctrl+o to expand)`——**「+N 行」+ 括号里的快捷键**。
+        # 不提「点击」：CC 的折叠块也能点，提示语里同样只写快捷键。
+        # （我原先自己编的 `^O/点击展开`，那个斜杠让人以为是快捷键的一部分。）
+        line += f" … +{hidden} 行 (^O 展开)"
     code = theme.RED if event.is_error else theme.GREY
     return [theme.paint(_truncate(line, width), code, color=color)]
+
+
+# 滚动键 → 状态机操作。写成表而不是 if 链：加「滚到某条消息」之类的新键位时
+# 只加一行（同 feature 12 的 MODE_CYCLE 那条经验）。
+# 一格滚轮滚几行。**凭手感定，无实测依据**——3 行是终端里的常见默认值，
+# 真觉得快了慢了再调（AGENTS 的照抄常数纪律：写明这个数从哪来）。
+WHEEL_LINES = 3
+
+# 拖动中停手多久，就把当前选中的先放进剪贴板。凭手感定，无实测依据。
+# **它不结束拖动**——「停手」与「松开」分不出来，当成结束会误伤慢拖的人。
+DRAG_PAUSE_SECONDS = 0.4
+
+
+def _merge_mouse_runs(keys):
+    """把**连续的**鼠标事件交给 `mouse.merge`，其余按键原样穿过、顺序不变。"""
+    out, run = [], []
+
+    def flush():
+        for event in _merge_mouse(run):
+            out.append(Key("mouse", mouse=event))
+        run.clear()
+
+    for key in keys:
+        if key.name == "mouse" and key.mouse is not None:
+            run.append(key.mouse)
+            continue
+        flush()
+        out.append(key)
+    flush()
+    return out
+
+
+_SCROLL_KEYS = {
+    "page_up": lambda s: s.page_up(),
+    "page_down": lambda s: s.page_down(),
+    "ctrl_home": lambda s: s.to_start(),
+    "ctrl_end": lambda s: s.to_end(),
+}

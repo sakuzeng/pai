@@ -1,0 +1,37 @@
+# 检查点: E-后(已回主屏：MAIN-BEFORE-1..5 应原样还在，ALT-CONTENT 应消失)
+# 终端: iTerm2
+============================================================
+Last login: Tue Aug 11 15:07:07 on ttys026 
+~ ᐅ /Library/Developer/CommandLineTools/usr/bin/python3 /private/tmp/claude-501/-Users-sakuzeng-improve-coding-agent-projects-pai/9cf929f5-4830-4c36-abc7-51d559b545f5/scratchpad/probe_alt.py /private/tmp/claude-501/-Users-sakuzeng-improve-coding-agent-projects-pai/9cf929f5-4830-4c36-abc7-51d559b545f
+5/scratchpad/out-iterm2/probe.log --hold 4.0 
+MAIN-BEFORE-1 这一行必须在退出 alt 之后原样还在 
+MAIN-BEFORE-2 这一行必须在退出 alt 之后原样还在 
+MAIN-BEFORE-3 这一行必须在退出 alt 之后原样还在 
+MAIN-BEFORE-4 这一行必须在退出 alt 之后原样还在 
+MAIN-BEFORE-5 这一行必须在退出 alt 之后原样还在 
+MAIN-BEFORE-末行 
+MAIN-AFTER 退出 alt 之后打的第一行 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 

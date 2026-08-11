@@ -1,6 +1,6 @@
 # 当前状态快照
 
-最后更新：2026-08-11（**阶段 2 后半程 TUI** + 录制回放 + 假 provider e2e 交付）。
+最后更新：2026-08-11（**阶段 2 后半程 TUI** + 录制回放 + 假 provider e2e + **alt-screen** 交付）。
 **数字由机器对账**：`test_status_reports_the_current_test_count` 会在完整跑时校验本页的 passed 数——漂了三次之后不再靠人肉。
 给接手者（人或 AI）一页看清现状。
 「做了什么」的时间线见 [devlog.md](devlog.md)，「为什么这么选」见 [decisions.md](decisions.md)，
@@ -79,11 +79,18 @@ feature 12 被用户打回的三条 bug 各钉了一条 e2e。
 | `tui/arbiter.py` | 可用 | **输入归属仲裁**：输入框非空即压住对话框，停手 1500ms 放行（常量抄自 CC，来源写在旁边），`is_suppressing()` 可被问出来（不许静默） |
 | `tui/dialog.py` | 可用 | 权限 ask 与 AskUserQuestion 共用；`handoff()` 把 `!`/`/` 交回主循环执行（08 铁证的修法）；Esc 取消 |
 | `tui/dock.py` | 可用 | 活动区（按动作聚合计数）/ 队列区 / 状态行（转圈 + 已用时 + token + 模式 + 待决数）；`AgentEnd` 吐一行摘要给 commit |
+| `tui/transcript.py` | 可用 | alt 屏下 pai 自己持有的会话文档：**存条目不存行**（按 `(内容, 宽度)` 缓存），于是 resize 后历史能按新宽度重排 |
+| `tui/scroll.py` | 可用 | 滚动状态机（纯状态零 IO）：follow-end、**手动上滚就关掉跟随**、视口变化保位、翻页留 4 行重叠 |
+| `tui/altscreen.py` | 可用 | 备用屏渲染器：整屏帧 + 行 diff + 绝对定位；**绝不发 `2J`、绝不重发 `?1049h`**（实测两条硬约束）；`SIGWINCH` 重入保护 |
+| `core/settings.py` | 可用 | 两层 `settings.json` 通用读取（`tui.altScreen` 开关）。`permissions.py` 自己那份**刻意没动** |
+| `tui/mouse.py` | 可用 | SGR 1006 事件（**`button&3==3` 是「没按键的移动」不是拖动**）+ 按批合并（wheel 累加、drag 留最后一条） |
+| `tui/selection.py` | 可用 | transcript 选区：**锚在逻辑行号不是屏幕行号**（于是 CC 那套「滚出视口的行要另存」整块不需要）；按显示列取文本、剥净转义序列 |
+| `tui/clipboard.py` | 可用 | 复制双路径：本地 `pbcopy`/`wl-copy`/`xclip`/`xsel`（看退出码）→ ssh 或全失败时 OSC 52。**OSC 52 实测会静默失败**，故那条路径的提示语只说「已尝试复制」 |
 | `tui/app.py` / `tui/driver.py` | 可用 | app 粘合各组件（可测）；driver 读真 stdin（`select` 轮询，空闲时靠 `needs_tick()` 不白刷）。**driver 无单测**，靠 playground 冒烟顶着 |
 | `tui/theme.py` / `tui/logo.py` | 可用 | 配色与字形（**不用 emoji**，D#63：字体缺字 + 宽度不确定；有测试遍历所有字形卡死「码位 < U+1F000 且非宽字符且宽度为 1」）；启动 logo 与流光动画（同一份字形每帧只改配色，于是动画离线可测） |
 | `tui/screen.py` | 可用 | 最小终端模拟器（字节 → 屏幕，含 SGR 配色跟踪）。**测试断言与回放出图共用同一份**——分成两份的话「测试全绿」与「图上是对的」会各说各话 |
 | `tui/record.py` / `tui/replay.py` | 可用 | `PAI_TUI_RECORD=<路径>` 录下写给终端的字节（含尺寸与 resize）；`pai-replay <文件> -o 图.png` 回放成 PNG，**让 AI 自己看得见界面**（feature 14） |
-| `tui/terminal.py` | 可用 | raw mode 进出、`SIGWINCH` **同步不去抖 + 同尺寸丢弃**、退出无条件复原、非 tty 闸门（判 stdout）、非主线程明确告警 |
+| `tui/terminal.py` | 可用 | raw mode 进出、**进出备用屏**（`?1049h` + `?7l`，退出无条件复原且顺序不能反）、`SIGWINCH` **同步不去抖 + 同尺寸丢弃**、非 tty 闸门（判 stdout）、非主线程明确告警 |
 | skills / mcp_client / evals | 未开始 | 路线图后续阶段，见 [roadmap.md](roadmap.md) |
 
 ## compaction.py 里有什么
@@ -111,11 +118,12 @@ feature 12 被用户打回的三条 bug 各钉了一条 e2e。
 
 ## 测试
 
-共收集 **774 项**（阶段 2 REPL 8 task + 阶段 3 记忆 7 task + 交付后五个补漏 + 文档一致性
+共收集 **1002 项**（阶段 2 REPL 8 task + 阶段 3 记忆 7 task + 交付后五个补漏 + 文档一致性
 + **阶段 4 权限 task 1-7** + **feature 10 记忆召回 7 task** + **feature 11 流式 task 1-6**
-+ **feature 12 TUI task 1-9** + **feature 14 录制与回放** + **feature 15 假 provider + e2e**）：
++ **feature 12 TUI task 1-9** + **feature 14 录制与回放** + **feature 15 假 provider + e2e**
++ **feature 13 alt-screen task 1-7** + **feature 16 鼠标与选区 task 1-9**）：
 
-- `./test.sh` → **771 passed, 3 deselected**，全部离线，约 34s。**这是默认路径。**
+- `./test.sh` → **999 passed, 3 deselected**，全部离线，约 34s。**这是默认路径。**
   两套假 provider 分工是硬的：`tests/fake_llm.py` **注入**的假客户端测装配与逻辑；
   `tests/fake_provider.py` **起一个真 HTTP 服务**，让真 pai 进程经 `PAI_BASE_URL` 打进来——
   于是 `tests/test_e2e_tui.py` 能在真 pty 里跑完整回合（真 SSE、真 gate、真 TUI），
@@ -169,11 +177,28 @@ feature 12 被用户打回的三条 bug 各钉了一条 e2e。
 让 AI 自己看得见界面）、feature 15 补上**假 provider + 真 pty e2e**
 （「需要模型开口」的功能也能自动测了）。
 
-下一步有两条，按你要什么定：
-- **阶段 6 skills / MCP client**（roadmap 的下一阶段）；
-- **[features/13 alt-screen](features/13-20260811-alt-screen/README.md)**（讨论中）——
-  工具结果可点 / transcript 可滚 / 像新开一个窗口。三条底下是同一个约束「谁拥有屏幕」，
-  **会推翻阶段 2 的设计原则 2**，故另立档案。
+随后 **feature 13 交付 alt-screen**（三条裁决见 [D#64](decisions.md)「常驻但不接管鼠标」、
+[D#65](decisions.md)「退出不回吐只打会话提示」、[D#66](decisions.md)「绝不重发 `?1049h`／绝不 `2J`」）
+——真 tty 下 `pai` 进**备用屏**：整屏归 pai，
+上面是可键盘滚动的 transcript、下面是 dock，退出时把屏幕**原样还给 shell**
+（只在主屏留一行「会话存哪了」）。`.pai/settings.json` 的 `tui.altScreen: false` 可退回 12 的形态。
+**本轮不接管鼠标**（保住终端原生的拖选复制），所以「工具结果可点」只建了地基没做；
+搜索同样留下一轮。阶段 2 原则 2 的复议结论是**它被拆开了**：pi 那句「别在 main-screen 里
+*假装*」照旧成立，作废的是 pai 自己加的「只做 main-screen」。
+
+随后 **feature 16 接管鼠标**（滚轮滚自己的 transcript、拖选复制、点击展开、输入框选区）——
+9 个 task 全部实现、986 passed，**但停在「实现中」不标已交付**：
+真终端里「从后往前拖选」松手后不复制且卡顿，离线复现不了
+（定性为「事件一条一条到、合并没机会生效」，见 TODO）。
+
+**下一步：用户 2026-08-11 拍板——先不做新功能，测试与优化已有的。**
+候选清单（按「用户能感知」排序）：
+1. **修 feature 16 那条坏路径**：driver 层读干净再处理（让事件真的凑成一批）+
+   「拖动中迟迟没有 release」的兜底；
+2. **给已交付功能补真实回合的 e2e**——13/16 两轮共打回 13 条，**没有一条是离线测试能发现的**；
+3. **量一量再优化**（`perf` 的判据是先有数字）：整屏帧渲染、`_highlight` 的逐字符扫描、
+   transcript 无上限增长；
+4. 之后才是 `--resume`（13 引入的缺口）与阶段 6 skills / MCP client。
 feature 12 的遗留见 TODO「feature 12（TUI）交付遗留」，其中一条值得先知道：
 **跑很久且不发事件的工具执行期间，用户打的字在 dock 上完全看不见**（字符没丢，
 在内核 tty 缓冲区，但屏幕不动）——在最需要反馈的时候没有反馈，12 复盘质疑二。

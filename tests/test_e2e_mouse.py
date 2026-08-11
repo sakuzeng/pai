@@ -1,0 +1,67 @@
+"""鼠标的端到端（feature 16 T9）：真 pai 进程 + 真 pty + **实测抓到的真实字节**。
+
+喂进去的不是我编的序列，是 2026-08-11 从真 iTerm2 里录到的形状
+（features/16 evidence）：按下 `\\x1b[<0;列;行M`、拖动 `\\x1b[<32;…M`、
+滚轮 `\\x1b[<64;…M`，以及**一次手势 142 条**这个量级。
+"""
+
+import os
+import time
+
+import pytest
+
+from fake_provider import turn
+from pai.tui.replay import load, replay, to_text
+from test_e2e_tui import Session, session  # noqa: F401 - session 是 fixture
+
+pytestmark = pytest.mark.skipif(not hasattr(os, "openpty"), reason="需要 pty")
+
+WHEEL_UP = b"\x1b[<64;10;5M"
+
+
+def _screen(s):
+    return replay(load(s.record))
+
+
+def test_mouse_tracking_is_enabled_exactly_once_and_disabled_on_exit(session, tmp_path):
+    s, _ = session([turn("好的。")])
+    s.send("你好\r", until="好的")
+    blob = "".join(r["data"] for r in load(s.record))
+    assert blob.count("\x1b[?1006h") == 1
+    s.send("\x04")                                  # Ctrl+D
+    time.sleep(1.0)
+    s.drain(1.0)
+    raw = s.raw.decode("utf-8", "replace")
+    # **先关鼠标再退备用屏**：顺序反了，事件会漏进 shell
+    assert raw.index("\x1b[?1006l") < raw.index("\x1b[?1049l")
+
+
+def test_a_burst_of_wheel_events_scrolls_the_transcript(session, tmp_path):
+    """142 是实测数字。滚上去之后**看到的必须是本次会话的内容**，
+    而不是终端 scrollback 里更早的东西——这正是本 feature 的起点。"""
+    long_answer = "第一段。\n" + "\n".join(f"甲{i}" for i in range(30))
+    s, _ = session([turn(long_answer), turn("第二段。")])
+    s.send("问一句\r", until="甲29")
+    before = _screen(s).lines()
+    s.send(WHEEL_UP * 142)
+    time.sleep(0.6)
+    s.drain(0.6)
+    after = _screen(s).lines()
+    assert after[:4] != before[:4]                  # 上面的内容变了
+    assert after[-1] == before[-1]                  # dock 的最后一行没动
+    assert "已上滚" in "\n".join(after)
+
+
+def test_dragging_highlights_and_copies(session, tmp_path):
+    """按下 → 拖过 → 松开：屏幕上出现反显，且走了复制那条路。"""
+    s, _ = session([turn("可以复制的一行文本。")])
+    s.send("你好\r", until="可以复制的一行")
+    text = to_text(_screen(s))
+    row = next(i for i, line in enumerate(text.split("\n")) if "可以复制的一行" in line)
+    s.send(f"\x1b[<0;3;{row + 1}M".encode())        # 按下
+    s.send(f"\x1b[<32;12;{row + 1}M".encode())      # 拖过
+    s.send(f"\x1b[<0;12;{row + 1}m".encode())       # 松开
+    time.sleep(0.5)
+    s.drain(0.5)
+    blob = "".join(r["data"] for r in load(s.record))
+    assert "\x1b[7m" in blob                        # 反显出现过

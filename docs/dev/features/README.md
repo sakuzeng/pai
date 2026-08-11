@@ -92,7 +92,8 @@
 | [10-20260811-memory-recall](10-20260811-memory-recall/README.md) | 已交付 | 记忆召回层：一事一文件 + frontmatter、索引改投影、相对时间与陈旧警告、每轮侧查询选 ≤5 篇注入，458 passed |
 | [15-20260811-fake-provider](15-20260811-fake-provider/README.md) | 已交付 | 本地假 provider（真 HTTP + OpenAI 兼容协议）+ 真 pty e2e：**「需要模型开口」的功能也能自动测了**，用户打回的三条 bug 各钉一条，769 passed |
 | [14-20260811-session-capture](14-20260811-session-capture/README.md) | 已交付 | `PAI_TUI_RECORD` 录终端字节 + `pai-replay` 回放成 PNG——**让 AI 自己看得见界面**，不必每次让用户截图；终端模拟器升为一等公民，回放与测试共用同一份，756 passed |
-| [13-20260811-alt-screen](13-20260811-alt-screen/README.md) | 讨论中 | 让 pai 拥有整屏：工具结果可点、transcript 可滚、像新开一个窗口。**会推翻阶段 2 原则 2**，故另立档案 |
+| [16-20260811-mouse-and-selection](16-20260811-mouse-and-selection/README.md) | 实现中 | 接管鼠标：滚轮滚自己的 transcript、拖选复制、点击展开、输入框选区。9 task 全实现，**剩一条「从后往前拖选不复制」未修**故不标已交付 |
+| [13-20260811-alt-screen](13-20260811-alt-screen/README.md) | 已交付 | 让 pai 拥有整屏（备用屏 DECSET 1049）：像新开一个窗口 ✅、transcript 键盘可滚 ✅、**不接管鼠标**（保住终端原生拖选复制）故「可点」留下一轮。阶段 2 原则 2 被**拆开**而非推翻 |
 | [12-20260811-tui](12-20260811-tui/README.md) | 已交付 | 阶段 2 后半程 TUI：scrollback + dock、输入归属仲裁（关掉 08 那条真实事故）、`/mode` + shift+tab、干活时打字排队、并发可见，8 task TDD，680 passed |
 | [11-20260811-streaming](11-20260811-streaming/README.md) | 已交付 | 阶段 5 流式：逐字上屏 + 工具能力标志 + 保序并发调度 + 权限按批前置；反向对照推翻了「usage 重复累加」那条必修前提，509 passed |
 

@@ -13,6 +13,9 @@ from typing import List, Optional, Sequence
 
 from pai.tui import theme
 from pai.tui.component import CURSOR_MARKER, Component
+
+REVERSE = "\x1b[7m"       # 选中用反显：不依赖主题，浅色深色终端上都看得出来
+UNREVERSE = "\x1b[27m"
 from pai.tui.keys import Key
 
 _WORD_BREAK = " \t\n"
@@ -21,12 +24,16 @@ _WORD_BREAK = " \t\n"
 class LineEditor(Component):
     """一行（或 `\\` 续行出来的多行）输入。`handle` 返回非 None 表示这一行提交了。"""
 
-    def __init__(self, *, prompt: str = "› ", continuation: str = "… ",
+    def __init__(self, *, prompt: str = "› ", continuation: str = "  ",
                  history: Optional[Sequence[str]] = None,
                  color: bool = False) -> None:
         self.color = color
         self.prompt = prompt
         self.continuation = continuation
+        # 选区：字符下标（不是显示列）。**编辑器此前完全没有选区概念**——
+        # 接管鼠标之后终端原生的拖选没了，这一块是补给输入框的。
+        self._sel_anchor = None
+        self._sel_focus = None
         self.text = ""
         self.cursor = 0
         self._history: List[str] = list(history) if history else []
@@ -37,6 +44,16 @@ class LineEditor(Component):
 
     def handle(self, key: Key) -> Optional[str]:
         name = key.name
+        # **选中一段之后打字/退格，先把选中的删掉**——所有编辑器的通行行为。
+        # 原来这里是「一按键就清选区」，于是退格只删掉光标前一个字（用户打回来的）。
+        span = self.selection_range()
+        self.clear_selection()
+        if span is not None and name in ("char", "paste", "backspace", "delete"):
+            lo, hi = span
+            self.text = self.text[:lo] + self.text[hi:]
+            self.cursor = lo
+            if name in ("backspace", "delete"):
+                return None          # 删掉选区就是这次按键的全部效果
         if name == "char":
             self._insert(key.text)
         elif name == "paste":
@@ -76,6 +93,86 @@ class LineEditor(Component):
             self._history_step(1)
         # 其余（unknown / ctrl_c / esc / shift_tab …）不归编辑器管，交给上层仲裁
         return None
+
+    # --- 选区（feature 16）--------------------------------------------
+
+    def start_selection(self, index: int) -> None:
+        """按下：只记锚点。**裸点击不产生选区**（同 transcript 那边的规矩）。"""
+        self._sel_anchor = max(0, min(len(self.text), index))
+        self._sel_focus = None
+
+    def extend_selection(self, index: int) -> None:
+        if self._sel_anchor is None:
+            return
+        self._sel_focus = max(0, min(len(self.text), index))
+
+    def clear_selection(self) -> None:
+        self._sel_anchor = self._sel_focus = None
+
+    @property
+    def selection_anchor(self):
+        """拖动是不是从输入框里开始的——接线层据此判断这次拖动归谁。"""
+        return self._sel_anchor
+
+    def selection_range(self):
+        """归一化成 (起, 止) 的字符下标；没选中返回 None。"""
+        if self._sel_anchor is None or self._sel_focus is None:
+            return None
+        lo, hi = sorted((self._sel_anchor, self._sel_focus))
+        return None if lo == hi else (lo, hi)
+
+    def selected_text(self) -> str:
+        span = self.selection_range()
+        return "" if span is None else self.text[span[0]:span[1]]
+
+    def point_at(self, line_index: int, col: int) -> int:
+        """(第几行, 显示列) → **整段文本里的字符下标**。
+
+        按显示列而不是字符数：一个中文占两列，按字符数算会差一半。
+        """
+        from pai.modes.statusline import display_width
+
+        lines = self.text.split("\n")
+        line_index = max(0, min(len(lines) - 1, line_index))
+        base = sum(len(l) + 1 for l in lines[:line_index])
+        line = lines[line_index]
+        if col <= 0:
+            return base
+        used = 0
+        for i, ch in enumerate(line):
+            w = display_width(ch)
+            if used + w > col:
+                return base + i
+            used += w
+        return base + len(line)
+
+    def prompt_width(self) -> int:
+        """提示符占几列（点击定位要按它偏移）。
+
+        `prompt` 里**已经含了那个空格**（`"› "`）——再 +1 就把光标整体推右一列。
+        """
+        from pai.modes.statusline import display_width
+
+        return display_width(self.prompt)
+
+    def move_to_column(self, col: int) -> None:
+        """把光标挪到**显示列** col 处。超出末尾就停在末尾。
+
+        按显示列而不是字符下标：一个中文占两列，按下标算会差一半。
+        """
+        from pai.modes.statusline import display_width
+
+        if col <= 0:
+            self.cursor = 0
+            return
+        used = 0
+        for i, ch in enumerate(self.text):
+            w = display_width(ch)
+            if used + w > col:
+                self.cursor = i
+                return
+            used += w
+        self.cursor = len(self.text)
 
     def set_text(self, text: str) -> None:
         self.text = text
@@ -144,11 +241,29 @@ class LineEditor(Component):
         before = self.text[:self.cursor]
         row = before.count("\n")
         col = len(before) - (before.rfind("\n") + 1)
+        span = self.selection_range()
         out: List[str] = []
+        base = 0
         for i, line in enumerate(lines):
             prefix = theme.paint(self.prompt if i == 0 else self.continuation,
                                  theme.CYAN, color=self.color)
+            body = line
             if i == row:
-                line = line[:col] + CURSOR_MARKER + line[col:]
-            out.append(prefix + line)
+                body = body[:col] + CURSOR_MARKER + body[col:]
+            if span is not None:
+                # 选区是**整段文本**的下标，逐行换算成本行的局部区间；
+                # 光标标记已经插进去了，切片时要把它的长度算上
+                marker = len(CURSOR_MARKER) if i == row else 0
+                lo = span[0] - base
+                hi = span[1] - base
+                if i == row and col <= lo:
+                    lo += marker
+                if i == row and col <= hi:
+                    hi += marker
+                lo = max(0, min(len(body), lo))
+                hi = max(0, min(len(body), hi))
+                if hi > lo:
+                    body = (body[:lo] + REVERSE + body[lo:hi] + UNREVERSE + body[hi:])
+            out.append(prefix + body)
+            base += len(line) + 1
         return out

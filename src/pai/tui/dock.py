@@ -21,6 +21,9 @@ from pai.modes.statusline import _truncate, display_width
 from pai.tui import theme
 from pai.tui.component import Component
 
+# 复制提示挂多久。凭手感定（够看清、又不碍事），无实测依据。
+NOTICE_SECONDS = 2.5
+
 SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 MAX_DETAIL_TOOLS = 2        # 同时展开明细的工具数：再多 dock 就把 scrollback 顶走了
 MAX_PREVIEW_LINES = 6       # 每个工具最多展开几行命令
@@ -102,6 +105,10 @@ class Dock(Component):
         self._tokens = 0
         self._mode = "default"
         self._pending = 0
+        self._scrolled_up = False
+        self._unseen = False
+        self._notice = ""
+        self._notice_at = 0.0
         self._queued = 0
         self._cwd = ""
         self._model = ""
@@ -211,6 +218,27 @@ class Dock(Component):
         return [theme.paint(_truncate(f"{theme.QUEUE} 已排队 {self._queued} 条", width),
                             theme.YELLOW, color=self.color)]
 
+    def set_notice(self, text: str) -> None:
+        """一句短反馈（复制结果之类）。**自己会过期**——不会过期的提示等于噪音，
+        用户 2026-08-11 真跑时它一直挂在屏幕左下角不走。"""
+        self._notice = text
+        self._notice_at = self._now()
+
+    def has_notice(self) -> bool:
+        return bool(self._notice) and self._now() - self._notice_at < NOTICE_SECONDS
+
+    def notice_line(self, width: int) -> str:
+        """**右对齐、贴在输入行上方**（照用户要的位置：用户框的右上角）。"""
+        if not self.has_notice():
+            return ""
+        text = _truncate(self._notice, width)
+        pad = max(0, width - display_width(text))
+        return " " * pad + theme.paint(text, theme.CYAN, color=self.color)
+
+    def set_scroll(self, scrolled_up: bool, unseen: bool) -> None:
+        self._scrolled_up = scrolled_up
+        self._unseen = unseen
+
     def status_line(self, width: int) -> str:
         """只在**有话说的时候**出现。
 
@@ -228,6 +256,11 @@ class Dock(Component):
         if self._pending:
             bits.append(theme.paint(f"{self._pending} 个请求在等",
                                     theme.YELLOW, color=self.color))
+        if self._scrolled_up:
+            # 停在历史里时屏幕不动，得说出来；有新内容也得说，否则用户不知道
+            # 「跳回底部」能看到什么（feature 13）。
+            note = "已上滚" + (" · 有新内容" if self._unseen else "")
+            bits.append(theme.paint(note, theme.YELLOW, color=self.color))
         if not bits:
             return ""
         return _truncate(" · ".join(bits), width)

@@ -72,6 +72,7 @@ from pai.core.memory import (
 from pai.core.queue import PendingMessageQueue
 from pai.core.recall import RecallState, make_recall
 from pai.core.session import SessionLog
+from pai.core.settings import alt_screen_enabled, load_settings, mouse_enabled
 from pai.core.tools import Tool, ask, get_tools, memory_tool
 from pai.modes.echo import make_stream_echo
 from pai.modes.statusline import StatusLinePrinter
@@ -81,8 +82,12 @@ from pai.tui.app import (
 from pai.tui.dialog import CANCELLED, Dialog
 from pai.tui.keys import KeyDecoder
 from pai.tui.driver import TuiDriver
-from pai.tui.record import Recorder, record_path
+from pai.tui.record import Recorder, RecordedStream, record_path
+from pai.tui.altscreen import AltScreenRenderer
 from pai.tui.renderer import DockRenderer
+from pai.tui.scroll import ScrollState
+from pai.tui.selection import Selection
+from pai.tui.transcript import Transcript
 from pai.tui.terminal import TerminalSession, tui_available
 from pai.tui import theme
 
@@ -637,10 +642,33 @@ def _run_tui(*, out, client, model, tools, messages, anchors, state, follow_up, 
     path = record_path()
     recorder = Recorder(path, size=lambda: (term.columns, term.rows)) if path else None
     write = recorder.wrap(_stdout_write) if recorder else _stdout_write
-    app = TuiApp(renderer=DockRenderer(write=write, width=lambda: term.columns),
-                 history=_history_lines(history), color=color)
+    # 备用屏默认开（features/13 拍板），`.pai/settings.json` 的 `tui.altScreen` 可关。
+    # 关掉就完全走 12 交付的 main-screen dock 那条路，一个 alt 序列都不发。
+    _settings = load_settings(warn=out)
+    alt = alt_screen_enabled(_settings, warn=out)
+    use_mouse = mouse_enabled(_settings, warn=out)
+    transcript, scroll = Transcript(), ScrollState()
+    selection = Selection()
+    if alt:
+        renderer = AltScreenRenderer(write=write, width=lambda: term.columns,
+                                     height=lambda: term.rows,
+                                     transcript=transcript, scroll=scroll,
+                                     selection=selection)
+    else:
+        renderer = DockRenderer(write=write, width=lambda: term.columns)
+    app = TuiApp(renderer=renderer, transcript=transcript, scroll=scroll,
+                 selection=selection, history=_history_lines(history), color=color)
     app.editor.color = color
-    term = TerminalSession(on_resize=app.refresh)
+    def _on_resize() -> None:
+        # 终端在 resize 时会自己挪动备用屏的内容（实测），所以不能只重画——
+        # 要先把「上一帧屏幕上有什么」的记忆作废，逼出一次全量重绘。
+        if hasattr(app.renderer, "invalidate"):
+            app.renderer.invalidate()
+        app.refresh()
+
+    # 终端生命周期的写也走同一个 write：不然录制里会缺 `?1049h` 这类关键字节
+    term = TerminalSession(on_resize=_on_resize, alt_screen=alt, mouse=use_mouse,
+                           stream=RecordedStream(write))
     driver = TuiDriver(app)
     app.dock.set_mode(mode_state())
     app.dock.set_cwd(os.getcwd())
@@ -779,6 +807,12 @@ def _run_tui(*, out, client, model, tools, messages, anchors, state, follow_up, 
                         return
     finally:
         term.stop()
+        # `term.stop()` 之后才打——`?1049l` 之前写的东西留在备用屏上，跟着屏幕一起没了。
+        # 形态对齐 CC 的 `printResumeHint()`（它也是先退 alt 再打）。
+        # **不提示 `--resume`**：pai 还没有这个入口，提示不存在的命令比不提示更糟
+        # （已登记 TODO，紧接着单独立项）。
+        if session is not None:
+            out(f"会话已存 {session.path}")
         app.renderer.clear()
         if recorder is not None:
             recorder.close()

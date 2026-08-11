@@ -77,3 +77,29 @@ class Recorder:
             except OSError:
                 pass
             self._file = None
+
+
+class RecordedStream:
+    """把 `TerminalSession` 的写也接进录制。
+
+    **feature 13 撞出来的**：录制器此前只包了渲染器的 write，而终端生命周期
+    （raw mode 的 bracketed paste、进出备用屏）走的是另一条路——直接写 `sys.stdout`。
+    于是录制文件里**没有 `?1049h`**，回放时不知道这是一段备用屏的录制，
+    按「数换行估高度」建了一块比真实终端矮的屏，帧末尾几行被钳在最后一行叠成一团。
+    症状看起来像渲染器画错了，其实是**录制漏了**。
+
+    教训是通用的：号称「记录写给 X 的全部字节」的东西，只要 X 有第二个写入者，
+    它记的就是一部分。
+    """
+
+    def __init__(self, write) -> None:
+        self._write = write
+
+    def write(self, data: str) -> None:
+        self._write(data)
+
+    def flush(self) -> None:
+        pass
+
+    def isatty(self) -> bool:
+        return True

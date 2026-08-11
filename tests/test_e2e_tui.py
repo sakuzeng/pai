@@ -55,6 +55,9 @@ class Session:
         import termios
         fcntl.ioctl(self.fd, termios.TIOCSWINSZ,
                     struct.pack("HHHH", ROWS, COLS, 0, 0))
+        # 裸字节也留一份：**退出后打的东西不进录制**（录制器包的是 TUI 的写，
+        # 而退出提示走的是普通 print）——feature 13 的退出路径要靠它断言。
+        self.raw = b""
 
     def drain(self, seconds=1.0):
         end = time.time() + seconds
@@ -62,8 +65,10 @@ class Session:
             ready, _, _ = select.select([self.fd], [], [], 0.1)
             if ready:
                 try:
-                    if not os.read(self.fd, 65536):
+                    chunk = os.read(self.fd, 65536)
+                    if not chunk:
                         return
+                    self.raw += chunk
                 except OSError:
                     return
 

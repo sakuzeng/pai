@@ -45,7 +45,9 @@ class TuiDriver:
                 self.app.refresh()
                 return actions
             if self.app.needs_tick():
-                # 空闲时不重画：只有转圈与「抑制到期」是随时间变的
+                # 空闲时不重画：只有转圈、「抑制到期」、提示过期、拖动收尾
+                # 这几件是随时间变的
+                self.app.tick()
                 self.app.refresh()
             return []
         try:
@@ -54,6 +56,20 @@ class TuiDriver:
             return []
         if not data:
             return [("eof", None)]
+        # **把已经排队的一并读干净再处理**：鼠标一次手势有上百条事件，
+        # 分成很多批各一条送到的话，`mouse.merge` 的合并根本没机会生效
+        # （它只在同一批里合并）。这里不等新数据，只捞已经到了的。
+        while True:
+            ready, _, _ = select.select([self._fd], [], [], 0)
+            if not ready:
+                break
+            try:
+                more = os.read(self._fd, 4096)
+            except OSError:
+                break
+            if not more:
+                break
+            data += more
         return self.app.feed(data, self._decoder)
 
     def pump_until(self, done: Callable[[], bool],

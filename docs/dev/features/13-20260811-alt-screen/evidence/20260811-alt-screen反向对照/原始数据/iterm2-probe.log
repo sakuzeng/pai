@@ -1,0 +1,48 @@
+================================================================
+探针启动 2026-08-11 15:08:00
+TERM=xterm-256color TERM_PROGRAM=iTerm.app 版本=3.6.11
+stdin.isatty=True stdout.isatty=True
+
+[A] 进 alt 之前的模式状态（DECRQM）
+  ?7     autowrap                           1=已设置(set)  [raw '\x1b[?7;1$y']
+  ?1000  mouse: press/release               2=未设置(reset)  [raw '\x1b[?1000;2$y']
+  ?1002  mouse: button-drag                 2=未设置(reset)  [raw '\x1b[?1002;2$y']
+  ?1003  mouse: any-motion                  2=未设置(reset)  [raw '\x1b[?1003;2$y']
+  ?1004  focus reporting                    2=未设置(reset)  [raw '\x1b[?1004;2$y']
+  ?1005  mouse utf8 ext                     2=未设置(reset)  [raw '\x1b[?1005;2$y']
+  ?1006  mouse SGR ext                      2=未设置(reset)  [raw '\x1b[?1006;2$y']
+  ?1015  mouse urxvt ext                    2=未设置(reset)  [raw '\x1b[?1015;2$y']
+  ?1016  mouse SGR-pixels ext               4=永久未设置  [raw '\x1b[?1016;4$y']
+  ?1049  alt screen (save cursor + clear)   2=未设置(reset)  [raw '\x1b[?1049;2$y']
+  ?2004  bracketed paste                    2=未设置(reset)  [raw '\x1b[?2004;2$y']
+  ?2026  synchronized output                2=未设置(reset)  [raw '\x1b[?2026;2$y']
+  进 alt 前主屏光标           行11 列1
+
+[B] 发 ?1049h 进 alt
+  进 alt 后查 ?1049          1=已设置(set)  [raw '\x1b[?1049;1$y']
+  alt 内已打 4 行，光标        行5 列1（预期 行5）
+--- 检查点 B(在 alt，未重发 1049h) @ 15:08:01 (hold 4.0s) ---
+
+[C] **已在 alt 时再发一次 ?1049h**（CC 说 iTerm2 会当成清屏）
+  重发 1049h 后光标           行1 列1  →  行1=被当成「清屏+回原点」；仍是 行5 列1=真 no-op
+  重发后查 ?1049             1=已设置(set)  [raw '\x1b[?1049;1$y']
+--- 检查点 C(重发 1049h 之后：ALT-CONTENT 还在=no-op，没了=被清屏) @ 15:08:05 (hold 4.0s) ---
+
+[D] 在 alt 里开鼠标上报 1000/1002/1003/1006，查模式是否真被置上
+  开启后查 ?1000             2=未设置(reset)  [raw '\x1b[?1000;2$y']
+  开启后查 ?1002             2=未设置(reset)  [raw '\x1b[?1002;2$y']
+  开启后查 ?1003             1=已设置(set)  [raw '\x1b[?1003;1$y']
+  开启后查 ?1006             1=已设置(set)  [raw '\x1b[?1006;1$y']
+  开启后查 ?1016             4=永久未设置  [raw '\x1b[?1016;4$y']
+--- 检查点 D(等鼠标事件) @ 15:08:10 (hold 4.0s) ---
+  鼠标/键盘原始字节：（无，这段没收到输入）
+  关闭后查 ?1006             2=未设置(reset)  [raw '\x1b[?1006;2$y']
+
+[E] 发 ?1049l 退出 alt
+--- 检查点 E-前(仍在 alt) @ 15:08:18 (hold 4.0s) ---
+  退出后主屏光标              行11 列1（进 alt 前是 行11 列1；相等=光标被原样还回）
+  退出后查 ?1049             2=未设置(reset)  [raw '\x1b[?1049;2$y']
+--- 检查点 E-后(已回主屏：MAIN-BEFORE-1..5 应原样还在，ALT-CONTENT 应消失) @ 15:08:19 (hold 4.0s) ---
+
+探针结束
+

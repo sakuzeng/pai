@@ -54,8 +54,12 @@ class VirtualScreen:
         self.rows = rows
         self.strict = strict
         self.unknown: List[str] = []
-        self._grid: List[List[Optional[Cell]]] = [
-            [Cell() for _ in range(cols)] for _ in range(rows)]
+        self._main_grid: List[List[Optional[Cell]]] = self._blank_grid()
+        self._alt_grid: Optional[List[List[Optional[Cell]]]] = None
+        self._grid = self._main_grid          # 指向当前生效的那块缓冲区
+        self.in_alt = False
+        self._saved_cursor: Optional[tuple] = None
+        self._autowrap = True
         self.row = 0
         self.col = 0
         self.scrollback: List[str] = []
@@ -65,6 +69,9 @@ class VirtualScreen:
         self._bg = None
         self._bold = False
         self._dim = False
+
+    def _blank_grid(self) -> List[List[Optional[Cell]]]:
+        return [[Cell() for _ in range(self.cols)] for _ in range(self.rows)]
 
     # --- 写入 ---------------------------------------------------------
 
@@ -106,12 +113,15 @@ class VirtualScreen:
 
     def _csi(self, m: "re.Match") -> None:
         private, params, final = m.group(1), m.group(2), m.group(3)
-        if private:                        # \x1b[?2026h / l —— 同步输出，对内容无影响
-            if params not in ("2026", "2004", "25"):
-                self._unsupported(f"私有序列 ?{params}{final}")
+        if private:
+            self._private_mode(params, final)
             return
-        n = int(params) if params.isdigit() else (0 if final == "K" else 1)
-        if final == "A":
+        n = int(params) if params.isdigit() else (0 if final in ("K", "J") else 1)
+        if final == "H":
+            self._cursor_position(params)
+        elif final == "J":
+            self._erase_display(n)
+        elif final == "A":
             self.row = max(0, self.row - n)
         elif final == "B":
             self.row = min(self.rows - 1, self.row + n)
@@ -133,6 +143,72 @@ class VirtualScreen:
                 self._unsupported(f"EL 参数 {n}")
         else:
             self._unsupported(f"CSI {params}{final}")
+
+    def _private_mode(self, params: str, final: str) -> None:
+        """DEC 私有模式。只认 pai 真的会发的那几个，其余照旧当无操作。"""
+        on = final == "h"
+        if params == "1049":
+            self._alt_screen(on)
+        elif params == "7":
+            self._autowrap = on
+        elif params not in ("2026", "2004", "25"):
+            self._unsupported(f"私有序列 ?{params}{final}")
+
+    def _alt_screen(self, on: bool) -> None:
+        """DECSET 1049 = **存光标 + 切到备用屏 + 清空它**。
+
+        「清空」是定义的一部分，于是 **`?1049h` 不是幂等的**：已经在备用屏里再发一次，
+        屏幕会被清掉、光标回原点（iTerm2 3.6.11 与 Terminal.app 470.2 实测一致，
+        见 features/13 evidence 第 1 条——CC 源码里有一处注释把这条写反了）。
+
+        **重进时不重新存光标**：存了的话退出会回到备用屏里的位置，而不是进来之前
+        主屏的位置。这一条是推的不是实测的（探针观测不到「保存的光标」本身）。
+        """
+        if on:
+            if not self.in_alt:
+                self._saved_cursor = (self.row, self.col)
+                self.in_alt = True
+            self._alt_grid = self._blank_grid()
+            self._grid = self._alt_grid
+            self.row = self.col = 0
+        else:
+            if not self.in_alt:
+                return
+            self.in_alt = False
+            self._alt_grid = None
+            self._grid = self._main_grid
+            if self._saved_cursor is not None:
+                self.row, self.col = self._saved_cursor
+                self._saved_cursor = None
+
+    def _cursor_position(self, params: str) -> None:
+        """CUP：`CSI r;cH`，行列都是 1-indexed，缺省为 (1,1)。"""
+        parts = params.split(";") if params else []
+        want_row = int(parts[0]) if parts and parts[0].isdigit() else 1
+        want_col = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 1
+        self.row = max(0, min(self.rows - 1, want_row - 1))
+        self.col = max(0, min(self.cols - 1, want_col - 1))
+
+    def _erase_display(self, n: int) -> None:
+        """ED：0=清到屏尾、1=清到屏首（**含光标那一格**）、2=整屏。光标不动。"""
+        if n == 2:
+            for r in range(self.rows):
+                self._grid[r] = self._blank_row()
+        elif n == 0:
+            for c in range(self.col, self.cols):
+                self._grid[self.row][c] = Cell()
+            for r in range(self.row + 1, self.rows):
+                self._grid[r] = self._blank_row()
+        elif n == 1:
+            for r in range(0, self.row):
+                self._grid[r] = self._blank_row()
+            for c in range(0, min(self.col + 1, self.cols)):
+                self._grid[self.row][c] = Cell()
+        else:
+            self._unsupported(f"ED 参数 {n}")
+
+    def _blank_row(self) -> List[Optional[Cell]]:
+        return [Cell() for _ in range(self.cols)]
 
     def _sgr(self, params: str) -> None:
         codes = [int(x) for x in params.split(";") if x.isdigit()] or [0]
@@ -167,17 +243,26 @@ class VirtualScreen:
 
     def _newline(self) -> None:
         if self.row + 1 >= self.rows:
-            self.scrollback.append(self._line(0))
-            self.scrollback_cells.append(self._grid[0])
+            # 备用屏**没有 scrollback**：滚出去就是没了。混进主屏历史的话，
+            # 回放的 logical_lines() 会把 alt 里的每一帧都算成「用户翻得到的历史」。
+            if not self.in_alt:
+                self.scrollback.append(self._line(0))
+                self.scrollback_cells.append(self._grid[0])
             self._grid.pop(0)
-            self._grid.append([Cell() for _ in range(self.cols)])
+            self._grid.append(self._blank_row())
         else:
             self.row += 1
 
     def _put(self, ch: str) -> None:
         w = display_width(ch)
-        if self.col + w > self.cols:       # 自动折行：真终端会这么干
-            self.col = 0
+        if self.col + w > self.cols:
+            if not self._autowrap:
+                # `?7l`：超出右边界的字符被丢弃，**不折到下一行**去糟蹋下一行。
+                # 诚实边界：真终端是「反复覆写最后一格」，pai 自己每行都截断、
+                # 够不到这个差别；这里取更简单的那种。
+                self.col = self.cols
+                return
+            self.col = 0                   # 自动折行：真终端会这么干
             self._newline()
         self._grid[self.row][self.col] = Cell(
             ch, self._fg, self._bg, self._bold, self._dim)

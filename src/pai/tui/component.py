@@ -67,3 +67,26 @@ class Container(Component):
         for child in self.children:
             lines.extend(child.render(width))
         return lines
+
+
+def extract_cursor(lines: List[str]):
+    """找出 CURSOR_MARKER 的（行, 可见列），并把标记从行里剥掉。
+
+    列用 `display_width` 算标记之前的可见文本——不是字符数。
+    一个中文两列，按字符数算会让光标停在半个字上。
+
+    两个渲染器共用同一份（feature 13）：dock 渲染器按**相对**光标移动摆它，
+    alt 屏渲染器按**绝对**坐标摆它，但「标记在第几行第几列」的算法必须是同一个，
+    否则中文 IME 候选框会在两种模式下飘到不同的地方。
+    """
+    from pai.modes.statusline import display_width
+
+    for row, line in enumerate(lines):
+        index = line.find(CURSOR_MARKER)
+        if index == -1:
+            continue
+        col = display_width(line[:index])
+        stripped = list(lines)
+        stripped[row] = line[:index] + line[index + len(CURSOR_MARKER):]
+        return stripped, (row, col)
+    return lines, None

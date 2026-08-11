@@ -1,7 +1,7 @@
 # 13-alt-screen
-状态：讨论中
-分支：待定（未动工。动工时开 `feat/13-alt-screen`）
-流程：待定（未动工）。会推翻已拍板的设计原则，动工时按 superpowers 全链路走
+状态：已交付
+分支：`feat/13-alt-screen`（2026-08-11 开，从 main）
+流程：superpowers 全链路（brainstorm ✅ → spec ✅ → plan ✅ → SDD ✅ → 合并 → tag）
 
 <!-- 状态取值：讨论中 → 已拍板 → 实现中 → 已交付 → 已验收；只在此处维护一份 -->
 
@@ -40,14 +40,42 @@ features/README 规矩 7 的判据：**「这次改动是在*完成*那次交付
 
 | 今天成立的 | alt-screen 之后 |
 |---|---|
-| roadmap 阶段 2 **原则 2**：只做 main-screen | **被推翻**，需要在 roadmap 就地留痕 |
+| roadmap 阶段 2 **原则 2**：只做 main-screen | **前半句作废**，见下方订正 |
 | 「scrollback 归终端，pai 绝不清」 | pai 自己维护滚动，resize 要全量重绘 |
-| `DockRenderer` 只碰底部若干行、绝不发 `2J`/`3J` | 整屏归 pai，清屏是常规操作 |
-| 非 tty 走老 REPL 那条闸门 | 仍成立，但 alt-screen 的进入/退出要额外守住异常路径 |
+| `DockRenderer` 只碰底部若干行、绝不发 `2J`/`3J` | 整屏归 pai——但**实测后仍不清屏**，见下 |
+| 非 tty 走老 REPL 那条闸门 | 仍成立，且 alt-screen 一个字节都不会发；账在别处（三条主循环） |
+
+**2026-08-11 前置精读后的两处订正**（原文保留在上表，不删）：
+
+1. **原则 2 没有被整条推翻，是被拆开了**。pi 的原句是「do not pretend the same
+   constrained viewport semantics exist in `TuiMainScreen`」——**别在 main-screen 里
+   *假装***，这半句在 alt-screen 之后照旧成立（正因为假装不了才要真拿下屏幕）；
+   被作废的是 pai 自己加的「只做 main-screen 模式」，而它本来就是**范围选择**不是论证结论。
+2. **「清屏是常规操作」是错的**。实测（[evidence](evidence/20260811-alt-screen反向对照/说明.md)）：
+   alt 屏里 resize 之后**必须全量重绘**，但**既不能清屏也不能重发 `?1049h`**——
+   重发会清屏闪白（两个终端一致，推翻了 CC 源码里的一句注释），先 `2J` 再画会黑掉
+   整个渲染耗时（CC 注释：~80ms）。正确姿势是「重新布局 + 每个格子重写」。
 
 ## 候选方案与确认
 
-<!-- ≥2 个候选 + 取舍；只有一个方案等于没讨论。动工前补齐并拍板。 -->
+<!-- ≥2 个候选 + 取舍；只有一个方案等于没讨论。 -->
+
+### 2026-08-11 brainstorm：候选被重排成两个正交轴
+
+前置精读之后发现，原来的 A/B/C 把**两个正交的决定**捆成了一条线。真正的决定是：
+
+| | **接管鼠标**（能点、滚轮） | **不接管鼠标**（键盘滚） |
+|---|---|---|
+| **常驻 alt**（日常界面就是新窗口） | **甲**＝原方案 A（CC 的 fullscreen 全开档） | **乙**（CC 的 `CLAUDE_CODE_DISABLE_MOUSE` 档） |
+| **临时 alt**（只有 `^O` 转录视图进） | **丙**＝原方案 B | **丁**（比今天的 `^O` 强一点） |
+
+三条需求各自需要什么：**能点** → 要鼠标；**可滚可搜** → 要持有文档（常驻/临时都行）；
+**像新开一个窗口** → **只有常驻满足**。
+
+对候选 B（＝丙）的当面确认结果：**不吻合**。它的日常界面仍不是新窗口，
+只有 `^O` 按下去那几秒是——而用户原话说的是平时。丙**结构上答不了第 3 条需求**。
+（但它有个加分项：CC 官方把「ctrl-o transcript overlay 这类**临时**全屏视图」
+写进了 `AlternateScreen` 组件的 docstring 当作正当用法，所以丙不是委曲求全的折中。）
 
 ### 方案 A · 全帧持有 + 自研虚拟滚动
 
@@ -77,31 +105,94 @@ pai 持有整份消息文档，进 alt-screen，每帧渲染整屏 + 行数组 d
 
 ### 确认
 
-**尚未拍板。** 2026-08-11 用户在三条路（甲=键盘展开 / 乙=转 alt-screen / 丙=先甲再单独立项）
+**上一轮（立项时）**：用户在三条路（甲=键盘展开 / 乙=转 alt-screen / 丙=先甲再单独立项）
 中选了**丙**——先交付甲（已完成，见 12 的 `^O`），乙单独立项，即本档案。
-本档案的三个候选待动工前 brainstorm 再拍。
+
+**本轮（2026-08-11 brainstorm，六问拍板，原样存档）**：
+
+| # | 问 | 拍板 |
+|---|---|---|
+| 1 | 落 2×2 的哪一格 | **乙：常驻 alt + 键盘滚动**。日常界面就是新窗口、transcript 可滚；**本轮不接管鼠标**，「能点」单独立项 |
+| 2 | 退出 alt 时会话历史怎么还给终端 | **不回吐完整文档**，打一行提示；`--resume` 紧接着单独立项。<br>用户原话质疑：「为什么不和 cc 一样 resume 可以回到之前的会话（session 不是已经按照项目来进行管理了吗）」——**查证属实**：CC 退出时确实不回吐，只打 `printResumeHint()`（`gracefulShutdown.ts:144`，先退 alt 再打好让提示落主屏）。我原先推荐的「重渲染完整文档」抄的是 **pi**，而 pi 没有会话持久化这一层，回吐是它唯一的选择——**我把两家的做法混成一条推荐了，这条是我错。** |
+| 3 | 鼠标接管到什么程度 | **本轮完全不接管**。保住终端原生的拖选复制与 `Cmd+F`（一旦上报鼠标，终端就不管了，且失败是静默的） |
+| 4 | 真 tty 下默认进不进 | **默认进，给一个关掉的开关**，开关落 `.pai/settings.json`（权限层已有两层配置，不再加环境变量）。理由：pai 是自用学习项目，没有 CC 那层「外部用户」风险；默认不进等于没做 |
+| 5 | 搜索进不进本轮 | **不进**。本轮只做滚动（滚动是地基，无它寡谈搜索）；搜索要额外的输入模式，与已有的输入归属仲裁/对话框/`!`·`/` 模式都要对得上 |
+| 6 | （随 2 而来）resume 要不要顺手做 | **不顺手做**，单独立项。13 的范围已经够大，顺手做是典型 scope creep（08 复盘那条「顺手并入的判据要收紧」） |
+
+**拍板带出来的两笔债**（已登记 TODO，见「遗留问题」节）：
+① 13 交付后，退出 pai 那一刻历史只剩 JSONL 文件，`--resume` 之前这段时间是有缺口的；
+② 「工具结果能点」——本轮建的是它的地基（每帧矩形表），不是它本身。
 
 ## 结果与总结
 
-未开始。
+**已交付 2026-08-11**（7 task 严格 TDD，`./test.sh` → **860 passed, 3 deselected**）。
+
+真 tty 下 `pai` 现在进**备用屏**：整屏归 pai——上面是可键盘滚动的 transcript，
+下面是 12 交付的 dock；退出时把屏幕**原样还给 shell**，只在主屏留一行「会话存哪了」。
+`.pai/settings.json` 的 `tui.altScreen: false` 可退回 12 的 main-screen 形态。
+
+三条需求的兑现情况**如实说**：
+
+| 需求 | 状态 |
+|---|---|
+| 3. 像新开了一个窗口 | ✅ 交付（进出的观感就是换一个屏再原样还回去） |
+| 2. transcript 内滚动与搜索 | **一半**：滚动 ✅（PgUp/PgDn/Ctrl+Home/Ctrl+End + 「已上滚」指示），搜索 ✗（拍板留下一轮） |
+| 1. 工具结果可点 | ✗ **本轮不做**（拍板不接管鼠标）。本轮建的是它的地基：每帧知道每个条目画在哪几行 |
+
+关键实现：
+- `tui/transcript.py`——**存条目不存行**，按 `(内容, 宽度)` 缓存，于是 resize 后历史能重排；
+- `tui/scroll.py`——follow-end 状态机（手动上滚就关掉跟随，新内容不再拽走视口）；
+- `tui/altscreen.py`——整屏帧 + 行 diff + 绝对定位，**绝不发 `2J`、绝不重发 `?1049h`**
+  （两条都来自动工前的实测），外加 `SIGWINCH` 重入保护；
+- `tui/screen.py`——终端模拟器补上两块缓冲区/CUP/ED/`?7`，**否则录制回放与 e2e 全瞎**；
+- `core/settings.py`——两层 `settings.json` 的通用读取（没动 `permissions.py` 自己那份）。
 
 ## 遗留问题
 
 <!-- 每条必须同步一行登记 ../../TODO.md 并注明出处 -->
 
-未开始。
+**交付后的遗留**（每条已同步登记 [TODO「feature 13（alt-screen）交付遗留」](../../TODO.md)）：
+
+1. **崩溃/被 `kill -9` 会把用户留在空的备用屏里**——`try/finally` 兜住了异常与正常退出，
+   但 `kill -9` 测不到也兜不住。main-screen 下最坏只是留个乱 dock。
+2. **`vim` 这类外部程序退出时的 rmcup 会把 pai 也踢回主屏**（CC 注释点名），本轮不做自愈
+   （自愈要么清屏、要么没法探测——两条实测结论把路都堵了）。
+3. **transcript 无上限**：长会话里条目只增不减，没有任何收缩机制。
+4. **两处读同一个 `settings.json`**（`core/settings.py` 与 `permissions.py` 各一份）。
+5. **`display_width` 仍住在 `modes/statusline.py`**（12 就欠着的那条，本轮刻意没顺手做）。
+6. **内容不满一屏时顶部对齐**，于是 transcript 与 dock 之间有一大片空白——
+   与 pi/CC 的形态一致，但没问过用户觉得好不好看。
+
+**拍板时就已知的债**（三条，已登记 [TODO「feature 13 拍板时已知的债」](../../TODO.md)）：
+
+1. `--resume` 不存在，而本轮拍板不回吐完整文档 → 交付后到 resume 落地之间，
+   退出那一刻历史只剩 JSONL。**紧接着单独立项**。
+2. 「工具结果能点」本轮不做，只建地基（每帧矩形/行归属）。
+3. transcript 内搜索本轮不做（需求第 2 条只做了「滚动」那一半）。
 
 ## 用到的知识
 
-动工前须补的前置精读（roadmap 阶段 2 的清单要相应增补）：
+前置精读**已完成 2026-08-11**（roadmap 阶段 2 的清单已增补为「第三批：alt-screen」并勾选）：
 
-- pi-mono `tui-plan.md` —— **这次要读的正是它的主体**：
-  它整篇讲的就是 alt-screen 的约束式布局系统（VStack/HStack/ScrollView、布局树、
-  命中测试、滚轮路由、选区与超链接）。feature 12 读它时只用了三处
-  （见 [K pi-tui-main-screen 第〇节](../../../../knowledge/source-walks/pi-tui-main-screen.md)），
-  因为那 90% 讲的是 pai 当时明确不做的东西——**现在它成了主线**。
-- pi `packages/tui/src/tui-alt-screen.ts`（29KB，未读过）
-- CC `src/ink/components/AlternateScreen.tsx`、`src/ink/hit-test.ts`、
-  `src/ink/selection.ts`（未读过）
-- 鼠标协议（SGR 1006）与 DECSET 1049 的实际行为——**须做反向对照**
-  （roadmap 固定末项），iTerm2 与 Terminal.app 的差异要实测。
+- [K source-walks/pi-alt-screen.md](../../../../knowledge/source-walks/pi-alt-screen.md)
+  —— pi-mono `tui-plan.md` 的**主体**（feature 12 跳过的那 90%）+ `tui-alt-screen.ts`(845)
+  + `scroll-view.ts`。三条对本档案最要紧的：alt 是**另一个渲染器**不是给 main-screen 打补丁；
+  `follow-end` 状态机是「流式输出时用户正在往回翻」的唯一解；
+  **退出 alt 时要把完整文档重渲染一份打回主屏**，否则退出后终端里空空如也
+  （相对今天的 pai 是可见倒退）。
+  另纠了 pai 自己的一处转述错误：**原则 2 的原文是「别在 main-screen 里*假装*
+  sticky 语义」，不是「别做 alt-screen」**——要推翻的只有 pai 加的那半句。
+- [K source-walks/cc-alt-screen.md](../../../../knowledge/source-walks/cc-alt-screen.md)
+  —— CC `AlternateScreen.tsx` / `ink.tsx` / `hit-test.ts` / `selection.ts` / `fullscreen.ts`。
+  三条最要紧的：**CC 的 alt-screen 对外部用户默认关**（`USER_TYPE==='ant'` 才开）
+  且配了三个逃生口；**命中测试只要 130 行（便宜），选区要 917 行（昂贵）**；
+  CC 官方把 `AlternateScreen` 的正当用法写成「ctrl-o transcript overlays 这类
+  **临时**全屏视图」——**这正是候选方案 B 的形态**。
+- [K concepts/alt-screen-and-mouse.md](../../../../knowledge/concepts/alt-screen-and-mouse.md)
+  —— 可迁移的那层：DECSET 1049 的三步语义与**不幂等**、鼠标 1000/1002/1003
+  **互斥单选**而 1006 只是编码、DECRQM 不可移植、拿走鼠标=拿走终端原生选中复制。
+- **反向对照（动工前）已做**：[evidence/20260811-alt-screen反向对照](evidence/20260811-alt-screen反向对照/说明.md)
+  ——iTerm2 3.6.11 与 Terminal.app 470.2 实测，6 条结论，
+  其中一条**推翻了 CC 源码里的一句注释**（重发 `?1049h` 不是 no-op，会清屏）。
+  鼠标事件整块**没能观测**（缺辅助功能授权），如实留
+  [手工清单](evidence/20260811-alt-screen反向对照/手工清单.md)。

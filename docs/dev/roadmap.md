@@ -75,6 +75,32 @@ feature 12 又撞出六条，其中一条**改写了一条已登记遗留的定�
         （撞出 6 条：pai 对 resize **一个字节都不发**；「干活时打的字」其实**没丢**、
         在内核 tty 缓冲区里等着，改写了 steering 那条遗留的定性；状态行按事件而非按
         resize 重算宽度。三项纯视觉的留了[手工清单](features/12-20260811-tui/evidence/20260811-终端反向对照/手工清单.md)）
+- **前置精读（第三批：alt-screen，2026-08-11 补）**——为复议**原则 2** 而读，
+  归 [features/13](features/13-20260811-alt-screen/README.md)。前两批那四篇都是**给
+  main-screen 的**，alt-screen 一篇都没有；而 `tui-plan.md` 里被 feature 12 跳过的
+  那 90% 正是这一批的主体：
+  - [x] [knowledge/source-walks/pi-alt-screen.md](../../knowledge/source-walks/pi-alt-screen.md)
+        （`tui-plan.md` 主体 + `tui-alt-screen.ts`：alt 是**另一个渲染器**不是补丁；
+        follow-end 状态机；**退出时要重渲染完整文档打回主屏**；
+        并纠正一处 pai 自己的转述——原则 2 的原文是「别在 main-screen 里**假装**」，
+        不是「别做 alt-screen」）
+  - [x] [knowledge/source-walks/cc-alt-screen.md](../../knowledge/source-walks/cc-alt-screen.md)
+        （`AlternateScreen.tsx` / `ink.tsx` / `hit-test.ts` / `selection.ts` / `fullscreen.ts`：
+        **CC 对外部用户默认关**这个形态 + 三个逃生口；命中测试 130 行便宜、
+        选区 917 行昂贵；alt 屏是个需要自愈的状态）
+  - [x] [knowledge/concepts/alt-screen-and-mouse.md](../../knowledge/concepts/alt-screen-and-mouse.md)
+        （可迁移的那层：DECSET 1049 不幂等、鼠标三档互斥、SGR 1006 编码、
+        DECRQM 不可移植）
+  - [x] [反向对照（动工前）→ features/13 evidence](features/13-20260811-alt-screen/evidence/20260811-alt-screen反向对照/说明.md)
+        （iTerm2 3.6.11 + Terminal.app 470.2 实测 6 条：**重发 `?1049h` 会清屏**
+        （推翻 CC 自己一处注释）、**DECRQM 在 Terminal.app 完全不可用**且会污染测量、
+        鼠标 1000/1002/1003 互斥单选、退出 alt 后主屏与光标原样还回、
+        alt 屏里 resize 不重绘就是坏的。鼠标事件整块跑不到，留了
+        [手工清单](features/13-20260811-alt-screen/evidence/20260811-alt-screen反向对照/手工清单.md)）
+  - [x] [反向对照（交付前）→ features/13 evidence 第 7-9 条](features/13-20260811-alt-screen/evidence/20260811-alt-screen反向对照/说明.md)
+        （真 iTerm2 里跑真 pai 走完整回合 + resize + 退出。**推翻了动工前的一个存疑观察**：
+        「resize 后顶部残留主屏内容」是 AppleScript `contents` 的假象，
+        `screencapture` 截真窗口证明屏幕是干净的）
 - **顺带工具**：AskUserQuestion（REPL 才有真人可问）。
 - **流程**：REPL 与 TUI 各走一次 superpowers 全链路。
   REPL 档案：[features/05-20260810-repl/](features/05-20260810-repl/README.md)（8 task TDD，193 passed）。
@@ -83,12 +109,14 @@ feature 12 又撞出六条，其中一条**改写了一条已登记遗留的定�
   证实 CC 主形态本身就是「已提交内容进 scrollback + 动态底部区」）。
   四条设计原则全部兑现；**方案 B 全帧持有被否**，理由是它必须清 scrollback 才能重画，
   而 pai 不持有整份文档、清掉就画不回来。
-  ⚠️ **原则 2 已被挂上复议**（2026-08-11 用户真跑后提出三条需求——工具结果可点、
-  transcript 可滚、像新开一个窗口——追下去发现它们底下是同一个约束「谁拥有屏幕」，
-  而方案 A 结构上做不到）。**复议不在本阶段内做**：它会改变 12 的交付结果，
-  按 features/README 规矩 7 另立档案
-  [features/13-alt-screen](features/13-20260811-alt-screen/README.md)（讨论中）。
-  届时 `tui-plan.md` 那 90% 被跳过的内容（布局树/命中测试/滚轮路由）成为主线。
+  ⚠️ **原则 2 的复议已完成 2026-08-11**，结论是**它被拆开了、不是被整条推翻**：
+  pi 的原句「do not pretend the same constrained viewport semantics exist in
+  `TuiMainScreen`」——**别在 main-screen 里*假装***——照旧成立；
+  作废的只是 pai 自己加的「只做 main-screen 模式」，而它本来就是**范围选择**不是论证结论。
+  实现见 [features/13-alt-screen](features/13-20260811-alt-screen/README.md)（**已交付**：
+  常驻备用屏 + 键盘滚动，**不接管鼠标**）。
+  ⚠️ 另一处订正：档案原先写「整屏归 pai，清屏是常规操作」——**实测推翻**，
+  alt 屏里既不能清屏也不能重发 `?1049h`（会闪白），resize 只能靠逐格重写。
 
 ## 阶段 3 · 记忆（已交付 2026-08-10）
 
