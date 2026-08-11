@@ -1,6 +1,6 @@
 # 当前状态快照
 
-最后更新：2026-08-11（**阶段 5 流式**交付）。
+最后更新：2026-08-11（**阶段 2 后半程 TUI**交付）。
 **数字由机器对账**：`test_status_reports_the_current_test_count` 会在完整跑时校验本页的 passed 数——漂了三次之后不再靠人肉。
 给接手者（人或 AI）一页看清现状。
 「做了什么」的时间线见 [devlog.md](devlog.md)，「为什么这么选」见 [decisions.md](decisions.md)，
@@ -28,6 +28,12 @@ AskUserQuestion、工具状态行。`pai` 不带参数即进 REPL。
 **保序贪心分批调度**（连续的并发安全工具并行，其余串行，不重排），
 权限**按批前置**判定（偏离 CC，绕开「两个并行工具同时问真人」）。
 usage 的取法按实测重写（D#58）：`include_usage` 在 DeepSeek 上是空操作，**每块都看**才取得到。
+阶段 2 **后半程 TUI 已交付**——真 tty 下 `pai` 进 TUI：上面是终端 scrollback、
+下面是 pai 接管的 dock（活动区 / 队列区 / 输入行或对话框 / 状态行）。
+**输入归属由一个仲裁函数算出来**（不再是「谁先 read 谁拿到」），
+于是提问期间敲 `!命令` 就是执行命令——08 那条真实事故关掉了；
+`/mode` 与 shift+tab 可切权限模式；干活时打的字进 followUp 队列；
+并发按动作聚合计数**看得见**。非 tty（管道/CI/注入 reader）整个不进 TUI，行为不变。
 功能全貌见 [features/02](features/02-20260803-compaction/README.md)、
 [features/05](features/05-20260810-repl/README.md)、
 [features/07](features/07-20260810-permissions/README.md)。
@@ -61,7 +67,16 @@ usage 的取法按实测重写（D#58）：`include_usage` 在 DeepSeek 上是�
 | `core/streaming.py` | 可用 | 流式装配：按 `index` 归并 tool_calls（`id`/`name` 只在首块）、`arguments` 拼完才解析（实测逐字符分片）、**usage 每块都看**（两种协议形状都取得到 D#58）、中断即停并如实回空 usage。**一次响应装配成一条 assistant 消息**（D#57，拒绝 CC 的 block 级记录） |
 | `core/scheduler.py` | 可用 | 保序贪心分批（照 CC `partitionToolCalls`）：连续的并发安全工具合批并行、其余串行、**结果按输入顺序回填**；单调用批不起线程池（于是 bash 永远在主线程）。`MAX_TOOL_WORKERS=8` 是未实测经验值 |
 | `modes/echo.py` | 可用 | 增量上屏：`MessageDelta` 不换行逐字写、每条消息只戴一次 `🤖`；**最终答案不打两遍**——按 `AgentEnd.reason` 分流（`final` 已流过不重打，`budget`/`max_steps`/`interrupted` 是 loop 合成的必须打） |
-| skills / mcp_client / evals | 未开始 | 路线图后续阶段，见 [roadmap.md](roadmap.md)。阶段 2 后半程 TUI 亦未开始 |
+| `tui/component.py` | 可用 | `Component.render(width) -> list[str]` 纯函数契约 + `invalidate()`；`Container` 递归；`CURSOR_MARKER`（APC，零宽，`display_width` 已会剥） |
+| `tui/renderer.py` | 可用 | **唯一碰终端的地方**：dock 整块重绘（相对光标移动 + `CSI 2K`，包在同步输出里）、**变矮先清再收缩**、`commit()` 把内容上交 scrollback、提取 `CURSOR_MARKER` 摆硬件光标（IME 锚点）。**绝不发 `2J`/`3J`**——pai 不持有整份文档，清掉就画不回来 |
+| `tui/keys.py` | 可用 | 字节 → 按键，**带状态**（多字节字符与转义序列会被拆成两次 read 送达）；未识别序列丢弃但留 `unknown`；bracketed paste 整段进 |
+| `tui/editor.py` | 可用 | 行编辑器（纯状态机）：插入/删除/词跳/Ctrl-U-K-W/历史↑↓/`\` 续行/中文宽度感知光标。**`Ctrl+R` 是已知回退** |
+| `tui/arbiter.py` | 可用 | **输入归属仲裁**：输入框非空即压住对话框，停手 1500ms 放行（常量抄自 CC，来源写在旁边），`is_suppressing()` 可被问出来（不许静默） |
+| `tui/dialog.py` | 可用 | 权限 ask 与 AskUserQuestion 共用；`handoff()` 把 `!`/`/` 交回主循环执行（08 铁证的修法）；Esc 取消 |
+| `tui/dock.py` | 可用 | 活动区（按动作聚合计数）/ 队列区 / 状态行（转圈 + 已用时 + token + 模式 + 待决数）；`AgentEnd` 吐一行摘要给 commit |
+| `tui/app.py` / `tui/driver.py` | 可用 | app 粘合各组件（可测）；driver 读真 stdin（`select` 轮询，空闲时靠 `needs_tick()` 不白刷）。**driver 无单测**，靠 playground 冒烟顶着 |
+| `tui/terminal.py` | 可用 | raw mode 进出、`SIGWINCH` **同步不去抖 + 同尺寸丢弃**、退出无条件复原、非 tty 闸门（判 stdout）、非主线程明确告警 |
+| skills / mcp_client / evals | 未开始 | 路线图后续阶段，见 [roadmap.md](roadmap.md) |
 
 ## compaction.py 里有什么
 
@@ -88,10 +103,11 @@ usage 的取法按实测重写（D#58）：`include_usage` 在 DeepSeek 上是�
 
 ## 测试
 
-共收集 **512 项**（阶段 2 REPL 8 task + 阶段 3 记忆 7 task + 交付后五个补漏 + 文档一致性
-+ **阶段 4 权限 task 1-7** + **feature 10 记忆召回 7 task** + **feature 11 流式 task 1-6**）：
+共收集 **750 项**（阶段 2 REPL 8 task + 阶段 3 记忆 7 task + 交付后五个补漏 + 文档一致性
++ **阶段 4 权限 task 1-7** + **feature 10 记忆召回 7 task** + **feature 11 流式 task 1-6**
++ **feature 12 TUI task 1-9**）：
 
-- `./test.sh` → **509 passed, 3 deselected**，全部离线（`tests/fake_llm.py` 假 provider）。**这是默认路径。**
+- `./test.sh` → **747 passed, 3 deselected**，全部离线（`tests/fake_llm.py` 假 provider）。**这是默认路径。**
 - `./test.sh --llm` → 额外跑打真实 API 的冒烟测试，**会产生费用**。
   需同时满足有 `DEEPSEEK_API_KEY` 且 `PAI_RUN_LLM_TESTS=1`——花钱的副作用不能是默认行为。
 
@@ -136,18 +152,20 @@ usage 的取法按实测重写（D#58）：`include_usage` 在 DeepSeek 上是�
 
 ## 下一步
 
-阶段 2 前半程（REPL）、阶段 3（记忆）、阶段 4（权限 + 工作目录边界）、**阶段 5（流式）**已交付。
-下一步按 roadmap 是**阶段 6 skills / MCP client**；阶段 2 后半程 TUI 暂缓。
+阶段 2（REPL + **TUI**）、阶段 3（记忆）、阶段 4（权限 + 工作目录边界）、阶段 5（流式）已交付。
+下一步按 roadmap 是**阶段 6 skills / MCP client**。
+feature 12 的遗留见 TODO「feature 12（TUI）交付遗留」，其中一条值得先知道：
+**跑很久且不发事件的工具执行期间，用户打的字在 dock 上完全看不见**（字符没丢，
+在内核 tty 缓冲区，但屏幕不动）——在最需要反馈的时候没有反馈，12 复盘质疑二。
 阶段 5 的四条遗留见 TODO「feature 11（流式）遗留」，其中两条值得先知道：
 **并发在界面上完全不可见**（做了并发却看不见并发）、
 **中断丢弃半条 assistant 消息**（屏幕上看得见、上下文里没有）。
 
-**两条待用户拍板**（见 TODO）：
+**一条待用户拍板**（见 TODO）：
 1. matcher 签名从已拍板 spec 的 3 参改成 4 参（D#49，feature 07 起就欠着）——
    spec 第 2 节与第 4 节凑不到一起，路径锚点是「规则的属性」，三参没有出口。
    要么认可并订正 spec，要么换实现。
-2. **`/mode` 命令与 shift+tab 模式切换**已拍板留给 TUI 阶段——
-   在此之前换模式只能重启 pai 加 flag。TUI 动工时要一并做。
+   ~~2. `/mode` 与 shift+tab~~ **已由 feature 12 交付**。
 
 阶段 1 遗留的两条候选仍在 TODO：
 - **reserve_tokens / keep_recent_tokens 实测校准**——目前仍是从 pi 借来的经验值，

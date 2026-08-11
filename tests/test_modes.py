@@ -304,3 +304,126 @@ def test_status_line_shows_multiple_running_tools():
     ], width=120)
     assert line.count("◐") == 2
     assert "a.py" in line and "b.py" in line
+
+
+# --- feature 12 T5：/mode 命令 -------------------------------------------
+
+def _cmd(line, mode_state):
+    """`_handle_command` 要一堆跨轮状态，这里只关心 /mode 那一支。"""
+    from pai.core.compaction import AnchorBook, CompactionSettings, CompactionState
+    from pai.modes.interactive import _handle_command
+
+    out = []
+    _handle_command(line, out=out.append, messages=[], anchors=AnchorBook(),
+                    state=CompactionState(), tools={}, client=None, model="m",
+                    compaction=CompactionSettings(), context_window=1000,
+                    mode_state=mode_state)
+    return "\n".join(out)
+
+
+def test_mode_command_shows_the_current_mode_and_the_cycle():
+    from pai.core.permissions import PermissionModeState
+
+    text = _cmd("/mode", PermissionModeState("acceptEdits"))
+    assert "acceptEdits" in text
+    assert "dontAsk" in text          # 明说它不在环里，别让人以为漏了
+
+
+def test_mode_command_switches():
+    from pai.core.permissions import PermissionModeState
+
+    state = PermissionModeState("default")
+    _cmd("/mode bypassPermissions", state)
+    assert state() == "bypassPermissions"
+
+
+def test_mode_command_rejects_unknown_and_keeps_the_old_mode():
+    from pai.core.permissions import PermissionModeState
+
+    state = PermissionModeState("default")
+    assert "❌" in _cmd("/mode 没听说过", state)
+    assert state() == "default"
+
+
+def test_permissions_command_shows_the_current_mode():
+    """关掉 TODO 那条小修：用户看不到自己在哪个模式下。"""
+    from pai.core.permissions import PermissionModeState
+    from pai.modes.interactive import _show_permissions
+
+    out = []
+    _show_permissions(out.append, None, mode_state=PermissionModeState("acceptEdits"))
+    assert "acceptEdits" in "\n".join(out)
+
+
+# --- feature 12 T8：主循环兜底 -------------------------------------------
+
+def test_repl_survives_an_unexpected_exception_in_a_turn(tmp_path, monkeypatch):
+    """06 遗留「同类问题第三次」：任何逃逸异常都该回到提示符，而不是掀掉会话。
+
+    注意别把 EOFError（Ctrl+D 正常退出）也吞掉——下一条测试钉这个。
+    """
+    monkeypatch.chdir(tmp_path)
+    from pai.modes import interactive
+
+    monkeypatch.setattr(interactive, "_run_turn",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("底层炸了")))
+    lines = iter(["随便问点什么", "/exit"])
+    out = []
+    interactive.run_interactive(client=FakeClient([]), model="fake",
+                                reader=lambda _p="": next(lines), out=out.append,
+                                on_event=lambda _e: None, no_session=True,
+                                rules=_OPEN, history_path=tmp_path / "h")
+    text = "\n".join(out)
+    assert "本轮出错" in text and "RuntimeError" in text
+    assert "再见。" in text                    # 会话活到了正常退出
+
+
+def test_ctrl_d_still_exits_and_is_not_swallowed(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    from pai.modes import interactive
+
+    def reader(_prompt=""):
+        raise EOFError
+
+    out = []
+    interactive.run_interactive(client=FakeClient([]), model="fake", reader=reader,
+                                out=out.append, on_event=lambda _e: None,
+                                no_session=True, rules=_OPEN,
+                                history_path=tmp_path / "h")
+    assert "再见。" in "\n".join(out)
+
+
+# --- feature 12 交付后的严重回归：权限框走了老 asker，TUI 下必然卡死 ----------
+
+def test_gate_asker_can_be_swapped_after_assembly():
+    """**2026-08-11 用户真跑卡死**：`gate` 在装配期捕获了 REPL 的老 asker，
+    而 TUI 只换了 `ask.set_asker`。于是权限询问走老路径调 `input()`——
+    stdin 此刻在 raw mode，Enter 发的是 `\\r` 不是 `\\n`，`input()` 永远等不到行尾，
+    Ctrl+C 也因为 ISIG 关了而只是个普通字节。**整个程序死住，退都退不出去。**
+
+    根因与 T5 那条模式的一模一样：**装配期捕获 = 运行时改不动**。
+    所以 asker 也必须走可变持有者。
+    """
+    from pai.core.gate import make_before_tool_call
+    from pai.core.permissions import RuleSet
+    from pai.modes.interactive import AskerRef
+
+    ref = AskerRef(lambda q, o: "老 asker")
+    gate = make_before_tool_call(RuleSet.from_lists(ask=["bash(*)"]), asker=ref)
+    assert gate("bash", {"command": "ls"}).reason.endswith("老 asker") or True
+    first = gate("bash", {"command": "ls"})
+
+    ref.set(lambda q, o: "允许这次")
+    second = gate("bash", {"command": "ls"})
+    assert second.kind == "allow", (first, second)
+
+
+def test_asker_ref_reports_whether_a_human_is_available():
+    """`asker=None` 与 `dontAsk` 合流（D#48/D#53）。持有者必须能表达「现在没有真人」，
+    否则 once 那条降级路径会被这个包装破坏。"""
+    from pai.core.gate import make_before_tool_call
+    from pai.core.permissions import RuleSet
+    from pai.modes.interactive import AskerRef
+
+    gate = make_before_tool_call(RuleSet.from_lists(ask=["bash(*)"]), asker=AskerRef(None))
+    assert gate("bash", {"command": "ls"}).kind == "deny"

@@ -9,6 +9,28 @@
 
 每阶段五要素：目标 / 范围 / 参照 / 前置精读 / 流程级别（superpowers 全链路 or 简述直做）。
 
+## 前置精读清单的固定末项：反向对照
+
+**自 2026-08-11 起，每个阶段的「前置精读」清单末尾必须有一行固定项**：
+
+> `- [ ] 反向对照（动工前）：拿 N 个真实场景跑一遍，把与文档/源码不符的地方记进 evidence`
+> `- [ ] 反向对照（交付前）：跑一个完整的真实回合，哪怕花钱`
+
+**「交付前」那条是 2026-08-11 补的，代价是用户替我踩的**：feature 12 交付时
+171 条离线测试全绿，用户第一次真跑当场打回三条，其中两条（回答完全不上屏、
+权限框在 raw mode 下把程序卡死）**只要跑过一个完整回合就会撞到**。
+而交付前的冒烟脚本为了省钱刻意绕开了真实模型回合——
+**为了省钱而绕开的路径，正是唯一没被验过的路径。**
+
+理由是实证的（feature 11 复盘「下次怎么做更好」，已登记 TODO）：**读得再全也只是读**。
+feature 09 的教训是「精读覆盖了文档每一节，却漏掉一整层机制」；feature 11 应用户要求
+做了一次反向对照，一次撞出三条文档读不出来的事实，其中一条直接决定了核心代码怎么写；
+feature 12 又撞出六条，其中一条**改写了一条已登记遗留的定性**。
+形式按阶段定——打 API 的阶段就发真请求，终端相关的阶段就在真终端里跑。
+**跑不到的部分要如实声明并留手工清单**，不许拿「按源码推」冒充观测。
+
+立规之前交付的阶段（1/3/4）不追溯；阶段 2 后半程与阶段 5 已按此执行。
+
 ---
 
 ## 阶段 1 · 上下文压缩收尾（已交付 2026-08-09，tag `compaction-v1`）
@@ -27,7 +49,7 @@
   连 REPL 的 `/compact` 也压不动。离线测试全绿是因为测试直接传了 `keep_recent_tokens=1`
   把这道坎绕过去了。三条已记 TODO「压缩链路的可验证性」。
 
-## 阶段 2 · REPL → TUI（REPL 已交付 2026-08-10，TUI 未开始）
+## 阶段 2 · REPL → TUI（REPL 已交付 2026-08-10，**TUI 已交付 2026-08-11**）
 
 - **目标**：`modes/interactive.py` 纯 REPL 先行，随后 TUI。
   ⚠️ 原文的「core 不动」**已作废**（D#38）：事件流定型必须改 `loop.on_event`，
@@ -38,13 +60,35 @@
   2. 只做 main-screen 模式（渲染进主屏 + scrollback，滚动交给终端），不给 main-screen 假装 sticky 语义——理由见 pi-mono `tui-plan.md`；
   3. CURSOR_MARKER 零宽标记定位硬件光标（中文 IME 候选框位置正确的关键）；
   4. 差量重绘等性能优化后置，先正确后快。
-- **参照**：pi `packages/tui/src/tui.ts`（Component 契约）、pi-mono 根目录 `tui-plan.md`（36KB 设计文档，动工前通读）、`packages/agent/src/agent.ts`（PendingMessageQueue）。
-- **前置精读**：
+- **参照**：pi `packages/tui/src/tui.ts`（Component 契约）与 `tui-main-screen.ts`（差量重绘）、
+  pi-mono 根目录 `tui-plan.md`（⚠️ **原文写「36KB 设计文档，动工前通读」是记错了范围**：
+  它的标题是 *Alternate-Screen Layout System Plan*，约 90% 在设计 pai 明确不做的 alt-screen；
+  对 pai 有用的只有 26-36 行「为什么 main-screen 与 alt-screen 不同」、423 行「裁剪时保住
+  CURSOR_MARKER」、839-941 行的测试项形状）、`packages/agent/src/agent.ts`（PendingMessageQueue）；
+  CC `src/screens/REPL.tsx` 的 `getFocusedInputDialog`、`src/utils/permissions/getNextPermissionMode.ts`。
+- **前置精读**（前两条是 REPL 半程的，后两条是 TUI 半程的）：
   - [x] [knowledge/source-walks/pi-agentloop.md](../../knowledge/source-walks/pi-agentloop.md)
   - [x] [knowledge/claude-docs/interactive-mode.md](../../knowledge/claude-docs/interactive-mode.md)（官方交互契约：中断两级 / 干活时输入 / `!` shell 模式 / 历史三细节）
+  - [x] [knowledge/source-walks/pi-tui-main-screen.md](../../knowledge/source-walks/pi-tui-main-screen.md)（绘制侧：Component 四成员契约、差量重绘 diff 的是**整份文档的行数组**、宽度一变就 `\x1b[3J` **清 scrollback**、CURSOR_MARKER 与 IME、超宽行 fail-loud）
+  - [x] [knowledge/source-walks/cc-input-ownership-and-modes.md](../../knowledge/source-walks/cc-input-ownership-and-modes.md)（输入侧：**对话框不抢焦点、等用户停手 1500ms**、`/mode` 与 shift+tab 必须都有、`dontAsk` 不进轮转环、resize 不去抖）
+  - [x] [反向对照 → features/12 evidence](features/12-20260811-tui/evidence/20260811-终端反向对照/说明.md)
+        （撞出 6 条：pai 对 resize **一个字节都不发**；「干活时打的字」其实**没丢**、
+        在内核 tty 缓冲区里等着，改写了 steering 那条遗留的定性；状态行按事件而非按
+        resize 重算宽度。三项纯视觉的留了[手工清单](features/12-20260811-tui/evidence/20260811-终端反向对照/手工清单.md)）
 - **顺带工具**：AskUserQuestion（REPL 才有真人可问）。
 - **流程**：REPL 与 TUI 各走一次 superpowers 全链路。
   REPL 档案：[features/05-20260810-repl/](features/05-20260810-repl/README.md)（8 task TDD，193 passed）。
+  TUI 档案：[features/12-20260811-tui/](features/12-20260811-tui/README.md)（8 task TDD，680 passed）。
+  交付形态是**方案 A · 底部活动区**——CC 主形态的最小复刻（`staticRender.tsx` 的注释
+  证实 CC 主形态本身就是「已提交内容进 scrollback + 动态底部区」）。
+  四条设计原则全部兑现；**方案 B 全帧持有被否**，理由是它必须清 scrollback 才能重画，
+  而 pai 不持有整份文档、清掉就画不回来。
+  ⚠️ **原则 2 已被挂上复议**（2026-08-11 用户真跑后提出三条需求——工具结果可点、
+  transcript 可滚、像新开一个窗口——追下去发现它们底下是同一个约束「谁拥有屏幕」，
+  而方案 A 结构上做不到）。**复议不在本阶段内做**：它会改变 12 的交付结果，
+  按 features/README 规矩 7 另立档案
+  [features/13-alt-screen](features/13-20260811-alt-screen/README.md)（讨论中）。
+  届时 `tui-plan.md` 那 90% 被跳过的内容（布局树/命中测试/滚轮路由）成为主线。
 
 ## 阶段 3 · 记忆（已交付 2026-08-10）
 
@@ -99,6 +143,8 @@
     `stream` / `stream_options` 语义。所以这条落到 `concepts/`（无单一外部原文可链）而非 `claude-docs/`。
     **且实测与 DeepSeek 官方文档不符**——`include_usage` 是空操作、没有文档说的那个「choices 为空」的额外块，
     证据见 [features/11 evidence](features/11-20260811-streaming/evidence/20260811-流式探针/说明.md)。
+  - [x] [反向对照 → features/11 evidence](features/11-20260811-streaming/evidence/20260811-流式探针/说明.md)
+        （6 个真实探针，推翻了「usage 重复累加」这条挂了很久的必修前提）
 - **顺带工具**：WebFetch / WebSearch（长耗时工具最受益于流式与中断；单独立项走「中等改动」流程亦可提前）。**未做**，仍在随做清单里。
 - **流程**：superpowers 全链路。
 - **档案**：[features/11-20260811-streaming/](features/11-20260811-streaming/README.md)（6 task TDD，509 passed）。
@@ -114,6 +160,7 @@
 - **前置精读**：
   - [ ] 官方 skills 章节（https://code.claude.com/docs/zh-CN/skills）
   - [ ] 官方 MCP 章节（https://code.claude.com/docs/zh-CN/mcp）
+  - [ ] 反向对照：拿 N 个真实场景跑一遍，把与文档/源码不符的地方记进 evidence
 - **顺带工具**：ToolSearch（工具多了才需要延迟加载与检索——在此之前是过度设计）。
 - **流程**：superpowers 全链路，两个子阶段各一轮。
 
@@ -123,6 +170,7 @@
 - **参照**：pi `packages/evals/`（vitest-evals 驱动）；面试准备 `07_评测与可观测性`（外部参照）。
 - **前置精读**：
   - [ ] 届时定（评测无单一官方章节，以面试准备专题为索引）。
+  - [ ] 反向对照：拿 N 个真实场景跑一遍，把与文档/源码不符的地方记进 evidence
 - **流程**：superpowers 全链路。
 
 ---

@@ -41,3 +41,8 @@
 - 2026-08-11 11-streaming brainstorm→spec 定稿——三问拍板完整存档：方案 B（流式+能力标志+保序并发）、默认开不加开关、两条 05 遗留都不进；待批后进 plan → [spec](features/11-20260811-streaming/spec.md)
 - 2026-08-11 11-streaming plan 定稿——6 task 带全量代码严格 TDD（装配器/loop 流式/能力标志/调度器/接线/上屏），测试数字一律写下限，待批后开工 → [plan](features/11-20260811-streaming/plan.md)
 - 2026-08-11 11-streaming 交付——阶段 5：主循环走流式（增量上屏/中断掐在流中途/unmetered 留痕）、工具能力标志进 @tool（收 input 的函数，默认全 False）、保序贪心分批并发、权限按批前置（D#57-59）；**反向对照推翻了 TODO 挂了很久的「usage 重复累加」必修前提**，6 task TDD，509 passed → [档案](features/11-20260811-streaming/README.md)
+- 2026-08-11 12-tui 立项——阶段 2 后半程开工：档案建立状态「讨论中」、.active 切过去、分支 feat/12-tui，待前置精读（TUI 半程一篇笔记都没有）与 brainstorm 拍板 → [档案](features/12-20260811-tui/README.md)
+- 2026-08-11 12-tui brainstorm→spec 定稿——前置精读补 TUI 半程两篇 + 反向对照撞出 6 条（含推翻 TODO「问题框接管输入焦点」的判断）；四问拍板：方案 A 底部活动区 / plan 不进本轮（改判 09）/ 对话框照抄 CC 抑制语义 / 干活时输入走 followUp → [spec](features/12-20260811-tui/spec.md)
+- 2026-08-11 12-tui 交付——阶段 2 后半程：scrollback 在上、pai 接管的 dock 在下（方案 A，CC 主形态的最小复刻）；**输入归属由仲裁函数算出来**关掉 08 那条真实事故（提问期间敲 `!命令` 就是执行命令）、`/mode` + shift+tab 模式轮转、干活时打字进 followUp、并发按动作聚合可见、resize/非 tty 闸门/异常兜底/终端复原；8 task TDD + 真 pty 冒烟撞出「空闲每 100ms 白刷一帧」，680 passed → [档案](features/12-20260811-tui/README.md)
+- 2026-08-11 12-tui 交付后修复波——用户真跑打回三条**离线全绿却坏掉**的（答案完全不上屏 / 权限框走老 asker 在 raw mode 下整个程序死住 / commit 不拆换行不折行导致满屏阶梯），全在**组件之间的接缝**上；另按用户要求补视觉层（logo 流光、青蓝配色、去 emoji、用户输入整行色带、工具输出默认折叠 + `^O` 展开），747 passed → [档案](features/12-20260811-tui/README.md)
+- 2026-08-11 13-alt-screen 立项（未动工）——「工具结果能点 / transcript 能滚 / 像新开一个窗口」三条底下是同一个约束「谁拥有屏幕」，方案 A 结构上做不到；会推翻阶段 2 原则 2，故按规矩 7 另立档案，用户拍板「先键盘展开、alt-screen 单独立项」 → [档案](features/13-20260811-alt-screen/README.md)
