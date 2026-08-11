@@ -92,3 +92,20 @@ def test_png_is_produced_and_non_trivial(tmp_path):
     out = tmp_path / "shot.png"
     to_png(replay(load(str(path))), str(out))
     assert out.exists() and out.stat().st_size > 1000
+
+
+def test_width_changes_are_detected_and_only_the_last_segment_is_replayed():
+    """dock 的重绘是**相对光标移动**，行数按当时的宽度算。
+
+    拿 100 列的屏幕去放 50 列时写的帧，行数对不上、上移被夹到第 0 行，
+    会把顶部内容覆盖掉——**图上像是 pai 画花了，其实是回放放错了**。
+    """
+    from pai.tui.replay import width_segments
+
+    records = [{"cols": 100, "rows": 24, "data": "早期内容\r\n"},
+               {"cols": 50, "rows": 24, "data": "窄的时候\r\n"},
+               {"cols": 100, "rows": 24, "data": "最后一段"}]
+    assert width_segments(records) == [(0, 100), (1, 50), (2, 100)]
+    assert "最后一段" in to_text(replay(records))
+    assert "早期内容" not in to_text(replay(records))
+    assert "早期内容" in to_text(replay(records, whole=True))

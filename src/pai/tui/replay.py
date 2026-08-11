@@ -90,14 +90,33 @@ def load(path: str) -> List[dict]:
     return records
 
 
-def replay(records: List[dict], *, rows: Optional[int] = None) -> VirtualScreen:
+def width_segments(records: List[dict]) -> List[Tuple[int, int]]:
+    """录制按终端宽度切段，返回 [(起始下标, 宽度)]。"""
+    out: List[Tuple[int, int]] = []
+    for i, record in enumerate(records):
+        cols = record.get("cols", 80)
+        if not out or out[-1][1] != cols:
+            out.append((i, cols))
+    return out
+
+
+def replay(records: List[dict], *, rows: Optional[int] = None,
+           whole: bool = False) -> VirtualScreen:
     """把录制喂进模拟器。
 
-    尺寸取**最后一条记录**的宽度——回放的是「最终看到的那一屏」。
-    高度默认放大到能装下全部内容，这样 scrollback 不会被截掉（我们要看的是整段对话）。
+    **宽度中途变过的录制，默认只回放最后一段**（`whole=True` 可强制全放）。
+    理由是实撞出来的：dock 的重绘用的是**相对光标移动**，行数是按当时那个宽度
+    算出来的。拿 100 列的屏幕去放 50 列时写的帧，行数对不上、上移被夹到第 0 行，
+    结果把顶部的 logo 覆盖掉了——**图上像是 pai 画花了，其实是回放放错了**。
+    这正是「验证工具自己也要被验证」那条（features/14 复盘）。
+
+    高度默认放大到能装下全部内容，这样 scrollback 不会被截掉。
     """
     if not records:
         raise SystemExit("录制是空的")
+    segments = width_segments(records)
+    if len(segments) > 1 and not whole:
+        records = records[segments[-1][0]:]
     cols = records[-1].get("cols", 80)
     total = sum(r["data"].count("\n") for r in records) + 4
     screen = VirtualScreen(cols=cols, rows=rows or max(24, min(total, 400)),
@@ -178,9 +197,17 @@ def main(argv=None) -> int:
     parser.add_argument("-o", "--output", default=None, help="PNG 输出路径")
     parser.add_argument("--text", action="store_true", help="只打文本，不出图")
     parser.add_argument("--rows", type=int, default=None)
+    parser.add_argument("--all", action="store_true",
+                        help="宽度变过时也强制回放全程（画面会错位，仅供排查）")
     args = parser.parse_args(argv)
 
-    screen = replay(load(args.recording), rows=args.rows)
+    records = load(args.recording)
+    segments = width_segments(records)
+    if len(segments) > 1:
+        widths = " → ".join(str(w) for _, w in segments)
+        scope = "全程（会错位）" if args.all else f"仅最后一段（{segments[-1][1]} 列）"
+        print(f"（录制中途改过宽度：{widths}；本次回放{scope}）", file=sys.stderr)
+    screen = replay(records, rows=args.rows, whole=args.all)
     if screen.unknown:
         print(f"（回放时遇到 {len(screen.unknown)} 处未识别序列，已忽略：",
               ", ".join(sorted(set(screen.unknown))[:5]), "）", file=sys.stderr)
