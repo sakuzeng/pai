@@ -79,6 +79,7 @@
 | [03-20260809-design-gate](03-20260809-design-gate/README.md) | 已交付 | 档案未拍板不许改 src/tests 的 PreToolUse 门禁，注入验证真会拦 |
 | [04-20260809-review-fixes](04-20260809-review-fixes/README.md) | 已交付 | 全量代码梳理（R3，15 条 finding）后修掉 10 条防御缺口，TDD 7 红转绿 |
 | [10-20260811-memory-recall](10-20260811-memory-recall/README.md) | 已交付 | 记忆召回层：一事一文件 + frontmatter、索引改投影、相对时间与陈旧警告、每轮侧查询选 ≤5 篇注入，458 passed |
+| [15-20260811-fake-provider](15-20260811-fake-provider/README.md) | 已交付 | 本地假 provider（真 HTTP + OpenAI 兼容协议）+ 真 pty e2e：**「需要模型开口」的功能也能自动测了**，用户打回的三条 bug 各钉一条，769 passed |
 | [14-20260811-session-capture](14-20260811-session-capture/README.md) | 已交付 | `PAI_TUI_RECORD` 录终端字节 + `pai-replay` 回放成 PNG——**让 AI 自己看得见界面**，不必每次让用户截图；终端模拟器升为一等公民，回放与测试共用同一份，756 passed |
 | [13-20260811-alt-screen](13-20260811-alt-screen/README.md) | 讨论中 | 让 pai 拥有整屏：工具结果可点、transcript 可滚、像新开一个窗口。**会推翻阶段 2 原则 2**，故另立档案 |
 | [12-20260811-tui](12-20260811-tui/README.md) | 已交付 | 阶段 2 后半程 TUI：scrollback + dock、输入归属仲裁（关掉 08 那条真实事故）、`/mode` + shift+tab、干活时打字排队、并发可见，8 task TDD，680 passed |

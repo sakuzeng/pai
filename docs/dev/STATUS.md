@@ -105,11 +105,15 @@ usage 的取法按实测重写（D#58）：`include_usage` 在 DeepSeek 上是�
 
 ## 测试
 
-共收集 **760 项**（阶段 2 REPL 8 task + 阶段 3 记忆 7 task + 交付后五个补漏 + 文档一致性
+共收集 **772 项**（阶段 2 REPL 8 task + 阶段 3 记忆 7 task + 交付后五个补漏 + 文档一致性
 + **阶段 4 权限 task 1-7** + **feature 10 记忆召回 7 task** + **feature 11 流式 task 1-6**
-+ **feature 12 TUI task 1-9** + **feature 14 录制与回放**）：
++ **feature 12 TUI task 1-9** + **feature 14 录制与回放** + **feature 15 假 provider + e2e**）：
 
-- `./test.sh` → **757 passed, 3 deselected**，全部离线（`tests/fake_llm.py` 假 provider）。**这是默认路径。**
+- `./test.sh` → **769 passed, 3 deselected**，全部离线，约 34s。**这是默认路径。**
+  两套假 provider 分工是硬的：`tests/fake_llm.py` **注入**的假客户端测装配与逻辑；
+  `tests/fake_provider.py` **起一个真 HTTP 服务**，让真 pai 进程经 `PAI_BASE_URL` 打进来——
+  于是 `tests/test_e2e_tui.py` 能在真 pty 里跑完整回合（真 SSE、真 gate、真 TUI），
+  录制回放后**断言屏幕上有什么**。feature 12 被用户打回的三条 bug 各钉了一条。
 - `./test.sh --llm` → 额外跑打真实 API 的冒烟测试，**会产生费用**。
   需同时满足有 `DEEPSEEK_API_KEY` 且 `PAI_RUN_LLM_TESTS=1`——花钱的副作用不能是默认行为。
 
