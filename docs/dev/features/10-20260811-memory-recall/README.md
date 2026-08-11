@@ -2,6 +2,7 @@
 
 状态：已交付（2026-08-11，7 task TDD，458 passed；复盘见 [复盘.md](复盘.md)）
 分支：`feat/10-memory-recall`（brainstorm 拍板 + 全部实现）
+流程：superpowers 全链路（brainstorm → spec → plan → 7 task SDD → 合并 → tag `memory-v1`）
 
 <!-- 状态取值：讨论中 → 已拍板 → 实现中 → 已交付 → 已验收；只在此处维护一份 -->
 

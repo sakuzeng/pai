@@ -187,3 +187,35 @@ def test_declared_branches_follow_the_naming_convention():
                 f"{d.name} 声明的分支 {name!r} 不合规约：应为 <类型>/<描述>，"
                 f"类型取 {list(BRANCH_PREFIXES)}，描述全小写连字符"
             )
+
+
+PROCESS_RULE_DATE = "20260811"      # 「档案头部必有流程字段」立规之日（features/README 规矩 9）
+
+
+def test_feature_archives_declare_their_process():
+    """spec/plan 只在走全链路时才有，中等改动可以省——**但省了要说是省的**。
+
+    起因：2026-08-11 用户问「15 这个没有 plan 吗」。按规矩它不算违规，
+    可档案里没写「为什么没有」，于是「选了中等改动通道」与「漏了」看起来一模一样。
+    机器判不了「这条流程选得对不对」，只判「有没有把选择写下来」。
+    """
+    for d in sorted(p for p in FEATURES.iterdir() if p.is_dir() and p.name != "_template"):
+        if d.name.split("-")[1] < PROCESS_RULE_DATE:
+            continue
+        text = (d / "README.md").read_text(encoding="utf-8")
+        m = re.search(r"^流程：[^\S\n]*(\S.*)$", text, re.M)
+        assert m, f"{d.name} 的档案缺「流程：」字段（features/README 规矩 9）"
+        assert len(m.group(1).strip()) > 6, f"{d.name} 的「流程：」字段太空洞"
+
+
+def test_full_chain_archives_actually_have_a_spec_and_plan():
+    """声明走了全链路就得拿得出 spec 与 plan——否则这个字段也成了自说自话。"""
+    for d in sorted(p for p in FEATURES.iterdir() if p.is_dir() and p.name != "_template"):
+        if d.name.split("-")[1] < PROCESS_RULE_DATE:
+            continue
+        line = re.search(r"^流程：[^\S\n]*(.*)$", (d / "README.md").read_text(encoding="utf-8"), re.M)
+        if "全链路" not in line.group(1) or "待定" in line.group(1):
+            continue
+        for required in ("spec.md", "plan.md"):
+            assert (d / required).is_file(), \
+                f"{d.name} 声明走了全链路，却没有 {required}"

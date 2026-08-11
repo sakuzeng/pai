@@ -2,6 +2,7 @@
 
 状态：已交付（2026-08-11，方案 B，6 task TDD，509 passed；复盘见 [复盘.md](复盘.md)）
 分支：`feat/11-streaming`（自 `main` 开出，承担立档案 → 前置精读 → brainstorm → 实现全程）
+流程：superpowers 全链路（brainstorm → spec → plan → 6 task SDD → 合并 → tag `streaming-v1`）
 
 <!-- 状态取值：讨论中 → 已拍板 → 实现中 → 已交付 → 已验收；只在此处维护一份 -->
 
