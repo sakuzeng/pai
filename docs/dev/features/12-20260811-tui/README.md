@@ -1,6 +1,7 @@
 # 12-tui
 状态：已交付
 分支：`feat/12-tui`（立项、前置精读与反向对照、实现）
+流程：superpowers 全链路（brainstorm → spec → plan → 8 task SDD → 合并 → tag `tui-v1`）
 
 <!-- 状态取值：讨论中 → 已拍板 → 实现中 → 已交付 → 已验收；只在此处维护一份 -->
 
