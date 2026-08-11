@@ -16,6 +16,7 @@ dev = [
 [project.scripts]
 pai = "pai.cli:main"
 pai-viz = "pai.viz.server:main"
+pai-replay = "pai.tui.replay:main"
 
 [build-system]
 requires = ["setuptools>=68"]

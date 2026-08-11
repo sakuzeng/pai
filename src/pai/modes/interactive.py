@@ -81,6 +81,7 @@ from pai.tui.app import (
 from pai.tui.dialog import CANCELLED, Dialog
 from pai.tui.keys import KeyDecoder
 from pai.tui.driver import TuiDriver
+from pai.tui.record import Recorder, record_path
 from pai.tui.renderer import DockRenderer
 from pai.tui.terminal import TerminalSession, tui_available
 from pai.tui import theme
@@ -531,17 +532,17 @@ def _handle_mode(line: str, *, out: Callable[[str], None], mode_state=None) -> N
     所以模式切换**命令与快捷键都要有**，不是二选一。
     """
     if mode_state is None:
-        out("🔐 权限模式：未装配（该模式下模式不可切）")
+        out("[权限] 模式未装配（该模式下模式不可切）")
         return
     parts = line.split()
     if len(parts) == 1:
-        out(f"🔐 当前权限模式：{mode_state()}")
+        out(f"[权限] 当前模式：{mode_state()}")
         out(f"   可选：{', '.join(MODES)}")
         out(f"   shift+tab 轮转顺序：{' → '.join(MODE_CYCLE)}"
             "（dontAsk 不在环里：它与「无真人」是同一件事）")
         return
     try:
-        out(f"🔐 权限模式 → {mode_state.set(parts[1])}")
+        out(f"[权限] 模式 → {mode_state.set(parts[1])}")
     except ValueError as e:
         out(f"❌ {e}")
 
@@ -550,7 +551,7 @@ def _show_permissions(out: Callable[[str], None], rules, hooks=(), *,
                       mode_state=None) -> None:
     """列出规则与来源。「被哪条规则挡的、那条从哪来」是用户能自己修的前提。"""
     if mode_state is not None:
-        out(f"🔐 当前权限模式：{mode_state()}")
+        out(f"[权限] 当前模式：{mode_state()}")
     if rules is None:
         out("🔒 权限：未装配规则")
         return
@@ -631,7 +632,12 @@ def _run_tui(*, out, client, model, tools, messages, anchors, state, follow_up, 
     而不是「谁先 read() 谁拿到」。跨轮状态、命令、shell 模式、压缩、召回全部照旧。
     """
     color = theme.use_color(is_tty=sys.stdout.isatty())
-    app = TuiApp(renderer=DockRenderer(write=_stdout_write, width=lambda: term.columns),
+    # 录制默认关闭（feature 14）。开启后只是把写终端的字节 tee 一份，行为不变——
+    # 有了它 AI 才看得见界面，不必每次让用户截图。
+    path = record_path()
+    recorder = Recorder(path, size=lambda: (term.columns, term.rows)) if path else None
+    write = recorder.wrap(_stdout_write) if recorder else _stdout_write
+    app = TuiApp(renderer=DockRenderer(write=write, width=lambda: term.columns),
                  history=_history_lines(history), color=color)
     app.editor.color = color
     term = TerminalSession(on_resize=app.refresh)
@@ -739,7 +745,7 @@ def _run_tui(*, out, client, model, tools, messages, anchors, state, follow_up, 
                 elif kind == CYCLE_MODE:
                     mode_state.cycle(bypass_available=True)
                     app.dock.set_mode(mode_state())
-                    commit(f"🔐 权限模式 → {mode_state()}")
+                    commit(theme.paint(f"[权限] 模式 → {mode_state()}", theme.YELLOW, color=color))
                 elif kind == COMMAND:
                     if _dispatch_command(payload, commit=commit, out=commit,
                                          messages=messages, anchors=anchors,
@@ -774,6 +780,8 @@ def _run_tui(*, out, client, model, tools, messages, anchors, state, follow_up, 
     finally:
         term.stop()
         app.renderer.clear()
+        if recorder is not None:
+            recorder.close()
         out("再见。")
 
 
