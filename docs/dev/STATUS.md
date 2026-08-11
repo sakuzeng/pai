@@ -75,6 +75,8 @@ usage 的取法按实测重写（D#58）：`include_usage` 在 DeepSeek 上是�
 | `tui/dialog.py` | 可用 | 权限 ask 与 AskUserQuestion 共用；`handoff()` 把 `!`/`/` 交回主循环执行（08 铁证的修法）；Esc 取消 |
 | `tui/dock.py` | 可用 | 活动区（按动作聚合计数）/ 队列区 / 状态行（转圈 + 已用时 + token + 模式 + 待决数）；`AgentEnd` 吐一行摘要给 commit |
 | `tui/app.py` / `tui/driver.py` | 可用 | app 粘合各组件（可测）；driver 读真 stdin（`select` 轮询，空闲时靠 `needs_tick()` 不白刷）。**driver 无单测**，靠 playground 冒烟顶着 |
+| `tui/screen.py` | 可用 | 最小终端模拟器（字节 → 屏幕，含 SGR 配色跟踪）。**测试断言与回放出图共用同一份**——分成两份的话「测试全绿」与「图上是对的」会各说各话 |
+| `tui/record.py` / `tui/replay.py` | 可用 | `PAI_TUI_RECORD=<路径>` 录下写给终端的字节（含尺寸与 resize）；`pai-replay <文件> -o 图.png` 回放成 PNG，**让 AI 自己看得见界面**（feature 14） |
 | `tui/terminal.py` | 可用 | raw mode 进出、`SIGWINCH` **同步不去抖 + 同尺寸丢弃**、退出无条件复原、非 tty 闸门（判 stdout）、非主线程明确告警 |
 | skills / mcp_client / evals | 未开始 | 路线图后续阶段，见 [roadmap.md](roadmap.md) |
 
@@ -103,11 +105,11 @@ usage 的取法按实测重写（D#58）：`include_usage` 在 DeepSeek 上是�
 
 ## 测试
 
-共收集 **750 项**（阶段 2 REPL 8 task + 阶段 3 记忆 7 task + 交付后五个补漏 + 文档一致性
+共收集 **759 项**（阶段 2 REPL 8 task + 阶段 3 记忆 7 task + 交付后五个补漏 + 文档一致性
 + **阶段 4 权限 task 1-7** + **feature 10 记忆召回 7 task** + **feature 11 流式 task 1-6**
-+ **feature 12 TUI task 1-9**）：
++ **feature 12 TUI task 1-9** + **feature 14 录制与回放**）：
 
-- `./test.sh` → **747 passed, 3 deselected**，全部离线（`tests/fake_llm.py` 假 provider）。**这是默认路径。**
+- `./test.sh` → **756 passed, 3 deselected**，全部离线（`tests/fake_llm.py` 假 provider）。**这是默认路径。**
 - `./test.sh --llm` → 额外跑打真实 API 的冒烟测试，**会产生费用**。
   需同时满足有 `DEEPSEEK_API_KEY` 且 `PAI_RUN_LLM_TESTS=1`——花钱的副作用不能是默认行为。
 

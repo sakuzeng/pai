@@ -321,6 +321,23 @@ def _cmd(line, mode_state):
     return "\n".join(out)
 
 
+def test_no_emoji_in_tui_authored_lines():
+    """D#63：界面自己的文案不用 emoji（字体缺字 + 宽度不确定）。
+
+    2026-08-11 靠**自己回放出图**发现的第一个问题——`🔐 权限模式 →` 是 feature 12
+    我自己写的 TUI 侧文案，违反了我自己立的规矩。
+    （`render_text` 与 `_handle_command` 里那些是 05/06 交付的 scrollback 内容，
+    本轮不动，见 theme.py 的声明。）
+    """
+    import inspect
+
+    from pai.modes import interactive
+
+    source = inspect.getsource(interactive._run_tui)
+    for ch in source:
+        assert ord(ch) < 0x1F000, f"_run_tui 里出现 emoji: {ch!r}"
+
+
 def test_mode_command_shows_the_current_mode_and_the_cycle():
     from pai.core.permissions import PermissionModeState
 
