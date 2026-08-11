@@ -94,7 +94,9 @@ src/pai/
     statusline.py  工具调用状态行（纯函数 render，按终端列宽算中文宽度）
   viz/             架构可视化：pai-viz 起本地网页，结构图（工具自动自省）+ 阶段路线图（解析 STATUS.md）
 evals/             评测集与跑批
-tests/             pytest；tests/fake_llm.py 是假 provider（学 pi 的 faux provider 模式）
+tests/             pytest。两套假 provider 分工是硬的：fake_llm.py 是**注入式**假客户端（测装配与逻辑），
+                   fake_provider.py **起真 HTTP 服务**说 OpenAI 兼容协议，让真 pai 进程经 PAI_BASE_URL 打进来，
+                   于是 test_e2e_tui.py 能在真 pty 里跑完整回合并断言屏幕上有什么
 test.sh            统一测试入口，默认不打真实 API
 docs/dev/          开发记录：decisions（为什么这么选）/ devlog（做了什么）/ STATUS（现在到哪）/ TODO / roadmap（阶段地图）/ reviews
 knowledge/         学习沉淀：官方文档精读、源码走读、方法论回流（索引与规约见 knowledge/README.md）
@@ -103,9 +105,13 @@ refs/              外部参考资料（DeepSeek 文档快照，不入库，用�
 
 ## 已知缺口（刻意的，按路线图逐阶段补）
 
-**没有权限确认**（模型说跑 `rm -rf` 就真跑，阶段 4）、**没有流式**（阶段 5）、
-**没有 TUI**（阶段 2 后半程，所以没有「点一下展开」这类交互）、
 **没有 skills / MCP**（阶段 6）、**没有评测集**（阶段 7）、**没有会话恢复**（`--resume`）。
+
+TUI 已交付（阶段 2 后半程，tag `tui-v1`）：scrollback 在上、pai 接管的 dock 在下——
+输入归属由一个仲裁函数算出来、`/mode` 与 shift+tab 切权限模式、干活时打的字排队、
+并发按动作聚合可见。**但它只接管底部**，所以**工具结果不能点、transcript 不能滚**——
+那要整屏归 pai（alt-screen），已单独立项 [features/13](docs/dev/features/13-20260811-alt-screen/README.md)。
+权限（阶段 4）与流式（阶段 5）也已交付。
 
 每补一块，在 `docs/dev/decisions.md` 记一条「pi/CC 怎么做的、我怎么做的、为什么」；
 每个需求一个档案在 `docs/dev/features/`（需求→方案→拍板问答→红绿数字→复盘），

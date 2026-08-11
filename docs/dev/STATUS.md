@@ -1,6 +1,6 @@
 # 当前状态快照
 
-最后更新：2026-08-11（**阶段 2 后半程 TUI**交付）。
+最后更新：2026-08-11（**阶段 2 后半程 TUI** + 录制回放 + 假 provider e2e 交付）。
 **数字由机器对账**：`test_status_reports_the_current_test_count` 会在完整跑时校验本页的 passed 数——漂了三次之后不再靠人肉。
 给接手者（人或 AI）一页看清现状。
 「做了什么」的时间线见 [devlog.md](devlog.md)，「为什么这么选」见 [decisions.md](decisions.md)，
@@ -159,7 +159,15 @@ usage 的取法按实测重写（D#58）：`include_usage` 在 DeepSeek 上是�
 ## 下一步
 
 阶段 2（REPL + **TUI**）、阶段 3（记忆）、阶段 4（权限 + 工作目录边界）、阶段 5（流式）已交付。
-下一步按 roadmap 是**阶段 6 skills / MCP client**。
+随后 feature 14 补上**录制与回放**（`PAI_TUI_RECORD` + `pai-replay` 出 PNG，
+让 AI 自己看得见界面）、feature 15 补上**假 provider + 真 pty e2e**
+（「需要模型开口」的功能也能自动测了）。
+
+下一步有两条，按你要什么定：
+- **阶段 6 skills / MCP client**（roadmap 的下一阶段）；
+- **[features/13 alt-screen](features/13-20260811-alt-screen/README.md)**（讨论中）——
+  工具结果可点 / transcript 可滚 / 像新开一个窗口。三条底下是同一个约束「谁拥有屏幕」，
+  **会推翻阶段 2 的设计原则 2**，故另立档案。
 feature 12 的遗留见 TODO「feature 12（TUI）交付遗留」，其中一条值得先知道：
 **跑很久且不发事件的工具执行期间，用户打的字在 dock 上完全看不见**（字符没丢，
 在内核 tty 缓冲区，但屏幕不动）——在最需要反馈的时候没有反馈，12 复盘质疑二。
