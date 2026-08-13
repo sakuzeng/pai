@@ -30,7 +30,7 @@
 > **可迁移的教训**：「进 alt」与「画第一帧」的先后顺序错了，症状不在进入时，
 > **在退出之后**（主屏上多出一帧脏东西）。pai 没有 React，但同样有
 > 「装配 → 首次渲染 → 进入终端模式」三步，顺序错了同样会在退出时才暴露。
-> 与 [K injection-seams](../concepts/injection-seams.md) 的「装配期」是同一类账。
+> 与 [K injection-seams](../engineering/injection-seams.md) 的「装配期」是同一类账。
 
 组件的 docstring 还点了一句 pai 直接能用的：
 「Safe for use in **ctrl-o transcript overlays** and similar temporary fullscreen
@@ -93,7 +93,7 @@ pane 的行为**，还会在 kill-pane 或多实例竞争时泄漏；现在改�
 > pai 实测（iTerm2 3.6.11 与 Terminal.app 470.2）：**重发 `?1049h` 会清屏并把光标
 > 打回原点**，即前一句对、后一句错，且不是 iTerm2 独有。
 > 证据见 [features/13 evidence](../../docs/dev/features/13-20260811-alt-screen/evidence/20260811-alt-screen反向对照/说明.md)
-> 第 1 条；机制见 [K alt-screen-and-mouse](../concepts/alt-screen-and-mouse.md)。
+> 第 1 条；机制见 [K alt-screen-and-mouse](../tui/alt-screen-and-mouse.md)。
 
 ## 四、命中测试便宜，选区昂贵
 

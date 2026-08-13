@@ -53,7 +53,7 @@ pai 的 loop 每步一次阻塞的 `client.chat.completions.create()`，拿到�
 
 **理由**：这不是省事，是躲开一个 bug。CC 的 `getAssistantMessageId` 存在的唯一原因就是
 「一次响应变成了多条记录」——那是它自己的建模选择带来的
-（[K concepts/streaming-tool-calls.md](../../../../knowledge/concepts/streaming-tool-calls.md) 第四节）。
+（[K streaming/streaming-tool-calls.md](../../../../knowledge/streaming/streaming-tool-calls.md) 第四节）。
 pai 保持「一次响应 = 一条 assistant 消息」，这个补丁就永远不需要。
 **这条要写进代码注释**：将来谁想为了边流边显示把它拆成多条，得先读到这句话。
 

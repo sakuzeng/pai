@@ -153,7 +153,7 @@ Use `visibleWidth()` to measure and `truncateToWidth()` to truncate.」
 「一行 = 一个屏幕行」的相对光标移动全部错位，症状是满屏乱跳而非某处显示不全。
 与其让它错得莫名其妙，不如当场炸掉。
 
-> pai 锚点：pai 的 `render_tool_line` 已经自己截断（`concepts/terminal-width.md`），
+> pai 锚点：pai 的 `render_tool_line` 已经自己截断（`tui/terminal-width.md`），
 > 本次实测 1..120 列 × 中文/emoji/ASCII 混合**零越界**（见 features/12 evidence）。
 > 但 pai 目前**没有任何断言挡住「将来某个组件忘了截断」**——pi 这条 fail-loud
 > 是便宜且高价值的仿制品。

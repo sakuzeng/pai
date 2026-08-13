@@ -86,5 +86,5 @@ pai-replay /tmp/s.jsonl --text         # 只要文本
 
 ## 用到的知识
 
-- [K concepts/terminal-raw-mode.md](../../../../knowledge/concepts/terminal-raw-mode.md)
-- [K concepts/terminal-width.md](../../../../knowledge/concepts/terminal-width.md)
+- [K tui/terminal-raw-mode.md](../../../../knowledge/tui/terminal-raw-mode.md)
+- [K tui/terminal-width.md](../../../../knowledge/tui/terminal-width.md)

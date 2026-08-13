@@ -1,6 +1,6 @@
 # agent 的上下文管理（亲手实现后的综合）
 
-- 来源：本项目阶段 1 实现（feat/compaction 分支）；官方精读见 [../claude-docs/context-management.md](../claude-docs/context-management.md)；CC 策略见 [../source-walks/cc-compaction.md](../source-walks/cc-compaction.md)
+- 来源：本项目阶段 1 实现（feat/compaction 分支）；官方精读见 [../context/claude-context-management.md](../context/claude-context-management.md)；CC 策略见 [../context/cc-compaction.md](../context/cc-compaction.md)
 - 精读日期：2026-08-09（压缩闭环交付当天的复盘沉淀）
 - pai 锚点：`src/pai/core/compaction.py` + `src/pai/core/loop.py` 触发块（已实现）
 

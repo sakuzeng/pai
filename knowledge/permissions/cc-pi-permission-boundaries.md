@@ -7,7 +7,7 @@
 - 精读日期：2026-08-10
 - pai 锚点：`src/pai/core/permissions.py`、docs/dev/decisions.md #47 #50、features/09
 
-**为什么补这一篇**：阶段 4 的前置精读 `claude-docs/permissions-hooks.md` 里
+**为什么补这一篇**：阶段 4 的前置精读 `permissions/claude-permissions-hooks.md` 里
 「工作目录 / cwd / 目录边界」**grep 零命中**，pi 侧则整个阶段只有一句
 「参照 pi 的 `beforeToolCall`」。结果是 pai 把 CC 的**引擎**照抄了，
 **策略一条没抄**，而 pi 的**免责声明**也没抄——交付出一个看着像 CC 的不设防 agent。

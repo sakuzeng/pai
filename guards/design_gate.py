@@ -3,7 +3,7 @@
 
 「先讨论再动手」写在 AGENTS.md 是提示词层软约束，会被忽略（anna 实践与
 R2#5 评审都证实了）——本脚本把它降到确定性层。机制沉淀见
-knowledge/concepts/hooks-gates.md；对 anna 版的三处修正：
+knowledge/permissions/hooks-gates.md；对 anna 版的三处修正：
 判定抽纯函数带 pytest（tests/test_design_gate.py）、不硬编码任务路径
 （读 docs/dev/features/.active 指针）、放行是显式动作（.active 写 `!` 前缀，
 理由留在文件里可查）而非默认。

@@ -9,7 +9,7 @@
 
 **绝不发清屏/清 scrollback**：pi 的 main-screen 宽度一变就 `\\x1b[2J\\x1b[H\\x1b[3J`
 重画，它敢清是因为它持有整份文档；pai 不持有，清掉就画不回来
-（K source-walks/pi-tui-main-screen.md 第四节）。
+（K tui/pi-tui-main-screen.md 第四节）。
 """
 
 from __future__ import annotations

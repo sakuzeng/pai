@@ -5,7 +5,7 @@
 ## 背景与问题
 
 feature 06 交付的自动记忆只有**一层**：`MEMORY.md` 索引常驻上下文，主题文件「靠模型自己
-想起来 `read_file`」。[K cc-memdir](../../../../knowledge/source-walks/cc-memdir.md) 走读
+想起来 `read_file`」。[K cc-memdir](../../../../knowledge/memory/cc-memdir.md) 走读
 裁决了 06 复盘留下的悬案：**CC 的第二层是框架主动召回**，pai 缺的不是实现质量，是一整层机制。
 
 现状四处具体缺口：

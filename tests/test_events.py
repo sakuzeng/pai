@@ -112,3 +112,37 @@ def test_recall_injected_is_frozen():
 
     with pytest.raises(_dc.FrozenInstanceError):
         RecallInjected(names=()).names = ("x",)
+
+
+def test_steering_injected_says_what_went_in(tmp_path=None):
+    """feature 18 T2.5：注入必须在界面上可见。
+
+    `_extend` 原本只 append 进 messages 与 session，不发任何事件——于是用户
+    插的话进了上下文而屏幕一无所知。CC 踩过同款并修了（`utils/messages.ts` 的
+    `case 'queued_command'`：*"Previously this hardcoded isMeta:true, which hid
+    user-typed messages"*）。
+    """
+    from pai.core.events import SteeringInjected
+
+    assert render_text(SteeringInjected(texts=("改用 rg",))) == \
+        "📨 已插入 1 条：改用 rg"
+    assert render_text(SteeringInjected(texts=("改用 rg", "再看 tests/"))) == \
+        "📨 已插入 2 条：改用 rg、再看 tests/"
+
+
+def test_steering_injected_truncates_long_text():
+    """插的话可能很长，状态区不能被一条消息撑爆（同 _preview 的既有做法）。"""
+    from pai.core.events import SteeringInjected
+
+    line = render_text(SteeringInjected(texts=("一" * 200,)))
+    assert len(line) < 100
+    assert line.endswith("…")
+
+
+def test_steering_injected_is_frozen():
+    import dataclasses as _dc
+
+    from pai.core.events import SteeringInjected
+
+    with pytest.raises(_dc.FrozenInstanceError):
+        SteeringInjected(texts=()).texts = ("x",)

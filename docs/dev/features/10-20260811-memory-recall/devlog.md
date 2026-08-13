@@ -17,7 +17,7 @@
 （`- [约定](约定.md)`，`memory_tool.py:84`），连一句描述都没有——模型在上下文里
 看到的全部信息是「有个文件叫 `约定.md`」。三条 TODO 里最便宜、收益最大的一条反而没被记下。
 
-**一手证据**：走读笔记 [K cc-memdir](../../../../knowledge/source-walks/cc-memdir.md) 只覆盖读侧
+**一手证据**：走读笔记 [K cc-memdir](../../../../knowledge/memory/cc-memdir.md) 只覆盖读侧
 （`findRelevantMemories` / `memoryScan` / `memoryAge`）。本次在**本机 `~/.claude/projects/<slug>/memory/`
 读到了活的 CC 记忆文件**，补上了写侧格式的四条（详见 spec 附录一）：`description` 与索引钩子是
 两个不同字符串、`modified` 是写进 frontmatter 的 ISO 戳、`originSessionId` 能回指会话、
@@ -213,7 +213,7 @@ description 会覆写、正文会追加，唯独没断言 type——**测试覆�
 
 **改动**：`core/recall.py`、`core/events.py`、`modes/{once,interactive}.py`；
 `tests/test_recall.py` +8、`tests/test_events.py` +1；
-沉淀 [K concepts/reasoning-models-max-tokens.md](../../../../knowledge/concepts/reasoning-models-max-tokens.md)；
+沉淀 [K model-api/reasoning-models-max-tokens.md](../../../../knowledge/model-api/reasoning-models-max-tokens.md)；
 量测脚本 `pai_playground/smoke/recall_{json_object,max_tokens}.py`。
 
 **测试**：红 `6 failed, 24 passed` → `./test.sh` 全绿 `458 passed, 3 deselected`。

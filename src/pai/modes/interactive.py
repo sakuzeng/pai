@@ -6,14 +6,14 @@ r"""交互模式：纯 REPL（对应 pi 的 interactive 模式，TUI 是阶段 2
    不这么做的话每轮第一次请求都退回纯字符估算（-33% 误差），熔断器也每轮清零。
 2. **输入层**：历史（按工作目录分文件、连续重复只记一条）、`\` 续行、`!` shell 模式、
    `/` 命令——四条语义全部照官方 interactive-mode 章节
-   （K knowledge/claude-docs/interactive-mode.md），做不到的（Shift+Enter、补全、
+   （K knowledge/tui/claude-interactive-mode.md），做不到的（Shift+Enter、补全、
    转录查看器）在那篇笔记里逐条记了为什么。
 3. **中断**：干活期间 SIGINT 只置标志不抛异常，loop 与 bash 各自在自己的检查点响应；
    空闲期间恢复默认处理器，于是 input() 照常抛 KeyboardInterrupt，走「两级 Ctrl+C」。
 
-诚实边界：纯 REPL 的 input() 是阻塞的，agent 干活时用户根本没法打字，
-所以只有 followUp 队列有真实输入源，steering 传 None（结构与注入点已在 loop 里备好，
-等 TUI/流式才通电）。
+诚实边界：**纯 REPL 这条路上排队队列恒空**——input() 是阻塞的，agent 干活时
+用户根本没法打字。真实输入源在 TUI 那条路上（`_run_tui` 的 `on_event` 里
+每个事件顺手 `driver.poll(timeout=0)` 一次），feature 18 接的就是它。
 """
 
 from __future__ import annotations
@@ -311,7 +311,9 @@ def run_interactive(
     messages: List[dict] = []
     anchors = AnchorBook()
     state = CompactionState()
-    follow_up = PendingMessageQueue("single")
+    # 一条队列装两种东西：要发给模型的话，与 `/`、`!` 这类要交给客户端执行的命令。
+    # "all" 是问 3 拍板的注入模式（照 CC：两个 drain 点都是批量、每条各自一条消息）。
+    steering = PendingMessageQueue("all")
     flag = InterruptFlag()
     set_current(flag)                      # bash 工具从这里看见中断
     asker_state = {"exit": False}
@@ -342,7 +344,7 @@ def run_interactive(
 
     common = dict(
         client=client, model=model, tools=tools, messages=messages, anchors=anchors,
-        state=state, follow_up=follow_up, flag=flag, session=session,
+        state=state, steering=steering, flag=flag, session=session,
         max_steps=max_steps, max_total_tokens=max_total_tokens,
         context_window=context_window, compaction=compaction, gate=gate,
         recall=recall, rules=rules, hooks=hooks, mode_state=mode_state,
@@ -401,7 +403,7 @@ def run_interactive(
 
         try:
             _run_turn(line, client=client, model=model, tools=tools, messages=messages,
-                      anchors=anchors, state=state, follow_up=follow_up, flag=flag,
+                      anchors=anchors, state=state, steering=steering, flag=flag,
                       session=session, on_event=on_event, out=out, max_steps=max_steps,
                       max_total_tokens=max_total_tokens, context_window=context_window,
                       compaction=compaction, before_tool_call=gate, recall=recall)
@@ -433,9 +435,10 @@ def _interruptible(flag: InterruptFlag):
         _restore_sigint(previous)
 
 
-def _run_turn(task: str, *, client, model, tools, messages, anchors, state, follow_up,
+def _run_turn(task: str, *, client, model, tools, messages, anchors, state, steering,
               flag, session, on_event, out, max_steps, max_total_tokens,
-              context_window, compaction, before_tool_call=None, recall=None) -> None:
+              context_window, compaction, before_tool_call=None, recall=None,
+              on_queue_change: Optional[Callable[[int], None]] = None) -> None:
     with _interruptible(flag):
         answer = _guarded_run(
             out,
@@ -446,10 +449,12 @@ def _run_turn(task: str, *, client, model, tools, messages, anchors, state, foll
             compaction=compaction,
             before_tool_call=before_tool_call,
             recall=recall,
-            # steering 在纯 REPL 无输入源（阻塞的 input 拿不到「干活时打字」），
-            # 只接 followUp；注入点已在 loop 里备好，等 TUI/流式通电
             instructions=build_context,
-            get_follow_up_messages=follow_up.drain,
+            # 谓词把 `/`、`!` 滤掉且留在队列里——它们是给客户端执行的，
+            # 当文本发给模型是 CC 明文禁止的那件事（feature 18 问 5/7）。
+            # 纯 REPL 路径队列恒空（阻塞的 input 拿不到「干活时打字」），
+            # 传进去也只是空转；真实输入源在 TUI 那条路上。
+            get_steering_messages=_steering_source(steering, after_drain=on_queue_change),
         )
     # 不在这里打答案：流式已经逐字打过了（feature 11）。
     # 非 final 的结尾语（预算/步数/中断）由 modes.echo 按 AgentEnd.reason 负责打。
@@ -652,7 +657,7 @@ def _manual_compact(*, messages, anchors, state, client, model, compaction, out,
 # TUI 主循环（feature 12）。非 tty / 注入 reader 时走不到这里——上面那条闸门挡着。
 # ---------------------------------------------------------------------------
 
-def _run_tui(*, out, client, model, tools, messages, anchors, state, follow_up, flag,
+def _run_tui(*, out, client, model, tools, messages, anchors, state, steering, flag,
              session, max_steps, max_total_tokens, context_window, compaction, gate,
              recall, rules, hooks, mode_state, history, asker_state, asker_ref,
              trace=None) -> None:
@@ -761,9 +766,12 @@ def _run_tui(*, out, client, model, tools, messages, anchors, state, follow_up, 
         # 只是纯 REPL 从不去读。这里每个事件顺手取一次。
         for kind, payload in driver.poll(timeout=0):
             if kind == SUBMIT:
-                # 拍板问 4：干活时打的字**排队**，本轮结束后依次发出（CC 的 queued commands）
-                follow_up.enqueue({"role": "user", "content": payload})
-                app.dock.set_queued(_queue_size(follow_up))
+                # feature 18 问 1（改 12 的拍板问 4）：干活时打的字**本轮就注入**，
+                # 不再等本轮结束——照 CC 的默认值「人说话默认优先，机器说话默认等着」。
+                # `/`、`!` 也走这里进队列（`app.py:407` 的 `not self.busy` 让它们成为
+                # SUBMIT），注入时被谓词滤掉、本轮结束后交给客户端执行。
+                steering.enqueue({"role": "user", "content": payload})
+                app.dock.set_queued(_queue_size(steering))
             elif kind == INTERRUPT:
                 flag.set()
 
@@ -814,25 +822,50 @@ def _run_tui(*, out, client, model, tools, messages, anchors, state, follow_up, 
                 elif kind == SUBMIT:
                     _append_history(history, payload)
                     app.busy = True
-                    try:
-                        _run_turn(payload, client=client, model=model, tools=tools,
+
+                    def turn(task: str) -> None:
+                        _run_turn(task, client=client, model=model, tools=tools,
                                   messages=messages, anchors=anchors, state=state,
-                                  follow_up=follow_up, flag=flag, session=session,
+                                  steering=steering, flag=flag, session=session,
                                   on_event=on_event, out=commit, max_steps=max_steps,
                                   max_total_tokens=max_total_tokens,
                                   context_window=context_window, compaction=compaction,
-                                  before_tool_call=gate, recall=recall)
+                                  before_tool_call=gate, recall=recall,
+                                  # 补 2：本轮内 drain 掉多少，dock 的待决数就跟着减多少
+                                  on_queue_change=app.dock.set_queued)
+
+                    def queued_command(line: str) -> bool:
+                        """返回真 = 该退出（`/exit`）；`_process_queue_after_turn` 据此停手。"""
+                        if _dispatch_command(
+                                line, commit=commit, out=commit, messages=messages,
+                                anchors=anchors, state=state, tools=tools, client=client,
+                                model=model, compaction=compaction,
+                                context_window=context_window, rules=rules, hooks=hooks,
+                                mode_state=mode_state, session=session, flag=flag,
+                                app=app, on_event=on_event):
+                            exiting["v"] = True
+                        return exiting["v"]
+
+                    exiting = {"v": False}
+                    try:
+                        turn(payload)
+                        # 本轮结束后队列里可能还剩两种东西：被谓词滤下的 `/`、`!` 命令，
+                        # 以及**最后一次 drain 之后**才敲进来的普通消息
+                        # （`AgentEnd` 事件也会触发一次 poll）。followUp 删掉之后
+                        # 没人兜它们了，这里就是 CC `useQueueProcessor` 那一档。
+                        _process_queue_after_turn(steering, run_turn=turn,
+                                                  dispatch=queued_command)
                     except (EOFError, KeyboardInterrupt):
                         raise
                     except Exception as e:      # noqa: BLE001 - 对话留着
                         commit(f"❌ 本轮出错：{type(e).__name__}: {e}（对话已保留）")
                     finally:
                         app.busy = False
-                        app.dock.set_queued(_queue_size(follow_up))
+                        app.dock.set_queued(_queue_size(steering))
                         refresh_context()
                         app.refresh()
-                    if asker_state["exit"]:
-                        return
+                    if asker_state["exit"] or exiting["v"]:
+                        return          # 排队的 `/exit` 与提问里退出走同一条收尾路径
     finally:
         term.stop()
         # `term.stop()` 之后才打——`?1049l` 之前写的东西留在备用屏上，跟着屏幕一起没了。
@@ -865,6 +898,81 @@ def _dispatch_command(line: str, *, commit, app, session, flag, on_event, **kw) 
                            context_window=kw["context_window"], rules=kw["rules"],
                            hooks=kw["hooks"], mode_state=kw["mode_state"],
                            on_event=on_event)
+
+
+MAX_QUEUE_ROUNDS = 8
+"""本轮结束后最多处理几件排队的东西。
+
+不是怕代码写错，是怕**真跑时用户一直在打字**：每起一轮新的又会 poll 到新输入，
+理论上可以一直转下去。撞到上界就把剩下的留在队列里——下一轮结束时还会再处理一次，
+消息不丢，只是晚一点。
+"""
+
+
+def _steering_source(queue, *, after_drain: Optional[Callable[[int], None]] = None):
+    """注入侧的取数回调：滤掉命令 + **取完立刻报剩余量**。
+
+    第二件事是补 2 那个缺陷的修法：`set_queued` 原本只在「干活期间 enqueue 时」
+    与「本轮结束的 finally」被调用，而 `run_agent` 在本轮内 drain 掉队列之后
+    没有任何人更新——界面会一直显示 drain 前的旧数字直到轮末。
+
+    **为什么不挂在 `SteeringInjected` 事件上**：那条路只在 TUI 的 on_event 闭包里够得着，
+    单测碰不到（只能靠 e2e），而这里是个纯工厂，剩余量能被直接断言。
+    两者分工不同：事件负责**上屏可见**（transcript 与观测流），这里负责**计数准确**。
+    """
+    def take() -> List[dict]:
+        drained = queue.drain(where=_for_model)
+        if after_drain is not None:
+            # 一条都没取走时也要报：否则 enqueue 之后那个数字就停在旧值了
+            after_drain(_queue_size(queue))
+        return drained
+    return take
+
+
+def _process_queue_after_turn(queue, *, run_turn: Callable[[str], None],
+                              dispatch: Callable[[str], bool],
+                              max_rounds: int = MAX_QUEUE_ROUNDS) -> int:
+    """本轮结束后清空队列，返回处理了几件。
+
+    对应 CC 的 `useQueueProcessor`（turn 之间那一档）。两种东西两种去处：
+    **命令交客户端执行**（绝不能当文本发给模型），**消息起新一轮**。
+
+    为什么这个函数必须存在：followUp 队列删掉之后，「最后一次 drain 之后才敲进来的字」
+    没人兜了——`AgentEnd` 事件同样会触发一次 `driver.poll`，窗口小但真实存在。
+
+    **与 CC 的一处偏离**：CC 把同 mode 的消息批量塞进一个新 query，
+    pai 这里是一条消息一轮。因为 `run_agent(task)` 的 `task` 同时喂给
+    `AgentStart` 与 `recall()`——把 N 条拼成一个字符串会把这两处一起弄脏。
+    这条路上本来也只剩零星残余（两个注入出口已经批量取过了）。
+
+    `dispatch` 返回真 = 该退出 REPL（`/exit`），**立即停手**，剩下的留在队列里
+    由调用方收尾——用户说了退出，不该再起一轮新对话。
+    """
+    rounds = 0
+    while rounds < max_rounds:
+        item = queue.take_first()
+        if item is None:
+            break
+        text = str(item.get("content") or "")
+        rounds += 1
+        if _for_model(item):
+            run_turn(text)
+        elif dispatch(text):
+            break
+    return rounds
+
+
+def _for_model(message: dict) -> bool:
+    """这条排队消息该发给模型吗？`/`、`!` 开头的不是——它们是给**客户端**执行的。
+
+    CC 明文（`query.ts` mid-turn drain 处）：slash 命令 *must go through
+    processSlashCommand after the turn ends, **not be sent to the model as text***。
+    pai 的 `!` 同理（CC 那边 bash 模式命令也被排除在中途注入之外，只是滤在更下游）。
+
+    **`lstrip()` 不能省**：用户敲空格再敲 `/` 是常事，按裸 `startswith` 判就漏了，
+    那条命令会当文本发给模型——本函数是这条硬约束的唯一守门人。
+    """
+    return not str(message.get("content") or "").lstrip().startswith(("/", "!"))
 
 
 def _queue_size(queue) -> int:

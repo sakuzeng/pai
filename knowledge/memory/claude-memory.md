@@ -65,7 +65,7 @@ pai 阶段 3 的目标句「分层记忆文件加载 + 会话学得的东西写�
 user message 传进去的**，不是 system prompt 本身，所以没有严格遵守的保证。
 
 这正是 pai 已经实践过的结论的官方版本：`guards/design_gate.py`（PreToolUse）就是为了把
-AGENTS.md 里的软约束降到确定性层——见 [concepts/hooks-gates.md](../concepts/hooks-gates.md)
+AGENTS.md 里的软约束降到确定性层——见 [permissions/hooks-gates.md](../permissions/hooks-gates.md)
 与 features/03-20260809-design-gate。阶段 4 做权限时这条要再引一次：
 **能写进提示词的都不叫防线**。
 

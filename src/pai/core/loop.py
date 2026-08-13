@@ -44,6 +44,7 @@ from pai.core.events import (
     Interrupted,
     MessageDelta,
     PermissionDecided,
+    SteeringInjected,
     ToolEnd,
     ToolStart,
     render_text,
@@ -100,7 +101,6 @@ def run_agent(
     compaction: CompactionSettings | None = None,
     messages: Optional[List[dict]] = None,
     get_steering_messages: Optional[Callable[[], List[dict]]] = None,
-    get_follow_up_messages: Optional[Callable[[], List[dict]]] = None,
     interrupt_flag: Optional[InterruptFlag] = None,
     instructions: Optional[Callable[[], str]] = None,
     anchors: Optional[AnchorBook] = None,
@@ -281,10 +281,15 @@ def run_agent(
             )
 
         if not msg.tool_calls:
-            follow_ups = get_follow_up_messages() if get_follow_up_messages else []
-            if follow_ups:
+            # **steering 的第二个出口**（feature 18）。少了它，模型这轮直接作答时
+            # 队列里的话既不会注入、也不会退化，永久卡死——而收尾那轮通常就不调工具。
+            # 形状取自 pi 内层 while 的 `|| pendingMessages.length > 0`
+            # （agent-loop.ts:174「队列非空就不许退出」）；CC 在这种轮次上会退化成
+            # 轮末新开一个 query（needsFollowUp 是它唯一的循环退出信号），pai 不退化。
+            steering = get_steering_messages() if get_steering_messages else []
+            if steering:
                 # agent 本该停下，但用户排了队——继续跑，而不是让他重开一轮
-                _extend(messages, follow_ups, session)
+                _extend(messages, steering, session, on_event)
                 continue
             return finish("final", msg.content or "")
 
@@ -352,7 +357,7 @@ def run_agent(
         if get_steering_messages:
             # 注入点在**本轮所有工具结果都回填之后**：插在中间会劈开 tool_calls 与
             # 它的结果，配对当场断裂
-            _extend(messages, get_steering_messages(), session)
+            _extend(messages, get_steering_messages(), session, on_event)
 
     return finish("max_steps", f"达到最大步数（{max_steps}），任务可能未完成。")
 
@@ -392,11 +397,21 @@ def _adopt(state: CompactionState, updated: CompactionState) -> None:
     state.tripped = updated.tripped
 
 
-def _extend(messages: List[dict], extra: List[dict], session: SessionLog | None) -> None:
+def _extend(messages: List[dict], extra: List[dict], session: SessionLog | None,
+            on_event: Optional[Callable[[AgentEvent], None]] = None) -> None:
+    """追加消息，**并在追加完成之后**发一条 SteeringInjected（feature 18 T2.5）。
+
+    事件在循环之后发而不是每条一次：语义是「这一批已经进上下文了」。
+    `on_event=None` 时静默追加——`_inject_instructions` 那类系统注入不是用户插话，
+    不该顶着 steering 的名义上屏。
+    """
     for m in extra:
         messages.append(m)
         if session:
             session.append(m)
+    if on_event is not None and extra:
+        on_event(SteeringInjected(
+            texts=tuple(str(m.get("content") or "") for m in extra)))
 
 
 def _allowed(decision) -> bool:

@@ -135,6 +135,27 @@ class RecallInjected:
 
 
 @dataclass(frozen=True)
+class SteeringInjected:
+    """用户在 agent 干活期间插的话**已经进上下文了**（feature 18）。
+
+    此前 `_extend` 只 append 进 messages 与 session、不发事件，于是注入对界面
+    与观测流都是哑的：用户看不见自己那句话什么时候真的生效。
+    CC 踩过同款并专门修过（`utils/messages.ts` 的 `case 'queued_command'`：
+    *"Previously this hardcoded isMeta:true, which hid user-typed messages
+    in brief mode and in normal mode"*）——它那次修的是「藏起来了」，
+    pai 这次补的是「压根没说」。
+
+    **时序是契约**：本事件在 `_extend` **之后**发，语义是「已经进去了」而非
+    「即将进去」。两个注入出口（工具结果后、模型不调工具时）都发，
+    否则同一个动作在两种轮次上表现不同。
+
+    空 drain 不发（同 `RecallInjected` 的取舍：「注入了 0 条」不是一件发生过的事）。
+    """
+
+    texts: Tuple[str, ...]      # 不另存 count：len() 即是，两个字段就是两个事实源
+
+
+@dataclass(frozen=True)
 class MemoryWritten:
     topic: str
     path: str
@@ -167,10 +188,18 @@ AgentEvent = Union[
     RecallFailed,
     RecallInjected,
     ConversationCleared,
+    SteeringInjected,
     MemoryWritten,
     Interrupted,
     AgentEnd,
 ]
+
+
+def _clip(text: str, limit: int = 40) -> str:
+    """按**字符数**截断（不是显示宽度）：这里只求「别撑爆一行」，
+    真正按终端列宽排版的活在 tui/theme.wrap 与 statusline 里，不在事件层重做一遍。"""
+    flat = " ".join(text.split())
+    return flat if len(flat) <= limit else flat[:limit] + "…"
 
 
 def render_text(event: AgentEvent) -> Optional[str]:
@@ -203,6 +232,10 @@ def render_text(event: AgentEvent) -> Optional[str]:
         return "🧹 已清空对话（保留 system）"
     if isinstance(event, RecallInjected):
         return f"🧠 召回 {len(event.names)} 篇记忆：{'、'.join(event.names)}"
+    if isinstance(event, SteeringInjected):
+        # 一条可能很长（用户能粘贴整段），状态区不该被一条消息撑爆
+        joined = "、".join(_clip(t) for t in event.texts)
+        return f"📨 已插入 {len(event.texts)} 条：{joined}"
     if isinstance(event, MemoryWritten):
         return f"🧠 已记住（{event.topic}）→ {event.path}"
     if isinstance(event, Interrupted):

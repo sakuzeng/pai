@@ -27,8 +27,8 @@ feature 07 交付的是**引擎**（三态求值 + 匹配下放 + 两层配置 +
 
 ## 调研（本需求的前置精读，已补）
 
-[knowledge/source-walks/cc-pi-permission-boundaries.md](../../../../knowledge/source-walks/cc-pi-permission-boundaries.md)
-——feature 07 的前置精读 `claude-docs/permissions-hooks.md` 里「工作目录/cwd/目录边界」
+[knowledge/permissions/cc-pi-permission-boundaries.md](../../../../knowledge/permissions/cc-pi-permission-boundaries.md)
+——feature 07 的前置精读 `permissions/claude-permissions-hooks.md` 里「工作目录/cwd/目录边界」
 **grep 零命中**，pi 侧整个阶段只有一句「参照 `beforeToolCall`」。这就是漏掉这一层的直接原因。
 
 三条决定性发现：
@@ -186,15 +186,15 @@ bypass 提到显式 ask 之前 → 1 红。**其中第 4 条第一次注错了**
 ## 用到的知识
 
 **读进来的**（动工前的调研）：
-- [knowledge/source-walks/cc-pi-permission-boundaries.md](../../../../knowledge/source-walks/cc-pi-permission-boundaries.md)
+- [knowledge/permissions/cc-pi-permission-boundaries.md](../../../../knowledge/permissions/cc-pi-permission-boundaries.md)
   —— 本需求的直接前置，CC `filesystem.ts` 源码走读 + pi 的零内置权限哲学
-- [knowledge/claude-docs/permissions-hooks.md](../../../../knowledge/claude-docs/permissions-hooks.md)
+- [knowledge/permissions/claude-permissions-hooks.md](../../../../knowledge/permissions/claude-permissions-hooks.md)
   —— feature 07 的前置，**本次发现它有目录边界缺口**（grep 零命中）
 
 **写出去的**（开发中撞出的可迁移知识，AGENTS.md「知识沉淀」要求）：
-- [knowledge/concepts/path-boundary-checks.md](../../../../knowledge/concepts/path-boundary-checks.md)
+- [knowledge/permissions/path-boundary-checks.md](../../../../knowledge/permissions/path-boundary-checks.md)
   —— 路径边界判定四条坑，换语言换项目仍成立
-- [knowledge/concepts/mutation-testing-pitfalls.md](../../../../knowledge/concepts/mutation-testing-pitfalls.md)
+- [knowledge/engineering/mutation-testing-pitfalls.md](../../../../knowledge/engineering/mutation-testing-pitfalls.md)
   —— 注入反证的三条教训（含本次注错那一回）
-- [knowledge/concepts/hooks-gates.md](../../../../knowledge/concepts/hooks-gates.md)
+- [knowledge/permissions/hooks-gates.md](../../../../knowledge/permissions/hooks-gates.md)
   —— 追加「fail-open vs fail-closed 按失败代价分场景」一节（D#54 的可迁移形态）

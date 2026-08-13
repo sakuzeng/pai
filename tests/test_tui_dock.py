@@ -124,7 +124,9 @@ def test_status_line_says_how_many_requests_are_waiting():
     assert "2" in dock.status_line(60)
 
 
-def test_queue_area_shows_follow_ups():
+def test_queue_area_shows_pending_steering_messages():
+    """feature 18：这个数字的语义从「排队等本轮结束」变成「**待注入**」——
+    干活期间会随每次 drain 在本轮内减少（补 2），不再是只在轮末归零。"""
     dock, _ = make()
     dock.set_queued(3)
     assert "3" in "\n".join(dock.queue_lines(60))

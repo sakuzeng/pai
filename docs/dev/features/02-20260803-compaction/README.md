@@ -77,5 +77,5 @@ P0/P1 清单已全部划掉，出处见对应 TODO 条目。
 
 ## 用到的知识
 
-[knowledge/claude-docs/context-management.md](../../../../knowledge/claude-docs/context-management.md)、
-[knowledge/source-walks/cc-compaction.md](../../../../knowledge/source-walks/cc-compaction.md)
+[knowledge/context/claude-context-management.md](../../../../knowledge/context/claude-context-management.md)、
+[knowledge/context/cc-compaction.md](../../../../knowledge/context/cc-compaction.md)

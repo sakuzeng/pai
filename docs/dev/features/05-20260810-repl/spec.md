@@ -81,7 +81,7 @@ dataclass 扁平联合（参照 pi 的 `AgentEvent`，砍掉不流式就没意�
 
 - 多轮共享一份 `messages`：`run_agent` 目前每次调用自己造 `messages`。**新增
   keyword-only `messages: list[dict] | None`**（传入即续用，不传维持原状），REPL 持有对话。
-- 输入层（能力全部取自 K claude-docs/interactive-mode.md）：
+- 输入层（能力全部取自 K tui/claude-interactive-mode.md）：
   - `readline` 提供 ↑/↓ 与 `Ctrl+R`；历史**按 cwd 分文件**存 `~/.pai/history/<hash>`，
     **连续重复只记一条**（官方两条语义）。
   - 多行：`\` + Enter（唯一全终端可用的那条）。

@@ -17,8 +17,8 @@
 **目标**：roadmap 阶段 2 的两个勾都是 REPL 半程的，TUI 半程一篇笔记都没有。补齐并做反向对照。
 
 **动了哪些文件**：
-- 新增 `knowledge/source-walks/pi-tui-main-screen.md`（绘制侧）
-- 新增 `knowledge/source-walks/cc-input-ownership-and-modes.md`（输入侧）
+- 新增 `knowledge/tui/pi-tui-main-screen.md`（绘制侧）
+- 新增 `knowledge/tui/cc-input-ownership-and-modes.md`（输入侧）
 - `knowledge/README.md` 登记表 +2 行
 - `docs/dev/roadmap.md`：阶段 2 前置精读补两条 + 反向对照勾选项；新增头部「固定末项」一节；阶段 5 补勾；阶段 6/7 各补一行未勾
 - 新增 `evidence/20260811-终端反向对照/`（6 个探针脚本 + 说明.md + 手工清单.md）
@@ -103,7 +103,7 @@ evidence 存的是**转录**并已声明这一点）：补了四处 plan 原先�
 理由是前置反向对照卡住的那件事——本机无 tmux/pyte，**看得见字节看不见屏幕**。
 而「变矮不留残影」「commit 不叠影」这类断言**在原始字节上没法验**：同一效果有多种字节
 写法，断言字节等于把实现钉死。所以断言屏幕内容。模拟器自己也有 9 条测试
-（它错了会让被测代码假绿，同 concepts/mutation-testing-pitfalls.md 那条）。
+（它错了会让被测代码假绿，同 engineering/mutation-testing-pitfalls.md 那条）。
 **它遇到不认识的转义序列直接 raise**——静默忽略会让测试对着「模拟器没看懂」的假象变绿。
 
 **改动**：
@@ -202,7 +202,7 @@ SIGWINCH 同步不去抖 / 无条件复原 / 非主线程告警）、`tui/app.py
 
 **第二条尤其该记**：它与 T5 那条「模式是装配期常量」**是同一个病**，我刚修完一个，
 转头就没想到 asker 也是。→ 已升格 [D#62](../../decisions.md) 与
-[K concepts/injection-seams.md](../../../../knowledge/concepts/injection-seams.md)。
+[K engineering/injection-seams.md](../../../../knowledge/engineering/injection-seams.md)。
 
 ### 四轮视觉修正（每一轮都是用户看了截图才发现）
 

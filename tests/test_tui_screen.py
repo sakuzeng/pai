@@ -1,7 +1,7 @@
 """测试基建自身的测试。
 
 模拟器错了会让被测代码的测试**假绿**，所以它自己也得有测试——
-这是 concepts/mutation-testing-pitfalls.md 那条「注错了和没测住现象一样」的同款风险。
+这是 engineering/mutation-testing-pitfalls.md 那条「注错了和没测住现象一样」的同款风险。
 """
 
 import pytest

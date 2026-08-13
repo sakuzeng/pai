@@ -1,6 +1,6 @@
 # hooks 与工具调用门禁
 
-- 来源：CC 反编译源码（外部参照 6）`src/utils/hooks/`；官方 hooks 章节未精读（归属见 [../claude-docs/map.md](../claude-docs/map.md)，阶段 4 前置）；anna 实践见 anna/gates.md（本地不入库）
+- 来源：CC 反编译源码（外部参照 6）`src/utils/hooks/`；官方 hooks 章节未精读（归属见 [../overview/claude-docs-map.md](../overview/claude-docs-map.md)，阶段 4 前置）；anna 实践见 anna/gates.md（本地不入库）
 - 精读日期：2026-08-09（概念整理，非逐行走读；同日门禁落地后更新锚点）
 - pai 锚点：**已落地** `guards/design_gate.py` + `.claude/settings.json`（工作区自身的方案门禁，档案见 docs/dev/features/03-20260809-design-gate/）；pai 产品侧的权限层在 roadmap 阶段 4，挂点对应 pi 的 `beforeToolCall` / `afterToolCall`
 

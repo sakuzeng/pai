@@ -77,5 +77,5 @@
 
 ## 用到的知识
 
-[knowledge/source-walks/cc-memdir.md](../../../../knowledge/source-walks/cc-memdir.md)（CC 的记忆目录布局与召回机制）、
-[knowledge/claude-docs/memory.md](../../../../knowledge/claude-docs/memory.md)（官方：存储位置按 git 仓库归并，worktree 共享）
+[knowledge/memory/cc-memdir.md](../../../../knowledge/memory/cc-memdir.md)（CC 的记忆目录布局与召回机制）、
+[knowledge/memory/claude-memory.md](../../../../knowledge/memory/claude-memory.md)（官方：存储位置按 git 仓库归并，worktree 共享）

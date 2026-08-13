@@ -44,7 +44,7 @@ agent 干活时用户根本没法打字——这是「REPL 先行」的结构性
 **选择：A**。诚实标注：REPL 阶段 steering **无真实输入源**，等 TUI/流式才通电。
 
 **问 3**：中断（Ctrl+C）做到哪一步？官方对 `Esc` 的承诺是「停止当前响应或工具调用中途，
-且保留迄今完成的工作」（K claude-docs/interactive-mode.md）。
+且保留迄今完成的工作」（K tui/claude-interactive-mode.md）。
 - 候选 A·只做步边界中断：`KeyboardInterrupt` 捕获后设标志，loop 在下一次 `create()`
   之前干净退出。跑飞的 bash 停不了（阻塞在 subprocess）。
 - 候选 B·**连工具执行中途也能中断**：bash 工具改用可杀的子进程组 + 轮询等待，
@@ -127,5 +127,5 @@ REPL 无会话恢复、`_install_sigint` 非主线程静默失效。
 
 ## 用到的知识
 
-[knowledge/claude-docs/interactive-mode.md](../../../../knowledge/claude-docs/interactive-mode.md)（官方交互契约）、
-[knowledge/source-walks/pi-agentloop.md](../../../../knowledge/source-walks/pi-agentloop.md)（事件三层 + 双队列 + 钩子）
+[knowledge/tui/claude-interactive-mode.md](../../../../knowledge/tui/claude-interactive-mode.md)（官方交互契约）、
+[knowledge/loop/pi-agentloop.md](../../../../knowledge/loop/pi-agentloop.md)（事件三层 + 双队列 + 钩子）

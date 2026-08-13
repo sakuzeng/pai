@@ -155,7 +155,7 @@ def test_multiline_content_does_not_stair_step(session, tmp_path):
     """用户 2026-08-11 打回第三条：满屏阶梯，每行越缩越右。
 
     **真因是 raw mode 下 `ONLCR` 关着**——裸 `\n` 只下移、不回列首
-    （K concepts/terminal-raw-mode.md）。多行内容被当成「一行」交出去，
+    （K tui/terminal-raw-mode.md）。多行内容被当成「一行」交出去，
     里面的 `\n` 就成了阶梯。修法是在唯一出口处拆 `\n` 并逐行发 `\r\n`。
 
     钉的是**每一行都从第 0 列开始**——这才是阶梯的直接反面。
@@ -213,7 +213,12 @@ def test_the_request_carries_the_tool_schemas(session):
 
 
 def test_typing_while_busy_lands_in_the_queue(session):
-    """拍板问 4：干活时打的字排队，本轮结束后发出。"""
+    """干活时打的字进队列并被发出去。
+
+    **语义在 feature 18 变了**：12 的拍板问 4 是「排队等本轮结束」，
+    18 的问 1 改成「本轮就注入」。这条 e2e 只验「没丢」，两种语义下都成立——
+    真正区分「本轮内注入」的断言（打在假 provider 收到的 messages 上）在 T5。
+    """
     s, provider = session([turn("第一轮答完"), turn("第二轮答完")])
     s.send("第一个问题\r", wait=0.05)             # 不等它跑完
     s.send("追加的话\r", until="第二轮答完")        # 上一轮还没跑完时提交

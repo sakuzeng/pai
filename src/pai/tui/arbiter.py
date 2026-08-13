@@ -5,7 +5,7 @@
 药方不是「让对话框把输入抢过去」，而是**把归属算出来**：一个仲裁函数 + 每个消费者
 一个 is_active 开关。
 
-语义照 CC（K source-walks/cc-input-ownership-and-modes.md 第一节）：**偏袒正在打字的人**。
+语义照 CC（K tui/cc-input-ownership-and-modes.md 第一节）：**偏袒正在打字的人**。
 注意这与 pai 自己 TODO 里凭官方文档推出的「问题框接管输入焦点」方向相反——
 源码里 `getFocusedInputDialog()` 第三行就是 `if (isPromptInputActive) return undefined`。
 """

@@ -12,7 +12,7 @@ raw mode 下卡死、排版满屏阶梯）**全部需要一个真实的模型回
 而那正是 `FakeClient` 够不着、冒烟脚本又为了省钱绕开的地方
 （features/14 复盘：「为了省钱而绕开的路径，正是唯一没被验过的路径」）。
 
-SSE 的字节形状照 **实测** 来（K concepts/streaming-tool-calls.md）：
+SSE 的字节形状照 **实测** 来（K streaming/streaming-tool-calls.md）：
 `tool_calls` 按 `index` 归并、`id`/`name` 只在首块、`arguments` 逐字符分片、
 **usage 在末块且 `choices` 非空**（D#58：`include_usage` 在 DeepSeek 上是空操作）。
 照文档写的话，pai 的解析器会被一个它在真实环境里遇不到的形状喂出假绿。
@@ -22,20 +22,29 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Iterable, List, Optional
 
 MODEL = "fake-model"
 
 
-def turn(content: str = "", tool_calls: Optional[List[dict]] = None) -> dict:
+def turn(content: str = "", tool_calls: Optional[List[dict]] = None,
+         delay: float = 0.0) -> dict:
     """脚本里的一轮 assistant 响应。
 
     `tool_calls` 用人话写：`[{"name": "bash", "arguments": {"command": "ls"}}]`，
     序列化成协议形状（`arguments` 是 **JSON 字符串**）由本模块负责——
     那正是真实 provider 的形状，也是编的字符串测不出来的坑之一。
+
+    `delay` = **每个字符之间**停多久（秒）。默认 0：绝大多数 e2e 只想要「秒答」。
+    feature 18 加的：假 provider 秒答时「模型正在答」这个状态**根本不存在**，
+    于是「干活期间打字」在不调工具的轮次上没有任何窗口可测——
+    第一版 e2e 因此假绿（屏幕上两个「用时」= 那条消息其实是当新一轮发的）。
+    逐字符停顿是对的做法而不是整轮停顿：TUI 靠**每个事件**顺手 poll 一次键盘，
+    整轮停顿期间一个事件都不发，键还是读不到。
     """
-    return {"content": content, "tool_calls": tool_calls or []}
+    return {"content": content, "tool_calls": tool_calls or [], "delay": delay}
 
 
 def _sse(payload: dict) -> bytes:
@@ -53,8 +62,11 @@ def _chunks(item: dict) -> Iterable[bytes]:
             payload["usage"] = usage
         return _sse(payload)
 
+    delay = item.get("delay") or 0.0
     yield frame({"role": "assistant", "content": ""})
     for char in item.get("content") or "":
+        if delay:
+            time.sleep(delay)
         yield frame({"content": char})           # 逐字符：真实流式就是这么切的
 
     for index, call in enumerate(item.get("tool_calls") or []):

@@ -125,7 +125,12 @@ class Dock(Component):
         self._pending = count
 
     def set_queued(self, count: int) -> None:
-        """followUp 队列里排了多少条（拍板问 4：干活时打的字排队等本轮结束）。"""
+        """排队队列里还剩多少条（feature 18：干活时打的字**本轮就注入**）。
+
+        语义随 feature 18 变了：12 的拍板问 4 选的是「排队等本轮结束」，
+        18 的问 1 改成默认中途注入，于是这个数字是**待注入量**而非「待发送量」，
+        且会在本轮内随每次 drain 减少（补 2）——不是只在轮末归零。
+        """
         self._queued = count
 
     def note_usage(self, total_tokens: int) -> None:

@@ -9,7 +9,7 @@
 - pai 锚点：`src/pai/modes/interactive.py`、`src/pai/core/tools/ask.py`、
   `src/pai/core/permissions.py`、roadmap 阶段 2 后半程、features/12-20260811-tui
 - 相关：[pi-tui-main-screen.md](pi-tui-main-screen.md)（绘制侧）、
-  [../claude-docs/interactive-mode.md](../claude-docs/interactive-mode.md)（官方交互契约）
+  [../tui/claude-interactive-mode.md](../tui/claude-interactive-mode.md)（官方交互契约）
 
 **为什么读这篇**：pai 有两条「留 TUI 阶段」的欠账都在这里落地——
 **模态输入**（asker 与 REPL 抢同一个输入流）与 **`/mode` + shift+tab 模式切换**。

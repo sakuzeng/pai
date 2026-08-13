@@ -160,6 +160,8 @@ EVENT_SRC = {
     "RecallInjected": "src/pai/core/recall.py",
     "MemoryWritten": "src/pai/core/tools/memory_tool.py",
     "ConversationCleared": "src/pai/modes/interactive.py",
+    # 排队消息的机制住在 queue.py（队列与两种 drain），loop 只是它的两个注入出口
+    "SteeringInjected": "src/pai/core/queue.py",
     "Interrupted": "src/pai/core/interrupt.py",
 }
 

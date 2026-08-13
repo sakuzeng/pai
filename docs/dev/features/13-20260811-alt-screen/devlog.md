@@ -29,13 +29,13 @@ TODO、roadmap 阶段 2 就地注记。
 
 **读了什么**（三篇笔记，均已登记 knowledge/README 并勾进 roadmap 阶段 2「第三批」）：
 
-- [K source-walks/pi-alt-screen.md](../../../../knowledge/source-walks/pi-alt-screen.md)
+- [K tui/pi-alt-screen.md](../../../../knowledge/tui/pi-alt-screen.md)
   —— pi-mono `tui-plan.md`(1001) 的**主体**（feature 12 跳过的那 90%）、
   `tui-alt-screen.ts`(845)、`scroll-view.ts`(195)。
-- [K source-walks/cc-alt-screen.md](../../../../knowledge/source-walks/cc-alt-screen.md)
+- [K tui/cc-alt-screen.md](../../../../knowledge/tui/cc-alt-screen.md)
   —— CC `AlternateScreen.tsx`(79) / `hit-test.ts`(130) / `selection.ts`(917) /
   `fullscreen.ts`(203) / `ink.tsx` 的 handleResize 与模式自愈 / `FullscreenLayout.tsx`。
-- [K concepts/alt-screen-and-mouse.md](../../../../knowledge/concepts/alt-screen-and-mouse.md)
+- [K tui/alt-screen-and-mouse.md](../../../../knowledge/tui/alt-screen-and-mouse.md)
   —— 可迁移那层（DECSET 1049 / 鼠标三档 / SGR 1006 / DECRQM）。
 
 **读出来的三条会改变候选方案讨论的**：

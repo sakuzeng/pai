@@ -7,7 +7,7 @@
 **改动**：`guards/design_gate.py`（target_path/正则/诚实边界）、
 `src/pai/core/tools/__init__.py`（类型校验/返回强转）、`shell.py`（超时部分输出）、
 `cli.py`（负数校验）、`config.py`（load_dotenv 入 model_name）、
-`viz/collect.py`（删补位）、`knowledge/concepts/hooks-gates.md`（旁路声明）；
+`viz/collect.py`（删补位）、`knowledge/permissions/hooks-gates.md`（旁路声明）；
 测试四文件 +7 条新钉、2 条修实。
 
 **测试**：红 **7 failed, 85 passed** → 绿 **92 passed, 1 deselected**。

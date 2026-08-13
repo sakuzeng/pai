@@ -1,7 +1,7 @@
 # 09-20260810-working-dir-boundary · spec
 
 2026-08-10 三问拍板定稿（问答完整存档见 [README](README.md)「候选方案与确认」）。
-前置精读：[cc-pi-permission-boundaries.md](../../../../knowledge/source-walks/cc-pi-permission-boundaries.md)。
+前置精读：[cc-pi-permission-boundaries.md](../../../../knowledge/permissions/cc-pi-permission-boundaries.md)。
 
 ## 背景与问题
 

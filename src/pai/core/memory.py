@@ -1,4 +1,4 @@
-"""记忆：跨会话传递知识的两套机制（官方也是两套，见 K claude-docs/memory.md）。
+"""记忆：跨会话传递知识的两套机制（官方也是两套，见 K memory/claude-memory.md）。
 
 1. **人写的分层指令**（本文件的 discover/load）：`~/.pai/PAI.md` → 向上递归的
    `PAI.md` → 同目录的 `PAI.local.md`。拼接不覆盖，越靠近 cwd 的越晚被读到。
@@ -63,7 +63,7 @@ def expand_imports(text: str, *, base: Path, home: Optional[Path] = None,
                    depth: int = 0, seen: FrozenSet[Path] = frozenset()) -> str:
     """展开 `@path` 导入。
 
-    四条规则全部照官方（K claude-docs/memory.md 第二节）：
+    四条规则全部照官方（K memory/claude-memory.md 第二节）：
     相对路径相对**含导入的那个文件**解析（不是 cwd）、最多 4 跳、代码块与行内代码里的
     不算导入、缺文件不抛。加了一条官方没有的：环检测——A↔B 互导入必须终止。
     """
@@ -116,7 +116,7 @@ def load_instructions(*, cwd: Optional[Path] = None, home: Optional[Path] = None
     return "\n\n".join(parts)
 
 
-# 官方数字（K claude-docs/memory.md 第三节）：MEMORY.md 只加载前 200 行或 25KB，
+# 官方数字（K memory/claude-memory.md 第三节）：MEMORY.md 只加载前 200 行或 25KB，
 # 先到者为准。上限只管索引——主题文件本来就不在启动时加载。
 MAX_INDEX_LINES = 200
 MAX_INDEX_BYTES = 25 * 1024

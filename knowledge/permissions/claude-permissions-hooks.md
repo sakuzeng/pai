@@ -4,7 +4,7 @@
   （2026-08-10 抓取；两章合成一篇，因为它们讲的是同一件事的两层）
 - 精读日期：2026-08-10
 - pai 锚点：roadmap 阶段 4、`guards/design_gate.py`（pai 已有的 PreToolUse 门禁实践）、
-  [concepts/hooks-gates.md](../concepts/hooks-gates.md)
+  [permissions/hooks-gates.md](../permissions/hooks-gates.md)
 
 ## 一、求值顺序是整套系统的骨架
 

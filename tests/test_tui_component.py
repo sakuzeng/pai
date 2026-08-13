@@ -1,7 +1,7 @@
 """T1：Component 契约与 Container。
 
 契约照 pi 的四成员取两个必需的（render + invalidate），
-理由见 K source-walks/pi-tui-main-screen.md 第二节。
+理由见 K tui/pi-tui-main-screen.md 第二节。
 """
 
 from pai.tui.component import CURSOR_MARKER, Container, Text

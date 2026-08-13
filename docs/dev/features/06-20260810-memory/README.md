@@ -5,7 +5,7 @@
 
 ## 需求
 
-roadmap 阶段 3：**两套互补机制**（官方明确区分，见 K claude-docs/memory.md 第一节）——
+roadmap 阶段 3：**两套互补机制**（官方明确区分，见 K memory/claude-memory.md 第一节）——
 
 1. **人写的分层指令**：`~/.pai/PAI.md`（用户）→ 向上递归的 `PAI.md`（项目）→
    `PAI.local.md`（本地），拼接进上下文，支持 `@path` 导入。
@@ -105,5 +105,5 @@ superpowers 全链路：[spec.md](spec.md) → [plan.md](plan.md) → SDD。
 
 ## 用到的知识
 
-[knowledge/claude-docs/memory.md](../../../../knowledge/claude-docs/memory.md)（两套记忆的加载算法；
+[knowledge/memory/claude-memory.md](../../../../knowledge/memory/claude-memory.md)（两套记忆的加载算法；
 第五节读出的「压缩会摘掉指令文件」正是本次问 1 的分歧点）

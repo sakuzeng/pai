@@ -202,7 +202,7 @@ src/pai/modes/interactive.py← 改：按开关装配两种渲染器之一（T6�
 - **每条 e2e 配一条能还原原 bug 的注入反证**——feature 15 的教训：
   三条注入反证第一轮只红了 1 条，另两条假绿。**不红的测试等于没有**；
   不红时先分清「注入不对 / 断言不对 / 原 bug 的入口已不存在」
-  （[K concepts/mutation-testing-pitfalls.md](../../../../knowledge/concepts/mutation-testing-pitfalls.md)）。
+  （[K engineering/mutation-testing-pitfalls.md](../../../../knowledge/engineering/mutation-testing-pitfalls.md)）。
 
 **绿**：`tests/test_e2e_alt_screen.py`（新文件，与 `test_e2e_tui.py` 并列）。
 

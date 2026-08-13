@@ -174,7 +174,7 @@ pai 持有整份消息文档，进 alt-screen，每帧渲染整屏 + 行数组 d
 
 前置精读**已完成 2026-08-11**（roadmap 阶段 2 的清单已增补为「第三批：alt-screen」并勾选）：
 
-- [K source-walks/pi-alt-screen.md](../../../../knowledge/source-walks/pi-alt-screen.md)
+- [K tui/pi-alt-screen.md](../../../../knowledge/tui/pi-alt-screen.md)
   —— pi-mono `tui-plan.md` 的**主体**（feature 12 跳过的那 90%）+ `tui-alt-screen.ts`(845)
   + `scroll-view.ts`。三条对本档案最要紧的：alt 是**另一个渲染器**不是给 main-screen 打补丁；
   `follow-end` 状态机是「流式输出时用户正在往回翻」的唯一解；
@@ -182,13 +182,13 @@ pai 持有整份消息文档，进 alt-screen，每帧渲染整屏 + 行数组 d
   （相对今天的 pai 是可见倒退）。
   另纠了 pai 自己的一处转述错误：**原则 2 的原文是「别在 main-screen 里*假装*
   sticky 语义」，不是「别做 alt-screen」**——要推翻的只有 pai 加的那半句。
-- [K source-walks/cc-alt-screen.md](../../../../knowledge/source-walks/cc-alt-screen.md)
+- [K tui/cc-alt-screen.md](../../../../knowledge/tui/cc-alt-screen.md)
   —— CC `AlternateScreen.tsx` / `ink.tsx` / `hit-test.ts` / `selection.ts` / `fullscreen.ts`。
   三条最要紧的：**CC 的 alt-screen 对外部用户默认关**（`USER_TYPE==='ant'` 才开）
   且配了三个逃生口；**命中测试只要 130 行（便宜），选区要 917 行（昂贵）**；
   CC 官方把 `AlternateScreen` 的正当用法写成「ctrl-o transcript overlays 这类
   **临时**全屏视图」——**这正是候选方案 B 的形态**。
-- [K concepts/alt-screen-and-mouse.md](../../../../knowledge/concepts/alt-screen-and-mouse.md)
+- [K tui/alt-screen-and-mouse.md](../../../../knowledge/tui/alt-screen-and-mouse.md)
   —— 可迁移的那层：DECSET 1049 的三步语义与**不幂等**、鼠标 1000/1002/1003
   **互斥单选**而 1006 只是编码、DECRQM 不可移植、拿走鼠标=拿走终端原生选中复制。
 - **反向对照（动工前）已做**：[evidence/20260811-alt-screen反向对照](evidence/20260811-alt-screen反向对照/说明.md)
