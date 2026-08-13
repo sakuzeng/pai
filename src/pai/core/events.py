@@ -110,6 +110,31 @@ class RecallFailed:
 
 
 @dataclass(frozen=True)
+class ConversationCleared:
+    """`/clear`：上下文被清空，同一次运行里就此开始一段**新对话**。
+
+    feature 17 补上。此前 `/clear` 只截断内存里的 messages，两个流里都不留痕——
+    于是观测页面会把清空前后画成一段连贯对话，而模型在后半段根本不记得前半段。
+    「上下文里有什么」正是学 harness 时最要看清的东西，画错比不画更糟。
+
+    与 `Compacted` 的区别：压缩是**换掉**上下文（有摘要接续），清空是**丢弃**上下文。
+    """
+
+    kept: int          # 保留下来的消息数（当前实现保留 system，即 1）
+
+
+@dataclass(frozen=True)
+class RecallInjected:
+    """本轮召回选中并注入了哪几篇。feature 17 补上——此前**只有失败发事件**，
+    成功是哑的：观测流里说得出「召回过」，说不出「召回了什么」。
+
+    明确不选（`selected: []`）不发这个事件：那是正常结果，不是「注入了 0 篇」。
+    """
+
+    names: Tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class MemoryWritten:
     topic: str
     path: str
@@ -140,6 +165,8 @@ AgentEvent = Union[
     CompactionSkipped,
     BreakerTripped,
     RecallFailed,
+    RecallInjected,
+    ConversationCleared,
     MemoryWritten,
     Interrupted,
     AgentEnd,
@@ -172,6 +199,10 @@ def render_text(event: AgentEvent) -> Optional[str]:
                 "不压，靠预算熔断兜底")
     if isinstance(event, BreakerTripped):
         return f"⚠️ 压缩连续失败 {event.failures} 次，自动压缩已熔断"
+    if isinstance(event, ConversationCleared):
+        return "🧹 已清空对话（保留 system）"
+    if isinstance(event, RecallInjected):
+        return f"🧠 召回 {len(event.names)} 篇记忆：{'、'.join(event.names)}"
     if isinstance(event, MemoryWritten):
         return f"🧠 已记住（{event.topic}）→ {event.path}"
     if isinstance(event, Interrupted):

@@ -14,12 +14,13 @@ from pai.core.gate import make_before_tool_call
 from pai.core.hooks import load_hooks
 from pai.core.loop import run_agent
 from pai.modes.echo import make_stream_echo
-from pai.core.events import AgentEvent, MemoryWritten, RecallFailed
+from pai.core.events import AgentEvent, MemoryWritten, RecallFailed, RecallInjected
 from pai.core.memory import build_context, memory_dir
 from pai.core.permissions import DONT_ASK, RuleSet, load_rules, visible_tools
 from pai.core.recall import RecallState, make_recall
 from pai.core.tools import memory_tool
 from pai.core.session import SessionLog
+from pai.core.trace import EventTrace, compose
 from pai.core.tools import get_tools
 
 
@@ -43,13 +44,20 @@ def run_once(
         lambda topic, path: on_event(MemoryWritten(topic=topic, path=str(path))))
     client = client or make_client()
     session = None if no_session else SessionLog()
+    # 观测流落盘（feature 17）：与渲染器并联,不取代它。session 为 None（--no-session）
+    # 时不落——「这次别写盘」也包括观测流。
+    # 上面那些 lambda 按名字查 on_event,查的是**这次重绑之后**的值,于是
+    # MemoryWritten / RecallFailed 一样进事件流(闭包捕获变量而非取值)。
+    if session is not None:
+        on_event = compose(on_event, EventTrace(session))
     # 记忆回指产生它的那次会话（照 CC 的 originSessionId）
     memory_tool.set_origin_session(session.session_id if session is not None else None)
     # 按查询召回（feature 10）。注入的 model 优先（离线测试就靠它），否则读 PAI_RECALL_MODEL。
     recall = make_recall(client=client, model=model or recall_model(),
                          directory=directory, state=RecallState(),
                          on_failure=lambda f: on_event(RecallFailed(
-                             reason=f.reason, detail=f.detail, disabled=f.disabled)))
+                             reason=f.reason, detail=f.detail, disabled=f.disabled)),
+                         on_selected=lambda names: on_event(RecallInjected(names=names)))
     # 权限（feature 07）。once 没有真人可问，asker 不传 = ask 降级为 deny（拍板问 1）。
     # rules 可注入（依赖注入优先）：不传时从两层 settings.json 读。
     # 测事件流/asker 那类 e2e 用它把权限调宽，免得被边界兜底拦住。

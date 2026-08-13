@@ -733,8 +733,46 @@
       （collect.py 干的事变多）再看是否够用。
 - [ ] **pai-viz 不做自动刷新**（2026-08-03，YAGNI）：现状是点按钮手动刷新；
       若用起来发现手动刷新烦，再加。
+      **2026-08-13 由 feature 17 关闭**：结构图照旧手动刷新；**时间线是 2s 游标轮询**
+      （对象不同：当时不做刷新针对的是静态结构图，流转本身是时间性的，不刷新等于没做）。
 - [ ] **pai-viz 的会话回放、用量仪表盘未立项**（2026-08-03）：以后有需要再单独立项设计，
       不是本轮 viz 范围。
+      **2026-08-13 更新**：会话回放**已由 feature 17 交付**（跨项目会话下拉 + 逐步展开 +
+      未完成回合标红）；用量聚合仪表盘仍未立项（17 只做单会话内的每步用量）。
+- [ ] **TUI 下 `MemoryWritten` / `RecallFailed` 直接打进 stdout，可能弄花 dock**
+      （2026-08-13，P2，出处：17 的 T3.5 顺带发现）：`memory_tool.set_notifier` 与 recall 的
+      `on_failure` 闭包用的是**外层** `on_event`（默认渲染器），而 TUI 自建了走
+      `app.on_event` 的本地版本。feature 12/13 就存在的老问题，非 17 引入；
+      修它要动 TUI 的事件路由，超出 17 范围。
+- [ ] **事件流文件（`*.events.jsonl`）无上限增长、无清理策略**（2026-08-13，P2，
+      出处：17 的 T1-T3）：长会话会一直长。观测流是可再生数据，可考虑按大小或天数轮转/清理。
+- [x] ~~**`viz/collect.py` 的 `_stage_key` 剥反引号只剥两端**（2026-08-12，P1，出处：17 立项
+      时对真实 STATUS.md 实跑发现）：`` `core/tools/` 的 matcher `` 这行解析出
+      `key="\` 的 matcher"` 垃圾键；`strip("\`")` 碰不到中间的反引号。现有一致性测试只查
+      pipeline→stages 方向，反向畸形不变红。修法：先剥别的再剥反引号，或对 key 加
+      「合法标识符形状」断言。~~ **2026-08-13 由 feature 17 T6 关闭**：
+      改为先剥全部反引号再拆路径，散文式单元格取最后一个标识符样的词当 key
+      （`matcher`），整句留给 label；新增反向断言测试
+      `test_stage_keys_are_clean_identifiers`。
+- [ ] **事件流文件无上限增长、无清理策略**（2026-08-13，P2，出处：feature 17 T3）：
+      `<session>.events.jsonl` 与会话同寿，长会话会一直长；也没有「删旧会话」的入口。
+      观测流是可再生数据，删了不损失历史，所以清理策略是纯运维问题，17 不做。
+- [ ] **TUI 下 MemoryWritten / RecallFailed 直接打到 stdout，可能弄花 dock**
+      （2026-08-13，P2，出处：feature 17 T3.5 顺带发现，非本轮引入）：
+      `memory_tool.set_notifier` 与 recall 的 `on_failure` 用的是**外层** `on_event`
+      （默认渲染器），而 TUI 自建的 `on_event` 才是走 `app.on_event` 的那个。
+      feature 12/13 就存在；修它要动 TUI 事件路由，超出 17 范围。
+- [ ] **`@tool` 注册表是进程级全局，测试注册的工具会漏进后续测试**
+      （2026-08-13，P2，出处：feature 17 T6）：`tests/test_tools.py` 的探针工具
+      （如 `_cap_bool_probe`）会出现在别的测试文件看到的 `get_tools()` 里，
+      于是「单跑绿、全跑红」。本轮绕开（断言只针对四个内置工具），
+      根治要给注册表加测试级隔离 fixture。
+- [ ] **viz 时间线不显示金额、也无会话级合计**（2026-08-13，P3，出处：feature 17 T8 用户裁决）：
+      刻意不建价格表（定价会变，token 才是 ground truth）；会话级合计用户明确说不加。
+      若日后要看成本趋势，先立「用量聚合」独立档案。
+- [ ] **scheduler 并发批与 queue 进出无事件源，页面上看不见**（2026-08-13，P2，
+      出处：feature 17 spec「刻意不做」）：并发做了却看不见并发（同 STATUS 已知缺陷）。
+      补事件源要动 `core/scheduler.py` 与 `core/queue.py`，是下一轮的事。
 - [ ] **面试准备仓库加反向链接指向 pai knowledge/**（2026-08-09，D#35）：
       在其 04_Harness 专题 README 加一行即可。属另一仓库的独立小改动，在这里备忘。
 - [ ] **microcompact 评估**（2026-08-09，K source-walks/cc-compaction.md）：

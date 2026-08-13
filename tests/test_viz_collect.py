@@ -86,7 +86,8 @@ def test_build_structure_reads_real_status(tmp_path):
 
 # Path(__file__) 而非相对路径 "docs/dev/STATUS.md":测试不该依赖 pytest 的运行目录,
 # 谁在哪个 cwd 跑 `pytest` 都得找到同一份真实文件。
-REAL_STATUS_PATH = Path(__file__).resolve().parents[1] / "docs" / "dev" / "STATUS.md"
+REPO_ROOT = Path(__file__).resolve().parents[1]
+REAL_STATUS_PATH = REPO_ROOT / "docs" / "dev" / "STATUS.md"
 
 
 def test_real_status_md_parses_to_nonempty_stages_with_expected_keys():
@@ -107,3 +108,73 @@ def test_real_status_md_covers_all_pipeline_stage_keys():
     referenced = {n["stage"] for n in s["pipeline"]["nodes"] if n.get("stage")}
     assert referenced <= stage_keys
     assert "viz" in stage_keys  # viz 自己也在 STATUS.md 里挂了一行(自举)
+
+
+# ---- feature 17 task 6：每处流转都要标出「发生在哪个代码文件」
+
+def test_every_tool_reports_where_its_code_lives():
+    """工具的 file:line **必须自省**,不许手写——与「schema 由装饰器生成」同一条规矩:
+    手写的位置会漂,漂了还没人知道。"""
+    from pai.viz.collect import build_structure
+
+    s = build_structure(status_path=REAL_STATUS_PATH)
+    assert s["tools"], "至少要有几个工具"
+    for tool in s["tools"]:
+        src = tool["src"]
+        file, _, line = src.rpartition(":")
+        assert line.isdigit() and int(line) > 0, f"{tool['name']} 缺行号:{src}"
+        assert (REPO_ROOT / file).is_file(), f"{tool['name']} 指向的文件不存在:{file}"
+
+    # 真实工具确实落在 src/pai/ 下。**不能对全部工具断言这条**——
+    # `@tool` 注册表是进程级全局,别的测试文件注册的探针工具（如
+    # `tests/test_tools.py` 的 `_cap_bool_probe`）会漏进来,单跑绿、全跑红。
+    # 那是既有的测试卫生问题(已登记 TODO),不是自省实现的问题:
+    # 它把测试里的工具也正确解析成了仓库相对路径。
+    shipped = {t["name"] for t in s["tools"]} & {"bash", "read_file", "write_file", "edit_file"}
+    assert shipped, "四个内置工具至少要在"
+    for tool in s["tools"]:
+        if tool["name"] in shipped:
+            assert tool["src"].startswith("src/pai/"), tool["src"]
+
+
+def test_pipeline_nodes_know_their_source_file():
+    from pai.viz.collect import build_structure
+
+    s = build_structure(status_path=REAL_STATUS_PATH)
+    for node in s["pipeline"]["nodes"]:
+        if not node.get("stage"):
+            continue          # task / reply 这类概念节点没有对应文件,允许没有
+        assert node.get("src"), f"节点 {node['id']} 缺 src"
+        assert (REPO_ROOT / node["src"]).exists(), node["src"]
+
+
+def test_event_source_map_covers_exactly_the_event_types():
+    """`EVENT_SRC` 是手写映射(「机制住哪」程序推不出来),所以必须有测试防漂移:
+    新增事件忘了登记 → 页面上那类事件点不出代码位置,而且没人知道。"""
+    import dataclasses
+
+    from pai.core import events as ev_mod
+    from pai.viz.collect import EVENT_SRC
+
+    declared = {
+        name for name, obj in vars(ev_mod).items()
+        if dataclasses.is_dataclass(obj) and not name.startswith("_")
+    }
+    assert set(EVENT_SRC) == declared - {"MessageDelta"}
+    for name, src in EVENT_SRC.items():
+        assert (REPO_ROOT / src).is_file(), f"{name} → {src} 不存在"
+
+
+# ---- 顺手修：2026-08-12 分析 waku 时对真实 STATUS.md 实跑发现的 bug
+
+def test_stage_keys_are_clean_identifiers():
+    """`_stage_key` 剥反引号只剥两端,碰不到中间的:
+    `` `core/tools/` 的 matcher `` 解析出 key = "` 的 matcher"(带反引号和空格)。
+
+    既有的一致性测试只查 pipeline→stages 方向,这个反方向的畸形不会变红。
+    """
+    stages = parse_status_table(REAL_STATUS_PATH.read_text(encoding="utf-8"))
+    for st in stages:
+        assert "`" not in st["key"], f"key 里混进了反引号:{st['key']!r}"
+        assert "`" not in st["label"], f"label 里混进了反引号:{st['label']!r}"
+        assert st["key"].strip() == st["key"], f"key 两端有空白:{st['key']!r}"

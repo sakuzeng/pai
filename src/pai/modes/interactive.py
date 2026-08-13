@@ -40,8 +40,11 @@ from pai.core.compaction import (
 from pai.core.events import (
     AgentEnd,
     AgentEvent,
+    Compacted,
+    ConversationCleared,
     MemoryWritten,
     RecallFailed,
+    RecallInjected,
     ToolEnd,
     ToolStart,
     render_text,
@@ -72,6 +75,7 @@ from pai.core.memory import (
 from pai.core.queue import PendingMessageQueue
 from pai.core.recall import RecallState, make_recall
 from pai.core.session import SessionLog
+from pai.core.trace import EventTrace, compose
 from pai.core.settings import alt_screen_enabled, load_settings, mouse_enabled
 from pai.core.tools import Tool, ask, get_tools, memory_tool
 from pai.modes.echo import make_stream_echo
@@ -291,6 +295,15 @@ def run_interactive(
     tools = tools if tools is not None else get_tools(
         list(get_tools()) + ["ask_user_question"])
     session = None if no_session else SessionLog()
+    # 观测流落盘（feature 17）。**只在这里包一次**:session 整个 REPL 生命周期只建一次,
+    # 下游三处 run_agent 调用共用同一个 on_event；`/clear` 只截断 messages 不换会话,
+    # 所以不存在「换了会话事件还写旧文件」的问题(动工前专门核对过,plan 里认账的
+    # 那条返工风险没有兑现)。
+    # **一个 trace 对象两条路共用**:纯 REPL 走下面的 compose,TUI 自建 on_event
+    # (走 app.on_event),所以必须把它单独递进去——否则日常用法(真 tty)整个不落盘。
+    trace = EventTrace(session) if session is not None else None
+    if trace is not None:
+        on_event = compose(on_event, trace)
     context_window = context_window if context_window is not None else default_context_window()
     compaction = compaction if compaction is not None else CompactionSettings()
     history = history_path if history_path is not None else history_path_for()
@@ -324,7 +337,8 @@ def run_interactive(
     recall = make_recall(client=client, model=recall_model_name,
                          directory=directory, state=RecallState(),
                          on_failure=lambda f: on_event(RecallFailed(
-                             reason=f.reason, detail=f.detail, disabled=f.disabled)))
+                             reason=f.reason, detail=f.detail, disabled=f.disabled)),
+                         on_selected=lambda names: on_event(RecallInjected(names=names)))
 
     common = dict(
         client=client, model=model, tools=tools, messages=messages, anchors=anchors,
@@ -332,7 +346,7 @@ def run_interactive(
         max_steps=max_steps, max_total_tokens=max_total_tokens,
         context_window=context_window, compaction=compaction, gate=gate,
         recall=recall, rules=rules, hooks=hooks, mode_state=mode_state,
-        history=history, asker_state=asker_state, asker_ref=asker_ref,
+        history=history, asker_state=asker_state, asker_ref=asker_ref, trace=trace,
     )
     if _use_tui(reader):
         _run_tui(out=out, **common)
@@ -365,7 +379,8 @@ def run_interactive(
             if _handle_command(line, out=out, messages=messages, anchors=anchors,
                                state=state, tools=tools, client=client, model=model,
                                compaction=compaction, context_window=context_window,
-                               rules=rules, hooks=hooks, mode_state=mode_state):
+                               rules=rules, hooks=hooks, mode_state=mode_state,
+                               on_event=on_event):
                 break
             continue
 
@@ -497,7 +512,7 @@ def _system_prompt() -> str:
 
 def _handle_command(line: str, *, out, messages, anchors, state, tools, client, model,
                     compaction, context_window, rules=None, hooks=(),
-                    mode_state=None) -> bool:
+                    mode_state=None, on_event=None) -> bool:
     """返回 True 表示要退出 REPL。"""
     command = line.split()[0]
     if command in ("/exit", "/quit"):
@@ -508,6 +523,10 @@ def _handle_command(line: str, *, out, messages, anchors, state, tools, client, 
         del messages[1:]         # 保留 system；整段清掉会让下一轮重建，等价但更难解释
         anchors.reset()
         state.failures, state.awaiting_verify, state.tripped = 0, False, False
+        # 观测流里必须留痕（feature 17）：清空前后是两段互不记得的对话，
+        # 不发这个事件的话时间线会把它们画成连贯的一段
+        if on_event is not None:
+            on_event(ConversationCleared(kept=len(messages)))
         out("🧹 已清空对话（保留 system）")
     elif command == "/status":
         anchor, anchor_index = anchors.latest()
@@ -524,7 +543,8 @@ def _handle_command(line: str, *, out, messages, anchors, state, tools, client, 
         _show_permissions(out, rules, hooks, mode_state=mode_state)
     elif command == "/compact":
         _manual_compact(messages=messages, anchors=anchors, state=state,
-                        client=client, model=model, compaction=compaction, out=out)
+                        client=client, model=model, compaction=compaction, out=out,
+                        on_event=on_event)
     else:
         out(f"未知命令 {command}，/help 看可用命令")
     return False
@@ -607,7 +627,8 @@ def _show_memory(out: Callable[[str], None]) -> None:
     out(f"💾 会话记录目录：{sessions_dir()}")
 
 
-def _manual_compact(*, messages, anchors, state, client, model, compaction, out) -> None:
+def _manual_compact(*, messages, anchors, state, client, model, compaction, out,
+                    on_event=None) -> None:
     cut = find_cut_point(messages, anchors.entries,
                          keep_recent_tokens=compaction.keep_recent_tokens)
     if cut <= 1:
@@ -620,6 +641,9 @@ def _manual_compact(*, messages, anchors, state, client, model, compaction, out)
     messages[:], summary, usage = compact(messages, cut=cut, client=client, model=model)
     anchors.reset()                        # 历史被改写，旧锚全部作废（D#18/32）
     state.awaiting_verify = True           # 成败仍只认压缩后首次真实 usage（D#34）
+    # 与自动压缩发同一个事件:上下文被换掉这件事,不该因为「是人手动按的」就在观测流里消失
+    if on_event is not None:
+        on_event(Compacted(cut=cut, before=before, after=len(messages)))
     out(f"🗜️ 已压缩：切于 {cut}，消息 {before} → {len(messages)} 条，"
         f"摘要 {len(summary)} 字，摘要请求用了 {usage.get('total_tokens') or 0} token")
 
@@ -630,7 +654,8 @@ def _manual_compact(*, messages, anchors, state, client, model, compaction, out)
 
 def _run_tui(*, out, client, model, tools, messages, anchors, state, follow_up, flag,
              session, max_steps, max_total_tokens, context_window, compaction, gate,
-             recall, rules, hooks, mode_state, history, asker_state, asker_ref) -> None:
+             recall, rules, hooks, mode_state, history, asker_state, asker_ref,
+             trace=None) -> None:
     """scrollback 在上、dock 在下。
 
     与纯 REPL 的**唯一**语义差别在输入层：谁拥有键盘由 `InputArbiter` 算出来，
@@ -706,7 +731,7 @@ def _run_tui(*, out, client, model, tools, messages, anchors, state, follow_up, 
                                   client=client, model=model, compaction=compaction,
                                   context_window=context_window, rules=rules,
                                   hooks=hooks, mode_state=mode_state, session=session,
-                                  flag=flag, app=app)
+                                  flag=flag, app=app, on_event=on_event)
             elif kind == INTERRUPT:
                 flag.set()
                 answered["done"] = True
@@ -730,6 +755,8 @@ def _run_tui(*, out, client, model, tools, messages, anchors, state, follow_up, 
 
     def on_event(event) -> None:
         app.on_event(event)
+        if trace is not None:
+            trace(event)          # 观测流(feature 17):TUI 这条路不经过外层 compose
         # 干活期间也读键盘：字符本来就在内核 tty 缓冲区里等着（反向对照实测），
         # 只是纯 REPL 从不去读。这里每个事件顺手取一次。
         for kind, payload in driver.poll(timeout=0):
@@ -781,7 +808,8 @@ def _run_tui(*, out, client, model, tools, messages, anchors, state, follow_up, 
                                          model=model, compaction=compaction,
                                          context_window=context_window, rules=rules,
                                          hooks=hooks, mode_state=mode_state,
-                                         session=session, flag=flag, app=app):
+                                         session=session, flag=flag, app=app,
+                                         on_event=on_event):
                         return
                 elif kind == SUBMIT:
                     _append_history(history, payload)
@@ -819,7 +847,7 @@ def _run_tui(*, out, client, model, tools, messages, anchors, state, follow_up, 
         out("再见。")
 
 
-def _dispatch_command(line: str, *, commit, app, session, flag, **kw) -> bool:
+def _dispatch_command(line: str, *, commit, app, session, flag, on_event, **kw) -> bool:
     """`/命令` 与 `!命令`。返回 True 表示要退出。"""
     if line.startswith("!"):
         with _interruptible(flag):
@@ -835,7 +863,8 @@ def _dispatch_command(line: str, *, commit, app, session, flag, **kw) -> bool:
                            client=kw["client"], model=kw["model"],
                            compaction=kw["compaction"],
                            context_window=kw["context_window"], rules=kw["rules"],
-                           hooks=kw["hooks"], mode_state=kw["mode_state"])
+                           hooks=kw["hooks"], mode_state=kw["mode_state"],
+                           on_event=on_event)
 
 
 def _queue_size(queue) -> int:

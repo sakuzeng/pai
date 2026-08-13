@@ -47,8 +47,14 @@ def project_slug(cwd: Optional[Path] = None) -> str:
     return str(root.absolute()).replace(os.sep, "-")
 
 
+def projects_root(home: Optional[Path] = None) -> Path:
+    """所有项目的父目录。pai 自己只写 `project_dir`（当前项目），
+    但 viz 要跨项目列会话——`pai` 与 `pai-viz` 常常不在同一个目录起。"""
+    return user_dir(home) / PROJECTS_DIR
+
+
 def project_dir(cwd: Optional[Path] = None, home: Optional[Path] = None) -> Path:
-    return user_dir(home) / PROJECTS_DIR / project_slug(cwd)
+    return projects_root(home) / project_slug(cwd)
 
 
 def memory_dir(cwd: Optional[Path] = None, home: Optional[Path] = None) -> Path:
