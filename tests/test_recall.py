@@ -18,6 +18,7 @@ from pai.core.recall import (
     RECALL_MAX_TOKENS,
     RecallState,
     build_manifest,
+    make_recall,
     recall_block,
     select_memories,
 )
@@ -353,3 +354,47 @@ def test_prompt_tells_the_model_to_return_bare_filenames(tmp_path: Path):
                     state=RecallState(), now=NOW)
     sent = json.dumps(client.requests[0]["messages"], ensure_ascii=False)
     assert ".md" in sent and "只写文件名" in sent
+
+
+# ---- feature 17 task 2：成功召回也要发事件（此前只有失败发事件，成功是哑的）
+
+def test_successful_recall_reports_which_memories_were_injected(tmp_path: Path):
+    """「召回选了哪几篇」此前一点痕迹都不留:失败有 RecallFailed,成功什么都没有。
+
+    观测流里少了这一条,页面上就只能显示「召回过」而说不出「召回了什么」。
+    """
+    write_memory(tmp_path, "甲", description="第一篇")
+    write_memory(tmp_path, "乙", description="第二篇")
+    seen = []
+    recall = make_recall(client=FakeClient([reply(["甲.md", "乙.md"])]), model="m",
+                         directory=tmp_path, state=RecallState(),
+                         on_selected=lambda names: seen.append(names))
+
+    recall("问题")
+
+    assert seen == [("甲.md", "乙.md")]
+
+
+def test_no_event_when_nothing_is_selected(tmp_path: Path):
+    """明确不选是正常结果,不是「注入了 0 篇」——发个空事件只会在页面上刷噪音。"""
+    write_memory(tmp_path, "甲", description="第一篇")
+    seen = []
+    recall = make_recall(client=FakeClient([reply([])]), model="m", directory=tmp_path,
+                         state=RecallState(), on_selected=lambda names: seen.append(names))
+
+    recall("问题")
+
+    assert seen == []
+
+
+def test_no_event_when_the_side_query_fails(tmp_path: Path):
+    """失败路径归 on_failure 管,不许两个回调同时响。"""
+    write_memory(tmp_path, "甲", description="第一篇")
+    seen, failures = [], []
+    recall = make_recall(client=FakeClient([{"content": "我不想输出 JSON"}]), model="m",
+                         directory=tmp_path, state=RecallState(),
+                         on_failure=failures.append, on_selected=seen.append)
+
+    recall("问题")
+
+    assert seen == [] and len(failures) == 1

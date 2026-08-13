@@ -7,10 +7,14 @@
 
 from __future__ import annotations
 
+import inspect
 import json
+import re
 from pathlib import Path
 
 STATUS_DEFAULT = Path("docs/dev/STATUS.md")
+# collect.py 在 src/pai/viz/ 下，上溯三层是仓库根（与 server.REPO_ROOT 同源）
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 # 状态词 → 状态码。用「包含」匹配:表格里可能写成 **部分**、可用(备注)等
 _STATUS_WORDS = [("可用", "ok"), ("部分", "partial"), ("未开始", "todo")]
@@ -20,12 +24,23 @@ def _stage_key(cell: str) -> str:
     """`core/tools/` → tools;`cli.py` → cli;memory → memory。
 
     剥反引号/加粗/路径前缀/.py 后缀,得到与 pipeline 节点 stage 字段对齐的短名。
+
+    **`strip("`")` 只剥两端,碰不到中间的**——STATUS.md 里有
+    `` `core/tools/` 的 matcher `` 这种散文式单元格,反引号在中间,
+    旧写法解析出 key = "` 的 matcher"(带反引号和空格)直接显示在页面上。
+    2026-08-12 对真实 STATUS.md 实跑发现;既有一致性测试只查 pipeline→stages
+    方向,这个反方向的畸形照不到(feature 17 顺手修)。
     """
-    name = cell.strip().strip("`").strip("*").strip()
+    name = cell.replace("`", "").replace("*", "").strip()
     name = name.rstrip("/")
-    name = name.rsplit("/", 1)[-1]
+    name = name.rsplit("/", 1)[-1].strip()
     if name.endswith(".py"):
         name = name[:-3]
+    if " " in name:
+        # 散文式单元格(「… 的 matcher」):取最后一个标识符样的词当 key,
+        # 整句留给 label——key 是用来和 pipeline 的 stage 字段对齐的,必须干净
+        tokens = re.findall(r"[A-Za-z_][A-Za-z0-9_]*", name)
+        name = tokens[-1] if tokens else name
     return name
 
 
@@ -67,7 +82,7 @@ def parse_status_table(text: str) -> list:
         for part in cells[0].split(" / "):
             stages.append({
                 "key": _stage_key(part),
-                "label": part.strip().strip("`"),
+                "label": part.replace("`", "").strip(),
                 "status": status,
                 "note": cells[2],
             })
@@ -110,6 +125,63 @@ _PIPELINE_EDGES = [
 ]
 
 
+# 「这个环节住在哪个文件」——**手写映射**。程序推不出来:它是设计知识,
+# 不是 import 关系(与 01 的 pipeline 手写数据同一取舍)。防漂移靠测试:
+# EVENT_SRC 的键集合必须恰好等于 events.py 的事件类名集合。
+#
+# 未开工的环节没有代码文件,指向路线图——「还没写」也是一种诚实的位置,
+# 点进去看得到设计。
+NODE_SRC = {
+    "loop": "src/pai/core/loop.py",
+    "compaction": "src/pai/core/compaction.py",
+    "permissions": "src/pai/core/gate.py",
+    "streaming": "src/pai/core/streaming.py",
+    "memory": "src/pai/core/memory.py",
+    "tools": "src/pai/core/tools/__init__.py",
+    "session": "src/pai/core/session.py",
+    "skills": "docs/dev/roadmap.md",
+    "mcp_client": "docs/dev/roadmap.md",
+}
+
+# 事件类型 → **机制住在哪**。刻意不指 events.py:那里只有 dataclass 定义,
+# 14 个事件全指同一个文件等于什么都没说。
+EVENT_SRC = {
+    "AgentStart": "src/pai/core/loop.py",
+    "TurnStart": "src/pai/core/loop.py",
+    "AssistantMessage": "src/pai/core/loop.py",
+    "AgentEnd": "src/pai/core/loop.py",
+    "ToolStart": "src/pai/core/tools/__init__.py",
+    "ToolEnd": "src/pai/core/tools/__init__.py",
+    "PermissionDecided": "src/pai/core/gate.py",
+    "Compacted": "src/pai/core/compaction.py",
+    "CompactionSkipped": "src/pai/core/compaction.py",
+    "BreakerTripped": "src/pai/core/compaction.py",
+    "RecallFailed": "src/pai/core/recall.py",
+    "RecallInjected": "src/pai/core/recall.py",
+    "MemoryWritten": "src/pai/core/tools/memory_tool.py",
+    "ConversationCleared": "src/pai/modes/interactive.py",
+    "Interrupted": "src/pai/core/interrupt.py",
+}
+
+
+def _source_of(func) -> str:
+    """函数 → `src/pai/....py:<行号>`（仓库相对）。
+
+    **必须自省,不许手写**——与「schema 由 @tool 从签名生成」同一条规矩:
+    手写的位置会漂,而且漂了没人知道。`Tool.func` 存的是原函数
+    （@tool 没有包一层 wrapper,实测无 `__wrapped__`),所以直接取即可。
+    """
+    try:
+        path = Path(inspect.getsourcefile(func) or "")
+        line = inspect.getsourcelines(func)[1]
+    except (OSError, TypeError):
+        return ""
+    try:
+        return f"{path.resolve().relative_to(REPO_ROOT)}:{line}"
+    except ValueError:
+        return f"{path}:{line}"          # 装在别处(site-packages):给绝对路径
+
+
 def _tool_entries() -> list:
     from pai.core.tools import get_tools  # 函数内 import:让子进程按需注册
 
@@ -120,6 +192,7 @@ def _tool_entries() -> list:
         out.append({
             "name": t.name,
             "description": t.description,
+            "src": _source_of(t.func),
             "params": [
                 {"name": p, "type": spec.get("type", "string"),
                  "desc": spec.get("description", ""), "required": p in required}
@@ -147,11 +220,14 @@ def build_structure(status_path: Path = STATUS_DEFAULT) -> dict:
     for n in nodes:
         if n["id"] == "llm":
             n["desc"] = f"{model} · OpenAI 兼容协议"
+        if n.get("stage"):
+            n["src"] = NODE_SRC.get(n["stage"], "")
     return {
         "model": model,
         "tools": _tool_entries(),
         "pipeline": {"nodes": nodes, "edges": _PIPELINE_EDGES},
         "stages": stages,
+        "event_src": EVENT_SRC,
         "warnings": warnings,
     }
 

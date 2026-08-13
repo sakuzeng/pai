@@ -20,11 +20,11 @@ pai "在当前目录创建 hello.txt 写入 hello world 并读出来确认"   # 
 测试（默认不打真实 API——花钱的副作用不能是默认行为）：
 
 ```bash
-./test.sh              # 离线，276 passed
+./test.sh              # 离线，1069 passed
 ./test.sh --llm        # 额外跑真实 API 冒烟，会产生费用
 ```
 
-架构可视化(本地网页，看运行时结构图与阶段路线图，改代码刷新即现)：
+可视化(本地网页，看**架构**与**运行时流转**)：
 
 ```bash
 pai-viz                 # 默认端口 7777，自动打开浏览器
@@ -32,19 +32,34 @@ pai-viz --port 8080      # 换端口
 pai-viz --no-open       # 不自动打开浏览器
 ```
 
-必须在项目根目录运行——「阶段路线图」靠相对路径读 `docs/dev/STATUS.md`，不在根目录跑
-不会报错，但该区域会为空并显示警告条(结构图部分不受影响)。
+页面**纯观察，没有对话输入**——交互归 TUI，浏览器只负责看。三块内容：
 
-**运行时结构图**：agent loop 的数据流 + 工具卡片(从 `@tool` 注册表自动自省——新加一个
-工具，刷新页面就出现，含参数 schema)。未来环节(压缩/权限/流式/记忆/skills/MCP)从第一
-天就预画成虚线灰卡，状态跟 STATUS.md 联动，做完一块图上亮一块。点工具卡展开参数表：
+**① 运行时结构图**：agent loop 的数据流 + 工具卡片(从 `@tool` 注册表自动自省——新加一个
+工具，刷新页面就出现，含参数 schema)。未来环节(skills/MCP)预画成虚线灰卡，状态跟
+STATUS.md 联动，做完一块图上亮一块。**每处都标着它住在哪个文件**(工具的 `file:line`
+是 `inspect` 自省出来的，不是手写)，点一下用 VS Code / Cursor 打开——
+CLI 不在 PATH 也行，会退回 `vscode://file/...` URL scheme 跳到已开着的窗口：
 
 ![运行时结构图](docs/assets/pai-viz-structure.jpg)
 
-**阶段路线图**：解析 STATUS.md「模块现状」表，绿=可用 / 黄=部分 / 灰=未开始。
+**② 回合时间线**：终端里跑 pai，浏览器 2 秒内自己长出新回合(不用刷新)，结构图上对应
+节点依次点亮。展开看每一步：模型名、上下文大小、缓存命中、工具参数与结果与耗时、
+以及 **harness 内部事件**(权限判定/压缩/召回/熔断/中断)——这些此前只在终端一闪而过，
+现在留了下来。会话下拉框可回放历史(跨项目，`✦` 表示该会话有 harness 事件)：
+
+![回合时间线](docs/assets/pai-viz-timeline.jpg)
+
+token 显示三个**加起来有意义**的数：`上下文`(末步输入量，离窗口上限多远)、
+`未命中`(缓存命中便宜 50 倍，这才是真正花钱的)、`输出`(不打折)。
+**不显示金额**——定价会变，token 才是 ground truth。
+
+**③ 阶段路线图**：解析 STATUS.md「模块现状」表，绿=可用 / 黄=部分 / 灰=未开始。
 STATUS.md 是唯一事实来源，更新表格即变色(viz 自己也在图里)：
 
 ![阶段路线图](docs/assets/pai-viz-roadmap.jpg)
+
+数据来自 pai 自己落的两个文件：会话 JSONL(审计流，不可再生)与并排的
+`<同名>.events.jsonl`(观测流，harness 事件，可再生)。
 
 ## 数据存哪
 
@@ -58,7 +73,8 @@ pai 会在**用户目录**下留东西，不碰你的项目目录（布局对齐
   projects/-Users-you-path-to-proj/     一个项目一个目录，名字是可读的全路径
     memory/MEMORY.md                    自动记忆索引（模型用 remember 工具写）
     memory/<主题>.md                     主题笔记，按需读
-    sessions/20260810-221805-36c2fc1a.jsonl   会话记录（每条带 sessionId 与 cwd）
+    sessions/20260810-221805-36c2fc1a.jsonl          会话记录（每条带 sessionId 与 cwd）
+    sessions/20260810-221805-36c2fc1a.events.jsonl   harness 事件（pai-viz 用；删了不损失历史）
 ```
 
 项目里可以放 `PAI.md`（团队共享，进版本控制）与 `PAI.local.md`（个人，gitignore）——
@@ -78,7 +94,8 @@ src/pai/
     queue.py       steering / followUp 两条待注入消息队列
     interrupt.py   中断标志（Ctrl+C 只置标志，执行侧自己找地方收尾）
     paths.py       用户级路径唯一事实源：~/.pai/projects/<可读 slug>/{memory,sessions}
-    session.py     JSONL 会话落盘（每条带 sessionId 与 cwd）
+    session.py     JSONL 会话落盘（每条带 sessionId 与 cwd）——审计流，不可再生
+    trace.py       观测流落盘：harness 事件进 <会话同名>.events.jsonl，供 pai-viz 回放
     compaction.py  上下文压缩（触发→切→摘→重建→熔断，已全链接进 loop）
     memory.py      分层指令加载（PAI.md）+ 自动记忆索引 + @path 导入
     tools/         工具系统：__init__.py 注册表 + @tool 装饰器
@@ -108,7 +125,8 @@ src/pai/
     once.py        单次任务，跑完即退出（对应 pi 的 print-mode）
     interactive.py 交互模式接线：真 tty 走 TUI，非 tty 退回纯 REPL（行为一个字不变）
     statusline.py  工具调用状态行（纯函数 render，按终端列宽算中文宽度）
-  viz/             架构可视化：pai-viz 起本地网页，结构图（工具自动自省）+ 阶段路线图（解析 STATUS.md）
+  viz/             可视化：pai-viz 起本地网页——结构图（工具自动自省）+ 回合时间线（读会话与事件 JSONL，2s 轮询实时点亮）+ 阶段路线图（解析 STATUS.md）
+    flow.py        两个 JSONL 归并成回合：分组、tool_call_id 配对、未完成回合标红
 evals/             评测集与跑批
 tests/             pytest。两套假 provider 分工是硬的：fake_llm.py 是**注入式**假客户端（测装配与逻辑），
                    fake_provider.py **起真 HTTP 服务**说 OpenAI 兼容协议，让真 pai 进程经 PAI_BASE_URL 打进来，

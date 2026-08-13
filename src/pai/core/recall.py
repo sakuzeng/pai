@@ -220,7 +220,8 @@ def recall_block(headers: Sequence[MemoryHeader], now: Optional[float] = None) -
 
 
 def make_recall(*, client, model: str, directory: Path, state: RecallState,
-                on_failure: Optional[Callable[[RecallFailure], None]] = None
+                on_failure: Optional[Callable[[RecallFailure], None]] = None,
+                on_selected: Optional[Callable[[Tuple[str, ...]], None]] = None
                 ) -> Callable[[str], Tuple[str, Dict]]:
     """装配层用的闭包：把 client / 模型 / 目录 / 跨轮状态关进去，交给 loop 一个 `(query) -> (文本, usage)`。
 
@@ -233,6 +234,10 @@ def make_recall(*, client, model: str, directory: Path, state: RecallState,
         picked, usage = select_memories(
             query, scan_memories(directory), client=client, model=model, state=state,
             on_failure=on_failure)
+        # 回调收的是文件名元组而不是事件对象:recall 与 memory/permissions 一样
+        # 不认识 events(装配层负责翻译)——core 之间不互相认对方的词汇表
+        if picked and on_selected is not None:
+            on_selected(tuple(h.path.name for h in picked))
         return recall_block(picked), usage
 
     return _recall

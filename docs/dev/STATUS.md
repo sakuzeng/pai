@@ -51,7 +51,8 @@ feature 12 被用户打回的三条 bug 各钉了一条 e2e。
 | `core/tools/` | 可用 | `@tool` 从签名生成 schema；bash / read_file / write_file / edit_file |
 | `core/compaction.py` | 可用 | 见下——阶段 1 主线（触发→切→摘→重建→熔断）全部接进 loop |
 | `modes/once.py` | 可用 | 单次任务，跑完即退出（对应 pi 的 print-mode）。client/model 可注入故可离线测；`context_window()` + `CompactionSettings()` 默认透传 |
-| `viz/` | 可用 | `pai-viz` 本地架构可视化：工具自省自动上图，阶段状态解析本表 |
+| `viz/` | 可用 | `pai-viz` 本地网页：**运行时流转可视化**（feature 17）——结构图（工具自省上图、阶段状态解析本表、每处标代码位置可点击跳编辑器）+ **回合时间线**（读会话 JSONL 与并排的 `.events.jsonl`，分组配对成回合，2s 游标轮询实时点亮）。页面纯观察，无对话输入 |
+| `core/trace.py` | 可用 | 观测流落盘：`EventTrace` 当 `on_event` 用，14 种事件追加进 `<会话同名>.events.jsonl`（`MessageDelta` 刻意不落）；写失败吞掉且只告警一次——观测流挂了不连累正事。`compose()` 扇出渲染器与落盘器 |
 | `cli.py` / `config.py` | 可用 | cli 只做参数解析与分发；OpenAI 兼容协议打 DeepSeek；`context_window()` 读 `PAI_CONTEXT_WINDOW`，默认 1_000_000（v4-flash） |
 | `modes/interactive.py` | 可用 | REPL：跨轮持有 messages/锚点簿/熔断状态；历史（按 cwd 分文件、连续重复只记一条）、`\` 续行、`!` shell 模式、`/help /status /compact /clear /exit`、两级 Ctrl+C；API 出错不炸会话 |
 | `core/events.py` | 可用 | 12 个 frozen dataclass 扁平联合 + `render_text` 默认渲染器（D#39）。`on_event` 现在收事件对象，渲染下放 modes 层；`MessageDelta`（流式增量）与 `Interrupted(where="stream")` 于阶段 5 补上 |
@@ -118,12 +119,13 @@ feature 12 被用户打回的三条 bug 各钉了一条 e2e。
 
 ## 测试
 
-共收集 **1002 项**（阶段 2 REPL 8 task + 阶段 3 记忆 7 task + 交付后五个补漏 + 文档一致性
+共收集 **1072 项**（阶段 2 REPL 8 task + 阶段 3 记忆 7 task + 交付后五个补漏 + 文档一致性
 + **阶段 4 权限 task 1-7** + **feature 10 记忆召回 7 task** + **feature 11 流式 task 1-6**
 + **feature 12 TUI task 1-9** + **feature 14 录制与回放** + **feature 15 假 provider + e2e**
-+ **feature 13 alt-screen task 1-7** + **feature 16 鼠标与选区 task 1-9**）：
++ **feature 13 alt-screen task 1-7** + **feature 16 鼠标与选区 task 1-9**
++ **feature 17 viz-flow task 1-3.5**（事件落盘 + RecallInjected/ConversationCleared + 装配））：
 
-- `./test.sh` → **999 passed, 3 deselected**，全部离线，约 34s。**这是默认路径。**
+- `./test.sh` → **1069 passed, 3 deselected**，全部离线，约 82s。**这是默认路径。**
   两套假 provider 分工是硬的：`tests/fake_llm.py` **注入**的假客户端测装配与逻辑；
   `tests/fake_provider.py` **起一个真 HTTP 服务**，让真 pai 进程经 `PAI_BASE_URL` 打进来——
   于是 `tests/test_e2e_tui.py` 能在真 pty 里跑完整回合（真 SSE、真 gate、真 TUI），

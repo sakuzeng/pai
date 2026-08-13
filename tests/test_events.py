@@ -95,3 +95,20 @@ def test_recall_failed_renders_reason_and_says_when_it_stops_trying():
                                        disabled=True))
     assert "超时" in tripped
     assert "不再" in tripped              # 熔断跳闸这件事必须说出来
+
+
+def test_recall_injected_names_the_memories(tmp_path=None):
+    """feature 17 task 2:成功召回也要说得出召回了什么。"""
+    from pai.core.events import RecallInjected
+
+    assert render_text(RecallInjected(names=("构建.md", "偏好.md"))) == \
+        "🧠 召回 2 篇记忆：构建.md、偏好.md"
+
+
+def test_recall_injected_is_frozen():
+    import dataclasses as _dc
+
+    from pai.core.events import RecallInjected
+
+    with pytest.raises(_dc.FrozenInstanceError):
+        RecallInjected(names=()).names = ("x",)
