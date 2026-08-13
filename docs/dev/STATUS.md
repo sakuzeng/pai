@@ -1,6 +1,6 @@
 # 当前状态快照
 
-最后更新：2026-08-11（**阶段 2 后半程 TUI** + 录制回放 + 假 provider e2e + **alt-screen** 交付）。
+最后更新：2026-08-13（**feature 18 排队消息通电**：干活时打的字本轮就注入）。
 **数字由机器对账**：`test_status_reports_the_current_test_count` 会在完整跑时校验本页的 passed 数——漂了三次之后不再靠人肉。
 给接手者（人或 AI）一页看清现状。
 「做了什么」的时间线见 [devlog.md](devlog.md)，「为什么这么选」见 [decisions.md](decisions.md)，
@@ -9,7 +9,7 @@
 ## 一句话
 
 agent loop + 工具系统 + 会话落盘 + 阶段 1 压缩闭环已跑通；阶段 2 前半程**交互模式（纯 REPL）
-已交付**——结构化事件流、steering/followUp 双队列、中断到进程组、`/` 命令与 `!` shell 模式、
+已交付**——结构化事件流、排队消息队列、中断到进程组、`/` 命令与 `!` shell 模式、
 AskUserQuestion、工具状态行。`pai` 不带参数即进 REPL。
 阶段 3 **记忆已交付**——`PAI.md` 三层加载 + `@` 导入 + 自动记忆索引 + `remember` 写回，
 且**压缩后从磁盘重读重注入**（不做就是长会话里指令静默失效）。
@@ -32,7 +32,7 @@ usage 的取法按实测重写（D#58）：`include_usage` 在 DeepSeek 上是�
 下面是 pai 接管的 dock（活动区 / 队列区 / 输入行或对话框 / 状态行）。
 **输入归属由一个仲裁函数算出来**（不再是「谁先 read 谁拿到」），
 于是提问期间敲 `!命令` 就是执行命令——08 那条真实事故关掉了；
-`/mode` 与 shift+tab 可切权限模式；干活时打的字进 followUp 队列；
+`/mode` 与 shift+tab 可切权限模式；干活时打的字**本轮就注入**（feature 18 改了 12 的默认值）；
 并发按动作聚合计数**看得见**。非 tty（管道/CI/注入 reader）整个不进 TUI，行为不变。
 随后 feature 14/15 补上**自测闭环**：`PAI_TUI_RECORD` 录下写给终端的字节、
 `pai-replay` 回放成 PNG（**让 AI 自己看得见界面**，不必每次让用户截图）；
@@ -56,7 +56,7 @@ feature 12 被用户打回的三条 bug 各钉了一条 e2e。
 | `cli.py` / `config.py` | 可用 | cli 只做参数解析与分发；OpenAI 兼容协议打 DeepSeek；`context_window()` 读 `PAI_CONTEXT_WINDOW`，默认 1_000_000（v4-flash） |
 | `modes/interactive.py` | 可用 | REPL：跨轮持有 messages/锚点簿/熔断状态；历史（按 cwd 分文件、连续重复只记一条）、`\` 续行、`!` shell 模式、`/help /status /compact /clear /exit`、两级 Ctrl+C；API 出错不炸会话 |
 | `core/events.py` | 可用 | 12 个 frozen dataclass 扁平联合 + `render_text` 默认渲染器（D#39）。`on_event` 现在收事件对象，渲染下放 modes 层；`MessageDelta`（流式增量）与 `Interrupted(where="stream")` 于阶段 5 补上 |
-| `core/queue.py` | 可用 | `PendingMessageQueue`（all/single 两种 drain）。followUp 已通电；**steering 有注入点无输入源**（阻塞 input 拿不到「干活时打字」，等 TUI/流式） |
+| `core/queue.py` | 可用 | `PendingMessageQueue`（all/single 两种 drain + 可选谓词）。**已通电**（feature 18）：TUI 干活期间打的字进队列，loop 有**两个注入出口**（工具结果回填后 / 模型不调工具时）。队列混装消息与 `/`、`!` 命令，谓词把命令滤出注入之外、留到轮末执行。**单队列取自 CC、第二出口取自 pi**（D#68） |
 | `core/interrupt.py` | 可用 | 进程级中断标志（D#40）。loop 在步边界与每个 tool_call 前查，bash 在轮询里查 |
 | `modes/statusline.py` | 可用 | `render_tool_line(events, width)` 纯函数（按终端列宽算中文宽度）+ `\r` 原地刷新；真 tty 才启用，非 tty 退回滚动行 |
 | `core/tools/ask.py` | 可用 | AskUserQuestion，asker 装配期注入；**默认工具集不含它**（once 无真人可问） |
@@ -125,7 +125,7 @@ feature 12 被用户打回的三条 bug 各钉了一条 e2e。
 + **feature 13 alt-screen task 1-7** + **feature 16 鼠标与选区 task 1-9**
 + **feature 17 viz-flow task 1-3.5**（事件落盘 + RecallInjected/ConversationCleared + 装配））：
 
-- `./test.sh` → **1093 passed, 3 deselected**，全部离线，约 80s。**这是默认路径。**
+- `./test.sh` → **1112 passed, 3 deselected**，全部离线，约 80s。**这是默认路径。**
   两套假 provider 分工是硬的：`tests/fake_llm.py` **注入**的假客户端测装配与逻辑；
   `tests/fake_provider.py` **起一个真 HTTP 服务**，让真 pai 进程经 `PAI_BASE_URL` 打进来——
   于是 `tests/test_e2e_tui.py` 能在真 pty 里跑完整回合（真 SSE、真 gate、真 TUI），
@@ -222,4 +222,4 @@ feature 12 的遗留见 TODO「feature 12（TUI）交付遗留」，其中一条
 
 阶段 2 REPL 的 6 条遗留见 TODO「feature 05（REPL）遗留」小节，其中两条值得先知道：
 **`Tool.run` 的返回契约分不出工具内部错误**（状态行因此标不出红叉）、
-**steering 无真实输入源**（结构已就位，等 TUI/流式通电）。
+~~**steering 无真实输入源**~~ **2026-08-13 由 feature 18 关闭**（TUI 干活期间打字已通电）。

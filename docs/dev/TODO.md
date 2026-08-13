@@ -97,9 +97,28 @@
       pai 的内部一步就叫 **step**（pi/CC 才叫 turn）。名字与字段各说一套，
       读事件流的人要先猜一次。与上一条一起处理。
 
+### feature 18（steering 输入源）交付遗留 —— 2026-08-13
+
+- [ ] **「不要打断你，干完再看」这个意图现在无法表达**（18 复盘质疑一）：
+      问 2 拍板删掉了 followUp 队列，理由之一是「CC 的交互式用户也没有降级手势」——
+      **但那条理由对 pai 不成立**：CC 用户不需要它是因为有 Esc（abort 当前工具、不杀整轮），
+      而 pai 的 Ctrl+C 是进程级标志（D#40），一按就是整轮结束。
+      **pai 恰恰是更需要「排队」选项的那个实现。** 暂不改（现在改就是凭空发明手势，
+      无证据无参照）；真跑撞到就升格成 D#68 的复议。
+- [ ] **轮末残余是「一条消息一轮」，代价没量过**（18 复盘质疑二）：
+      连打三句就是三次完整模型往返，CC 是一次。若发现常见，修法**不是**拼字符串，
+      而是让 `run_agent` 收 `tasks: list[str]`（`AgentStart` 取第一条、`recall` 取拼接）。
+- [ ] **撞上 `MAX_QUEUE_ROUNDS`（8）时用户没有任何提示**（18 复盘质疑三）：
+      剩下的会留到下一轮结束再处理（不丢），但用户不知道自己有几条话被推迟了。
+      数字 8 本身也是拍脑袋的——选错代价小，但静默是真问题。
+- [ ] **`test_typing_while_busy_lands_in_the_queue` 是一条「不会失败的测试」**
+      （18 复盘「下次怎么做更好」）：它只断言两个答案都出现，
+      **在「排队等轮末」与「本轮就注入」两种语义下都绿**，feature 18 改了语义它也没红。
+      本次只改了它的 docstring。下次动到它时补反证或删掉。
+
 ### feature 18（steering 输入源）前置缺陷 —— 2026-08-13
 
-- [ ] **steering 队列在「模型这轮不调工具」时永久卡死**（出处：
+- [x] ~~**steering 队列在「模型这轮不调工具」时永久卡死**~~ **2026-08-13 随 features/18 修复**（取 (a) 两个出口；`test_steering_is_polled_when_model_gives_final_answer` + 两条 e2e 钉死，注入反证验过：拆掉出口②恰好这两条 e2e 变红）。原文（出处：
       [features/18 spec](features/18-20260813-steering-input/spec.md)「前置缺陷」节，
       由 K [loop/cc-message-queue.md](../../knowledge/loop/cc-message-queue.md)
       第六节撞出）：pai 把 pi 的双层 while 压成单层 `for` + `continue`
@@ -546,11 +565,10 @@
 - [ ] **`Ctrl+R` 增量历史搜索会消失**（12 spec 非目标）：方案 A 全程 raw mode、
       自写行编辑器，readline 白送的 `Ctrl+R` 没有了。这是**一处明确的功能回退**，
       拍板时就知道，不是事后发现。真需要时单独做（本质是个模糊匹配 + 覆盖层组件）。
-- [ ] **steering 队列仍不通电**（12 spec G6）：本轮拍板选的是 followUp（排队，
-      本轮结束后发），steering 的结构与注入点继续闲置。
-      05 那条遗留因此**只关掉一半**——「干活时打字」通了，「立即插队」没通。
-      **2026-08-13 立 [features/18](features/18-20260813-steering-input/README.md) 处理中**
-      （待拍板），交付时与 05 那条一并关闭。
+- [x] ~~**steering 队列仍不通电**（12 spec G6）~~ **2026-08-13 由
+      [features/18](features/18-20260813-steering-input/README.md) 关闭**：默认值反过来了——
+      干活时打的字**本轮就注入**（问 1 照 CC），followUp 队列删掉（问 2），
+      pai 只剩一条消息队列 + 两个注入出口。
 
 ### feature 12（TUI）前置发现 —— 2026-08-11
 
@@ -675,9 +693,9 @@
       下一个提示符上。所以缺的不是「独立输入线程」这么重的东西，**在干活期间对
       stdin 做非阻塞读/`select` 就取得到**。证据见
       [features/12 evidence](features/12-20260811-tui/evidence/20260811-终端反向对照/说明.md) 第 2 条。
-      **2026-08-13 立 [features/18](features/18-20260813-steering-input/README.md) 处理中**
-      （待拍板）：非阻塞读在 12 已做到（`driver.poll(timeout=0)`），
-      缺的只剩「那些字进哪条队列」这个拍板。
+      **2026-08-13 由 [features/18](features/18-20260813-steering-input/README.md) 关闭**：
+      非阻塞读在 12 已做到（`driver.poll(timeout=0)` 挂在 loop 的每个事件上），
+      18 补上的是「那些字进哪条队列、什么时候发出去」。
 - [ ] **`AgentStart.task` 在多轮 REPL 里语义歧义**（05 task 5）：字段是「本轮的任务」
       而非「整个会话的任务」，多轮时名字容易误读。改名或拆事件，小事。
 - [ ] **`statusline._preview` 只取第一个参数值**（05 task 8）：`bash` 只有 command 正好，

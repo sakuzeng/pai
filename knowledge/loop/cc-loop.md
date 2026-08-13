@@ -399,7 +399,7 @@ t2  你打字   → enqueue()                     → 'next'     commandQueue = 
 > 保证队列非空就再起一个 turn，**哪怕这轮没调任何工具**，且**仍在同一个 run 内**。
 >
 > 🔑 **对 pai 的意义**：feature 18 的 T2 让 `loop.py` 在「不发 tool_calls」那条分支上也查一次
-> steering，拿到的是 **pi 的行为**（同一个 run 内解决）；T4 的 `_drain_queue_after_turn`
+> steering，拿到的是 **pi 的行为**（同一个 run 内解决）；T4 的 `_process_queue_after_turn`
 > 才对应 CC 的 `useQueueProcessor`。**这是取长补短，不是照抄 CC**——decisions 该这么写。
 
 ### 标签是怎么打上去的：入队即定，终身不改

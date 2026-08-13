@@ -1,6 +1,8 @@
 import json
 import threading
 
+import pytest
+
 from fake_llm import FakeClient
 
 from pai.core.events import (
@@ -600,29 +602,131 @@ def test_steering_injected_after_all_tool_results():
     assert [m["role"] for m in sent[-3:]] == ["tool", "tool", "user"]
 
 
-def test_steering_not_called_when_model_gives_final_answer():
-    """语义边界：steering 是「工具执行后」的挂点，没有工具调用就不该问它。"""
+def test_steering_is_polled_when_model_gives_final_answer():
+    """**前置缺陷的回归**（feature 18，K loop/cc-message-queue.md 第六节）。
+
+    这条测试的**旧版本断言的正好相反**（「没有工具调用就不该问 steering」），
+    于是把缺陷钉成了正确行为：pai 把 pi 的双层 while 压成单层 for + continue，
+    `:283` 的 return 排在 `:352` 的 steering poll 之前，模型某轮直接作答时
+    队列里的话永久卡死——而模型收尾那轮通常就不调工具，这是最常见的场景之一。
+
+    pi 靠内层 while 的 `|| pendingMessages.length > 0` 挡住（agent-loop.ts:174）；
+    CC 靠两档各有各的出口。pai 取 (a)：`:283` 也查一次 → steering 有两个出口。
+    """
     calls = []
     client = FakeClient([{"content": "done"}])
     run_agent("x", client=client, model="fake", tools={"noop": _noop_tool()},
               on_event=lambda _: None,
               get_steering_messages=lambda: calls.append(1) or [])
-    assert calls == []
+    assert calls == [1], "模型不调工具时也必须查一次队列，否则排队的话永远发不出去"
 
 
-def test_follow_up_keeps_loop_running():
-    """模型本该停下（无 tool_calls），followUp 有货就再跑一轮。"""
+def test_steering_keeps_loop_running_when_model_stops():
+    """模型本该停下（无 tool_calls），队列有货就再跑一轮，而不是让用户重开一轮。
+
+    原 `test_follow_up_keeps_loop_running` 的语义搬到 steering——followUp 队列
+    随 feature 18 问 2 删除，但「排了队就别停」这个行为本身要保住。
+    """
     client = FakeClient([{"content": "第一轮"}, {"content": "第二轮"}])
     pending = [[_user("再补一句")]]
     answer = run_agent("x", client=client, model="fake", tools={"noop": _noop_tool()},
                        on_event=lambda _: None,
-                       get_follow_up_messages=lambda: pending.pop(0) if pending else [])
+                       get_steering_messages=lambda: pending.pop(0) if pending else [])
     assert answer == "第二轮"
     assert client.requests[1]["messages"][-1] == _user("再补一句")
 
 
+def test_steering_has_two_outlets_in_one_run():
+    """两个出口在同一次 run 里都生效：中途（工具结果后）与结束处（模型不调工具时）。
+
+    这正是 CC 的形状（mid-turn drain + turn 结束后的 queueProcessor），
+    区别是 CC 的结束处会**新开一个 query**，pai 在同一个 run 内解决（那是 pi 的形状）。
+    """
+    client = FakeClient([
+        {"tool_calls": [("noop", "{}")]},   # 第 1 轮调工具 → 走中途出口
+        {"content": "阶段答"},               # 第 2 轮不调工具 → 走结束出口
+        {"content": "最终答"},
+    ])
+    pending = [[_user("中途插话")], [_user("结束前插话")]]
+    answer = run_agent("x", client=client, model="fake", tools={"noop": _noop_tool()},
+                       on_event=lambda _: None,
+                       get_steering_messages=lambda: pending.pop(0) if pending else [])
+    assert answer == "最终答"
+    assert client.requests[1]["messages"][-1] == _user("中途插话")
+    assert client.requests[2]["messages"][-1] == _user("结束前插话")
+
+
+def test_steering_injection_emits_an_event_at_both_outlets():
+    """T2.5：注入必须发事件，否则界面（与 .events.jsonl / viz）不知道上下文被改了。
+
+    `_extend` 只 append 不发事件是 feature 18 之前的状态；两个出口都要发，
+    不然「中途插的话看得见、结束前插的话看不见」——同一个动作两种表现。
+    """
+    from pai.core.events import SteeringInjected
+
+    events: list = []
+    client = FakeClient([
+        {"tool_calls": [("noop", "{}")]},
+        {"content": "阶段答"},
+        {"content": "最终答"},
+    ])
+    pending = [[_user("中途插话")], [_user("结束前插话")]]
+    run_agent("x", client=client, model="fake", tools={"noop": _noop_tool()},
+              on_event=events.append,
+              get_steering_messages=lambda: pending.pop(0) if pending else [])
+
+    injected = [e for e in events if isinstance(e, SteeringInjected)]
+    assert [e.texts for e in injected] == [("中途插话",), ("结束前插话",)]
+
+
+def test_no_steering_no_event():
+    """空 drain 不发事件：「注入了 0 条」不是一件发生过的事（同 RecallInjected 的取舍）。"""
+    from pai.core.events import SteeringInjected
+
+    events: list = []
+    client = FakeClient([{"tool_calls": [("noop", "{}")]}, {"content": "done"}])
+    run_agent("x", client=client, model="fake", tools={"noop": _noop_tool()},
+              on_event=events.append, get_steering_messages=lambda: [])
+    assert [e for e in events if isinstance(e, SteeringInjected)] == []
+
+
+def test_steering_event_comes_after_the_messages_are_in():
+    """顺序是硬的：事件表示「已经进上下文了」，不是「即将进」。
+
+    (b) 方案（drain 回调里自己上屏）的毛病正在这——显示发生在注入之前，
+    中间若中断/抛错，屏幕说已插入而上下文里没有。
+    """
+    from pai.core.events import SteeringInjected
+
+    seen: list = []
+    messages: list = []
+    client = FakeClient([{"tool_calls": [("noop", "{}")]}, {"content": "done"}])
+    pending = [[_user("插一句")]]
+
+    def record(e):
+        if isinstance(e, SteeringInjected):
+            seen.append([m.get("content") for m in messages])
+
+    run_agent("x", client=client, model="fake", tools={"noop": _noop_tool()},
+              messages=messages, on_event=record,
+              get_steering_messages=lambda: pending.pop(0) if pending else [])
+    assert seen and "插一句" in seen[0], "发事件时那条消息必须已经在 messages 里"
+
+
+def test_follow_up_parameter_is_gone():
+    """followUp 队列随问 2 删除：仍传这个参数要当场报错，不许静默吞掉。
+
+    静默吞 = 调用方以为排队生效了、实际消息永远发不出去，正是本次要修的那类 bug。
+    """
+    client = FakeClient([{"content": "done"}])
+    with pytest.raises(TypeError):
+        run_agent("x", client=client, model="fake", tools={"noop": _noop_tool()},
+                  on_event=lambda _: None,
+                  get_follow_up_messages=lambda: [])
+
+
 def test_no_queues_preserves_old_request_sequence():
-    """不传两个队列参数时，请求序列与接线前完全一致（默认 None = 行为不变）。"""
+    """不传队列参数时，请求序列与接线前完全一致（默认 None = 行为不变）。"""
     client = FakeClient([{"tool_calls": [("noop", "{}")]}, {"content": "done"}])
     answer = run_agent("x", client=client, model="fake", tools={"noop": _noop_tool()},
                        on_event=lambda _: None)
