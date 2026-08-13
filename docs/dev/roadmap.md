@@ -5,7 +5,7 @@
 功能级完整故事线（需求→方案→结果→测试→问题）在 [features/](features/README.md)。
 「前置精读」的笔记落 [../../knowledge/](../../knowledge/README.md)；勾选只代表笔记文件已存在
 （tests/test_docs_consistency.py 校验链接可达），不能证明人真的读了——这条判不了，如实声明。
-官方文档全景归属见 [knowledge/claude-docs/map.md](../../knowledge/claude-docs/map.md)。
+官方文档全景归属见 [knowledge/overview/claude-docs-map.md](../../knowledge/overview/claude-docs-map.md)。
 
 每阶段五要素：目标 / 范围 / 参照 / 前置精读 / 流程级别（superpowers 全链路 or 简述直做）。
 
@@ -39,8 +39,8 @@ feature 12 又撞出六条，其中一条**改写了一条已登记遗留的定�
 - **范围**：做——三函数 + `should_compact` 接线 + 锚点列表（D#32）+ 压缩后首次真实 usage 裁决（D#34）+ 并行 tool_calls 测试补齐（R#11，有真实 400 复现）。不做——microcompact（阶段 1 完成后单独评估，见 cc-compaction 笔记）、流式下的 usage 归一化（阶段 5 前置）。
 - **参照**：pi `packages/agent/src/harness/compaction/`（findValidCutPoints 只排除 toolResult、允许劈开单轮 isSplitTurn；CompactionEntry）；CC `src/services/compact/`（策略：四级递进）。注意 pai 的「只切轮次边界」是比 pi 更强的约束（D#32 注记）。
 - **前置精读**：
-  - [x] [knowledge/claude-docs/context-management.md](../../knowledge/claude-docs/context-management.md)（官方 compact 行为与摘要保留清单）
-  - [x] [knowledge/source-walks/cc-compaction.md](../../knowledge/source-walks/cc-compaction.md)
+  - [x] [knowledge/context/claude-context-management.md](../../knowledge/context/claude-context-management.md)（官方 compact 行为与摘要保留清单）
+  - [x] [knowledge/context/cc-compaction.md](../../knowledge/context/cc-compaction.md)
 - **流程**：superpowers 全链路（brainstorm → spec → plan → SDD → 合并 → tag `compaction-v1`）。
 - **完成定义**：压缩在真实轨迹夹具上跑通；锚定退化空窗有测试钉死；`./test.sh` 全绿。
 - **档案**：[features/02-20260803-compaction/](features/02-20260803-compaction/README.md)。
@@ -67,10 +67,10 @@ feature 12 又撞出六条，其中一条**改写了一条已登记遗留的定�
   CURSOR_MARKER」、839-941 行的测试项形状）、`packages/agent/src/agent.ts`（PendingMessageQueue）；
   CC `src/screens/REPL.tsx` 的 `getFocusedInputDialog`、`src/utils/permissions/getNextPermissionMode.ts`。
 - **前置精读**（前两条是 REPL 半程的，后两条是 TUI 半程的）：
-  - [x] [knowledge/source-walks/pi-agentloop.md](../../knowledge/source-walks/pi-agentloop.md)
-  - [x] [knowledge/claude-docs/interactive-mode.md](../../knowledge/claude-docs/interactive-mode.md)（官方交互契约：中断两级 / 干活时输入 / `!` shell 模式 / 历史三细节）
-  - [x] [knowledge/source-walks/pi-tui-main-screen.md](../../knowledge/source-walks/pi-tui-main-screen.md)（绘制侧：Component 四成员契约、差量重绘 diff 的是**整份文档的行数组**、宽度一变就 `\x1b[3J` **清 scrollback**、CURSOR_MARKER 与 IME、超宽行 fail-loud）
-  - [x] [knowledge/source-walks/cc-input-ownership-and-modes.md](../../knowledge/source-walks/cc-input-ownership-and-modes.md)（输入侧：**对话框不抢焦点、等用户停手 1500ms**、`/mode` 与 shift+tab 必须都有、`dontAsk` 不进轮转环、resize 不去抖）
+  - [x] [knowledge/loop/pi-agentloop.md](../../knowledge/loop/pi-agentloop.md)
+  - [x] [knowledge/tui/claude-interactive-mode.md](../../knowledge/tui/claude-interactive-mode.md)（官方交互契约：中断两级 / 干活时输入 / `!` shell 模式 / 历史三细节）
+  - [x] [knowledge/tui/pi-tui-main-screen.md](../../knowledge/tui/pi-tui-main-screen.md)（绘制侧：Component 四成员契约、差量重绘 diff 的是**整份文档的行数组**、宽度一变就 `\x1b[3J` **清 scrollback**、CURSOR_MARKER 与 IME、超宽行 fail-loud）
+  - [x] [knowledge/tui/cc-input-ownership-and-modes.md](../../knowledge/tui/cc-input-ownership-and-modes.md)（输入侧：**对话框不抢焦点、等用户停手 1500ms**、`/mode` 与 shift+tab 必须都有、`dontAsk` 不进轮转环、resize 不去抖）
   - [x] [反向对照 → features/12 evidence](features/12-20260811-tui/evidence/20260811-终端反向对照/说明.md)
         （撞出 6 条：pai 对 resize **一个字节都不发**；「干活时打的字」其实**没丢**、
         在内核 tty 缓冲区里等着，改写了 steering 那条遗留的定性；状态行按事件而非按
@@ -79,16 +79,16 @@ feature 12 又撞出六条，其中一条**改写了一条已登记遗留的定�
   归 [features/13](features/13-20260811-alt-screen/README.md)。前两批那四篇都是**给
   main-screen 的**，alt-screen 一篇都没有；而 `tui-plan.md` 里被 feature 12 跳过的
   那 90% 正是这一批的主体：
-  - [x] [knowledge/source-walks/pi-alt-screen.md](../../knowledge/source-walks/pi-alt-screen.md)
+  - [x] [knowledge/tui/pi-alt-screen.md](../../knowledge/tui/pi-alt-screen.md)
         （`tui-plan.md` 主体 + `tui-alt-screen.ts`：alt 是**另一个渲染器**不是补丁；
         follow-end 状态机；**退出时要重渲染完整文档打回主屏**；
         并纠正一处 pai 自己的转述——原则 2 的原文是「别在 main-screen 里**假装**」，
         不是「别做 alt-screen」）
-  - [x] [knowledge/source-walks/cc-alt-screen.md](../../knowledge/source-walks/cc-alt-screen.md)
+  - [x] [knowledge/tui/cc-alt-screen.md](../../knowledge/tui/cc-alt-screen.md)
         （`AlternateScreen.tsx` / `ink.tsx` / `hit-test.ts` / `selection.ts` / `fullscreen.ts`：
         **CC 对外部用户默认关**这个形态 + 三个逃生口；命中测试 130 行便宜、
         选区 917 行昂贵；alt 屏是个需要自愈的状态）
-  - [x] [knowledge/concepts/alt-screen-and-mouse.md](../../knowledge/concepts/alt-screen-and-mouse.md)
+  - [x] [knowledge/tui/alt-screen-and-mouse.md](../../knowledge/tui/alt-screen-and-mouse.md)
         （可迁移的那层：DECSET 1049 不幂等、鼠标三档互斥、SGR 1006 编码、
         DECRQM 不可移植）
   - [x] [反向对照（动工前）→ features/13 evidence](features/13-20260811-alt-screen/evidence/20260811-alt-screen反向对照/说明.md)
@@ -126,7 +126,7 @@ feature 12 又撞出六条，其中一条**改写了一条已登记遗留的定�
   只读 PAI.md 三层不读 AGENTS.md（D#43）。
 - **参照**：CC `src/memdir/`（findRelevantMemories/memoryScan）；面试准备 `12_记忆系统/深度_CC记忆系统.md`（外部参照）。
 - **前置精读**：
-  - [x] [knowledge/claude-docs/memory.md](../../knowledge/claude-docs/memory.md)（两套记忆的加载算法；**读出一条 pai 未来的 bug**：压缩会摘掉指令文件，官方靠重注入兜）
+  - [x] [knowledge/memory/claude-memory.md](../../knowledge/memory/claude-memory.md)（两套记忆的加载算法；**读出一条 pai 未来的 bug**：压缩会摘掉指令文件，官方靠重注入兜）
 - **流程**：superpowers 全链路。
 
 ## 阶段 4 · 权限（已交付 2026-08-10）
@@ -146,12 +146,12 @@ feature 12 又撞出六条，其中一条**改写了一条已登记遗留的定�
   权限模式四态（D#53）、hook fail-closed（D#54 复议 D#50）。7 task TDD，385 passed。
   **教训**：本阶段前置精读的 `permissions-hooks.md` 里「工作目录/cwd/边界」grep 零命中，
   pi 侧只有一句「参照 beforeToolCall」——精读覆盖了文档每一节，却漏掉一整层机制。
-  补 [cc-pi-permission-boundaries.md](../../knowledge/source-walks/cc-pi-permission-boundaries.md)。
+  补 [cc-pi-permission-boundaries.md](../../knowledge/permissions/cc-pi-permission-boundaries.md)。
 - **范围**：做——三态规则、按 source 分桶（user/project）、bash 前缀匹配与路径匹配。anna 门禁思想回流：ask 只用在必须真人拍板的节点、门禁三种退出码、**门禁必须带测试**（注入已知错误断言真会拦——这是对 anna 短板的修正）。不做——LLM 分类命令危险度、配置硬编码。
 - **参照**：CC `src/utils/permissions/`（规则三态 + 语义下放）；anna `guards/`。
 - **前置精读**：
   - [x] [knowledge/anna/gates.md](../../knowledge/anna/gates.md)（**本地不入库**，R2#1 裁决——克隆者无此文件，测试对 gitignored 目标放行）
-  - [x] [knowledge/claude-docs/permissions-hooks.md](../../knowledge/claude-docs/permissions-hooks.md)（求值顺序 deny→ask→allow、Bash 复合命令/包装器/词边界四坑、「语义下放给工具」的原文、hook 决策优先级）
+  - [x] [knowledge/permissions/claude-permissions-hooks.md](../../knowledge/permissions/claude-permissions-hooks.md)（求值顺序 deny→ask→allow、Bash 复合命令/包装器/词边界四坑、「语义下放给工具」的原文、hook 决策优先级）
 - **流程**：superpowers 全链路。
 
 ## 阶段 5 · 流式（已交付 2026-08-11）
@@ -163,10 +163,10 @@ feature 12 又撞出六条，其中一条**改写了一条已登记遗留的定�
   见 [features/11](features/11-20260811-streaming/README.md)）。中断参照子 AbortController 思路：工具出错杀兄弟任务但不向上传播取消。工具能力标志（is_read_only / is_concurrency_safe）在此阶段进 `@tool` 装饰器——调度靠标志，不靠 if-else 判工具名。
 - **参照**：CC `src/services/tools/StreamingToolExecutor.ts`；CC `src/Tool.ts` 的 `isConcurrencySafe` / `isReadOnly`（能力标志，默认保守全 false。反编译源码行号会漂，检索符号名）。
 - **前置精读**：
-  - [x] [knowledge/concepts/streaming-tool-calls.md](../../knowledge/concepts/streaming-tool-calls.md)（OpenAI 兼容协议的流式：tool_calls 按 index 归并、usage 在哪、中断没有 usage。**含 6 个真实探针**）
-  - [x] [knowledge/source-walks/cc-streaming-tools.md](../../knowledge/source-walks/cc-streaming-tools.md)（CC `StreamingToolExecutor` + `Tool.ts` 能力标志 + 保序分批 + 兄弟取消）
+  - [x] [knowledge/streaming/streaming-tool-calls.md](../../knowledge/streaming/streaming-tool-calls.md)（OpenAI 兼容协议的流式：tool_calls 按 index 归并、usage 在哪、中断没有 usage。**含 6 个真实探针**）
+  - [x] [knowledge/streaming/cc-streaming-tools.md](../../knowledge/streaming/cc-streaming-tools.md)（CC `StreamingToolExecutor` + `Tool.ts` 能力标志 + 保序分批 + 兄弟取消）
   - ~~官方 streaming 相关章节 → 届时落 knowledge/claude-docs/~~ —— **2026-08-11 改写，理由留档**：
-    官方 Claude Code 文档**没有 streaming 章节**（见 [claude-docs/map.md](../../knowledge/claude-docs/map.md) 的覆盖图），
+    官方 Claude Code 文档**没有 streaming 章节**（见 [overview/claude-docs-map.md](../../knowledge/overview/claude-docs-map.md) 的覆盖图），
     而 pai 走的是 **OpenAI 兼容协议打 DeepSeek**，真正约束 pai 的是 DeepSeek 的
     `stream` / `stream_options` 语义。所以这条落到 `concepts/`（无单一外部原文可链）而非 `claude-docs/`。
     **且实测与 DeepSeek 官方文档不符**——`include_usage` 是空操作、没有文档说的那个「choices 为空」的额外块，
@@ -213,7 +213,7 @@ feature 12 又撞出六条，其中一条**改写了一条已登记遗留的定�
   但完整形态是 `~/.pai/settings.json`——**而阶段 4 权限本来就要引入这个文件**
   （用户层 + 项目层两级规则），两件事共用同一套加载与合并逻辑，一起做最省。
   归属确定前不要另起炉灶。
-- microcompact（清可重放工具的旧结果）→ 阶段 1 完成后评估，见 [cc-compaction 笔记](../../knowledge/source-walks/cc-compaction.md)
+- microcompact（清可重放工具的旧结果）→ 阶段 1 完成后评估，见 [cc-compaction 笔记](../../knowledge/context/cc-compaction.md)
 - ~~**自测闭环**~~ → **已交付 2026-08-11**（不占阶段，是给所有阶段用的基建）：
   [features/14](features/14-20260811-session-capture/README.md) 录制与回放
   （`PAI_TUI_RECORD` + `pai-replay` 出 PNG，让 AI 自己看得见界面）、

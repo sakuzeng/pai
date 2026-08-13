@@ -3,25 +3,46 @@
 与 `docs/dev/`（开发证据）正交：那边记「**pai** 做了什么、为什么」，
 这边记「**外面的世界**怎么做、我学到了什么」。
 
-## 结构：按「这篇知识从哪来」分
+## 结构：按「这是哪个知识点」分
 
-分类标准是**来源**，不是主题——主题会重叠，来源不会。
-（2026-08-10 修正：原先 `concepts/` 定义成「不专属某家源码的」，
-是个否定式定义，边界靠猜；那天就把一篇双源走读误放进去了。）
+**分类标准是知识点（主题），不是来源。** 目录 = 一个知识点，同一个知识点下
+官方文档、pi 源码、CC 源码、自己的沉淀**并排放**——因为读的时候本来就要并排读。
 
 ```
-claude-docs/     来源 = Claude Code 官方文档。一模块一文件，头部带原文 URL
-source-walks/    来源 = 别人的源码（pi / CC）。文件名前缀标来源：
-                 单源 cc-/pi-，对照两家用 pi-cc-（如 pi-cc-api-keys.md）
-concepts/        来源 = 没有单一外部原文可链的整理，三类：
-                 ① 横切概念（hooks/门禁这种跨多家的机制）
-                 ② 方法论回流
-                 ③ **开发中撞出来的通用工程知识**（见下「能不能落这里」）
-anna/            来源 = anna 工作区方法论（本地不入库，R2#1 裁决）
+loop/            agent loop 的结构与运行时、消息注入与队列
+context/         上下文窗口、压缩、token 计量
+memory/          记忆分层与召回
+permissions/     权限求值、工作目录边界、hooks 与门禁
+tui/             终端 UI：绘制、备用屏、鼠标、输入归属、终端物理特性
+streaming/       流式输出与工具调度
+model-api/       打模型 API 时要知道的事（key 取法、max_tokens 语义）
+engineering/     换个项目仍成立的通用工程方法（测试、观测、接缝、进程）
+overview/        跨主题的覆盖图与索引
+anna/            anna 工作区方法论（**本地不入库**，R2#1 裁决——这不是知识点分类，
+                 是入库边界，别按主题拆散它）
 inbox.md         还写不出锚点的：新工具/想法一行一项待消化
 ```
 
+**来源信息不丢，靠文件名前缀承载**（这是原「按来源分」规约留下的、仍然有效的一半）：
+
+| 前缀 | 来源 | 例 |
+|---|---|---|
+| `cc-` | Claude Code 反编译源码 | `loop/cc-loop.md` |
+| `pi-` | pi-mono 源码 | `loop/pi-loop.md` |
+| `pi-cc-` | 对照两家的走读 | `permissions/cc-pi-permission-boundaries.md` |
+| `claude-` | Claude Code **官方文档**（不是源码） | `memory/claude-memory.md` |
+| 无前缀 | 没有单一外部原文的沉淀（横切概念 / 方法论回流 / 开发中撞出的通用知识） | `tui/terminal-width.md` |
+
 目录随第一篇笔记创建，禁止空目录占位；不嵌套二级目录。
+
+> **2026-08-13 改版记录（用户指定）**：原规约是「按来源分」（`claude-docs/` / `source-walks/` /
+> `concepts/`），理由是「主题会重叠，来源不会」。
+> **改的原因是它把该并排读的东西拆散了**——想搞清 agent loop，得同时翻 `source-walks/pi-agentloop.md`、
+> `source-walks/cc-message-queue.md` 和一堆 `concepts/`，而目录结构一点忙都帮不上。
+> **代价照旧存在且必须承认**：主题确实会重叠（`cc-message-queue` 既属 loop 也沾 tui 的输入归属，
+> `reasoning-models-max-tokens` 是做召回时撞出来的却归 model-api）。
+> **重叠时的裁决规则：按「这条知识本身在讲什么」放，不按「当时为什么去读它」放**，
+> 另一头用 `相关：` 行互链。28 篇一次性迁完，历史链接已全仓改写。
 
 ## 开发中用到的知识，能不能落这里？
 
@@ -30,12 +51,12 @@ inbox.md         还写不出锚点的：新工具/想法一行一项待消化
 | 这条知识 | 落哪 | 例子 |
 |---|---|---|
 | **只关于 pai 自己**：为什么这么设计、踩了什么坑、当时怎么选的 | **不进 knowledge**。进 `docs/dev/`：过程写 features 档案的 devlog、取舍写 decisions、教训写复盘 | 「compact 后指令消息会被摘掉，所以要重注入」 |
-| **可迁移的通用工程知识**：换个语言/项目依然成立的事实与机制 | **`concepts/`** | POSIX 进程组与 `killpg`、东亚宽字符占两列、gitignore 匹配语义 |
+| **可迁移的通用工程知识**：换个语言/项目依然成立的事实与机制 | **对应知识点目录，用无前缀文件名** | POSIX 进程组与 `killpg` → `engineering/`；东亚宽字符占两列 → `tui/` |
 
 判断卡壳时问一句：**这段话如果出现在别人的项目里，还有用吗？**
-有用 → `concepts/`；只有 pai 的人看得懂 → `docs/dev/`。
+有用 → knowledge 的知识点目录；只有 pai 的人看得懂 → `docs/dev/`。
 
-两边可以互链，但**不要互抄**：`concepts/` 写机制本身，档案里写「pai 在哪儿用到它、
+两边可以互链，但**不要互抄**：knowledge 写机制本身，档案里写「pai 在哪儿用到它、
 当时撞出什么」，中间用一行链接连起来（指针优先，规约 4）。
 
 ## 使用规约
@@ -71,47 +92,45 @@ inbox.md         还写不出锚点的：新工具/想法一行一项待消化
 
 | 笔记 | 一句话 | 状态 | pai 锚点 |
 |---|---|---|---|
-| [claude-docs/context-management.md](claude-docs/context-management.md) | 官方上下文窗口与 compact 机制，对照 pai 压缩现状 | 精读 | src/pai/core/compaction.py |
-| [claude-docs/interactive-mode.md](claude-docs/interactive-mode.md) | 官方交互契约（中断两级 / 干活时输入 / `!` shell 模式 / 历史），及 pai REPL 取舍 | 精读 | roadmap 阶段 2 |
-| [claude-docs/memory.md](claude-docs/memory.md) | 官方两套记忆（人写的分层指令 / 模型自写的自动记忆）、加载算法，及压缩重注入这条 pai 尚不存在的 bug | 精读 | roadmap 阶段 3 |
-| [claude-docs/permissions-hooks.md](claude-docs/permissions-hooks.md) | 权限三态求值顺序、Bash 匹配四个坑、「语义下放给工具」的官方原文、hooks 决策协议 | 精读 | roadmap 阶段 4 |
-| [claude-docs/map.md](claude-docs/map.md) | 官方文档章节 → pai 归属/不做 的覆盖图 | 沉淀 | docs/dev/roadmap.md |
-| [source-walks/cc-compaction.md](source-walks/cc-compaction.md) | CC 四级递进压缩策略要点 | 指针 | roadmap 阶段 1 |
-| [source-walks/pi-cc-api-keys.md](source-walks/pi-cc-api-keys.md) | pi 的映射表+注入钩子 vs CC 的带来源+apiKeyHelper；结论：key 留 .env 不进 settings.json | 精读 | src/pai/config.py |
-| [source-walks/cc-memdir.md](source-walks/cc-memdir.md) | **记忆召回是框架主动做的**：便宜模型按 header manifest 选 ≤5 篇；外加 memoryAge 的陈旧警告 | 精读 | src/pai/core/memory.py |
-| [source-walks/pi-agentloop.md](source-walks/pi-agentloop.md) | pi 四层分层 + 十种事件 + 双队列注入时机 + AgentLoopConfig 全部钩子 | 精读 | roadmap 阶段 2 |
-| [source-walks/cc-streaming-tools.md](source-walks/cc-streaming-tools.md) | 工具在模型还没说完就开跑：能力标志是**收 input 的函数**（默认全 false）、保序贪心分批、**只有 Bash 出错才杀兄弟**、子 AbortController 不向上传播；`getAssistantMessageId` 那条**不适用于 pai**（协议不同） | 精读 | src/pai/core/loop.py、roadmap 阶段 5 |
-| [source-walks/pi-tui-main-screen.md](source-walks/pi-tui-main-screen.md) | main-screen 的差量重绘 diff 的是**整份文档的行数组**，宽度一变就全量重绘并 `\x1b[3J` **清掉 scrollback**（只有持有整份文档才敢清）；`CURSOR_MARKER` 的位置**永远要摆**、`showHardwareCursor` 只管可不可见；超宽行 fail-loud。另纠一条范围错误：`tui-plan.md` 讲的是 alt-screen（**当时不做，feature 13 已做，见 pi-alt-screen.md**） | 精读 | src/pai/modes/interactive.py、roadmap 阶段 2 |
-| [source-walks/pi-alt-screen.md](source-walks/pi-alt-screen.md) | alt-screen 是**另一个渲染器**不是补丁：VStack/ScrollView/每帧重建的布局树；follow-end 状态机是「流式时用户在往回翻」的唯一解；**退出时要重渲染完整文档打回主屏**（拿最后一帧顶替就是裁剪过的视口）；原则 2 的原文是「别在 main-screen 里假装」**不是**「别做 alt-screen」 | 精读 | src/pai/tui/、roadmap 阶段 2 原则 2、features/13 |
-| [source-walks/cc-alt-screen.md](source-walks/cc-alt-screen.md) | CC 的 alt-screen **对外部用户默认关**（`USER_TYPE==='ant'` 才开）+ 三个逃生口 + tmux -CC 同步探测；命中测试只要 130 行**便宜**，选区要 917 行**昂贵**（拿走鼠标=拿走终端原生选中复制）；「进 alt」必须早于「第一帧」否则**退出后**才暴露；alt 屏是个需要自愈的状态 | 精读 | src/pai/tui/terminal.py、features/13 |
-| [source-walks/cc-input-ownership-and-modes.md](source-walks/cc-input-ownership-and-modes.md) | **对话框不抢焦点，它等你停手**（输入框非空即压住权限/提问框，停手 1500ms 才弹，且显式提示「Waiting for permission…」）——与 pai TODO 里凭文档推出的「问题框接管输入焦点」方向相反；模式轮转 `plan` 在环里而 `dontAsk` 不在；resize 刻意不去抖 | 精读 | src/pai/modes/interactive.py、src/pai/core/tools/ask.py、roadmap 阶段 2 |
-| [source-walks/cc-pi-permission-boundaries.md](source-walks/cc-pi-permission-boundaries.md) | **CC 的默认不是常量是函数**（`in_working_dir ? allow : ask`）；pi 零内置权限 + 明写免责；钩子失败语义两家都 fail-closed 而 pai 反着来 | 精读 | src/pai/core/permissions.py、features/09 |
-| [concepts/hooks-gates.md](concepts/hooks-gates.md) | hooks 事件与工具调用门禁模式（阶段 4 设计输入）；**fail-open vs fail-closed 按失败代价分场景** | 沉淀 | roadmap 阶段 4、decisions #54 |
-| [concepts/path-boundary-checks.md](concepts/path-boundary-checks.md) | 路径边界判定四条坑：前缀≠包含、**两个 cwd 锚点**（合并即 cd 逃逸）、符号链接双路径且 allow/deny 反向、判不出来≠没问题 | 沉淀 | src/pai/core/boundary.py、decisions #51 #52 |
-| [concepts/mutation-testing-pitfalls.md](concepts/mutation-testing-pitfalls.md) | 注入反证的坑：**注错了和没测住现象一样（全绿）**；「没被执行到」分**控制流被屏蔽**与**测试场景压根不走那条路**两种；正交防线要分别注；红阶段就绿的测试不具本次鉴别力 | 沉淀 | features/07、features/09、features/13 的 devlog |
-| [concepts/process-groups-and-interrupts.md](concepts/process-groups-and-interrupts.md) | 独立进程组 + killpg 才杀得干净；杀不净的第一个症状是**输出丢失**不是资源泄漏 | 沉淀 | src/pai/core/tools/shell.py |
-| [concepts/terminal-width.md](concepts/terminal-width.md) | 中文占两列、ANSI 不占列；必须先按可见文本截断再上色 | 沉淀 | src/pai/modes/statusline.py |
-| [concepts/terminal-raw-mode.md](concepts/terminal-raw-mode.md) | raw mode 的三条静默陷阱：`input()` **永远等不到行尾**（Enter 发 `\r`）且 Ctrl+C/D 同时失效 = 程序必死；终端替你折行而你的光标算术不知道；**emoji 不能做界面字形**（字体缺字 + 宽度不确定）。外加退出时无条件复原 | 沉淀 | src/pai/tui/、features/12 |
-| [concepts/injection-seams.md](concepts/injection-seams.md) | **装配期捕获**：依赖会变时闭包存的还是当时那个值，症状是「我改了但没反应」；判据、兼容写法、**「改完立刻生效」的测试前后结果必须不同**（否则假绿）、**同一个坑会连撞两次**；外加「接缝上的 bug 离线测试结构上看不见」 | 沉淀 | src/pai/core/gate.py、features/12 |
-| [concepts/instruments-lie.md](concepts/instruments-lie.md) | **观测工具骗人的四种方式**：污染被测对象／全量记录器漏掉第二个写入出口／读取工具给的是复合视图／**能力探测探的是另一个能力**。前三种都长得像「被测代码有 bug」，第四种让你以为自己做过了一次根本没发生的观测 | 沉淀 | src/pai/tui/record.py、features/13 复盘、features/16 |
-| [concepts/alt-screen-and-mouse.md](concepts/alt-screen-and-mouse.md) | `?1049h` **不幂等**（已在备用屏时重发=清屏+回原点，两个 macOS 终端实测一致，有源码把它写反）；1000/1002/1003 是**互斥单选**、1006 只是编码；**DECRQM 在 Terminal.app 完全不可用**且不被识别的查询会漏成可见字符污染测量；备用屏里 resize 终端不替你重排；**OSC 52 会被静默拒绝**（本机 iTerm2 实测写不进剪贴板）故自写选区不能只靠它 | 沉淀 | src/pai/tui/terminal.py、features/13 |
-| [concepts/reasoning-models-max-tokens.md](concepts/reasoning-models-max-tokens.md) | 推理模型的 reasoning 计进 `max_tokens`：上限设小不省钱，只会让 content **静默变空串**（实测同 query 思考量差 17 倍） | 沉淀 | src/pai/core/recall.py |
-| [concepts/context-management.md](concepts/context-management.md) | 上下文管理全梯度 + 「窗口用不满≠不用管」的实测认知 | 沉淀 | src/pai/core/compaction.py |
-| [concepts/streaming-tool-calls.md](concepts/streaming-tool-calls.md) | 流式下 tool_calls 按 `index` 归并且 `arguments` **逐字符**分片；usage 实测**永远在末块**（`include_usage` 是空操作，惯用的「choices 为空即 usage 块」分支永不触发 → 用量静默丢失）；中断的流没有 usage | 沉淀 | src/pai/core/loop.py、roadmap 阶段 5 |
-| [inbox.md](inbox.md) | 待消化收件箱（准入豁免区，一行一项） | 常驻 | 升格前豁免 |
+| **`loop/`** | | | |
+| [loop/cc-loop.md](loop/cc-loop.md) | CC 的 loop **结构与运行时**：`query()` 是异步生成器（外壳只负责「正常返回才补发 completed」，**started-without-completed 是刻意保留的失败信号**）；run↔query 术语对照；**CC 的 loop 内部只有一个队列出口**（另一个 `useQueueProcessor` 在循环之外，起的是**新 query**）→ 循环条件不看队列，故 **`next` 在纯答话轮次退化成 `later`**（⚠️ 「退化」指**投递时机**，`priority` 字段**入队即定终身不改**，出队排序上 next 仍优先于 later），而 pi 不退化。另含：**Ⓐ 的门槛由调用方传**（全仓仅两个调用点）+ **门槛切片 vs 取最高的双语义**、**Ⓐ 的空转路径**（空数组一路流过 + `snapshot` 引用稳定性是 `useSyncExternalStore` 的命门）、**路 B 是自驱动 effect**（两个订阅源 / 三道守卫 / 靠同步执行顺序防重入）、**标签怎么打**（选函数而非判内容；`LocalShellTask` 用 feature flag 调档）、**术语出处**（mid-turn drain 是 CC 行话不是标识符）、**四条具体走位 + 一次完整时间线**。⚠️ **CC 没有 followUpQueue**；`attachment` 是 58 个分支的**注入物中间层**，它做的三件事里 pai 只需补两件（可见性靠事件流、**语气外壳靠字符串包装**，都与协议无关） | 精读 | src/pai/core/loop.py、src/pai/core/recall.py、features/18 |
+| [loop/cc-message-queue.md](loop/cc-message-queue.md) | **不是两条队列，是一条队列 + 三档优先级**（`now`/`next`/`later`）；**用户输入默认 `next` 即中途注入**、系统消息默认 `later`（「人说话默认优先，机器说话默认等着」）；`now` 会 abort 在跑的工具但**交互式用户产生不了**，只有 SDK 能设；注入形状是 **attachment 跟在 toolResults 后**不是 user 消息；slash 命令排除在 mid-turn drain 外。附一条 pai 自己的前置缺陷：单层 `for` 压平了 pi 的双层 while，**不调工具的回合会把 steering 卡死在队列里** | 精读 | src/pai/core/queue.py、src/pai/core/loop.py、features/18 |
+| [loop/pi-agentloop.md](loop/pi-agentloop.md) | pi 四层分层 + 十种事件 + 双队列注入时机 + AgentLoopConfig 全部钩子 | 精读 | roadmap 阶段 2 |
+| [loop/pi-loop.md](loop/pi-loop.md) | pi 的 loop **结构与运行时**：四者**不是四层栈**（`AgentHarness` 是 `Agent` 的兄弟，两者各自直接调 `runAgentLoop`，且 pi 自己的 coding-agent 里 `AgentHarness` **零命中**）；**两层 while 就是双队列语义的物理形态**——内层条件 `hasMoreToolCalls \|\| pendingMessages.length > 0` 保证「模型不调工具也能同 run 内注入」；agent/run/turn 三个术语的边界；**首个 turn 不发 `turn_start`**；`stopReason === "length"` 时该轮 tool_call **全部判失败**；**无步数上限**；**「在 loop 内部问队列」是 pi 独有的形状**（与 CC/pai 的结构性分歧表）。⚠️ 本篇更正了 `loop/pi-agentloop.md` 的四层分层错误 | 精读 | src/pai/core/loop.py、src/pai/core/queue.py、features/18 |
+| **`context/`** | | | |
+| [context/cc-compaction.md](context/cc-compaction.md) | CC 四级递进压缩策略要点 | 指针 | roadmap 阶段 1 |
+| [context/claude-context-management.md](context/claude-context-management.md) | 官方上下文窗口与 compact 机制，对照 pai 压缩现状 | 精读 | src/pai/core/compaction.py |
+| [context/context-management.md](context/context-management.md) | 上下文管理全梯度 + 「窗口用不满≠不用管」的实测认知 | 沉淀 | src/pai/core/compaction.py |
+| **`memory/`** | | | |
+| [memory/cc-memdir.md](memory/cc-memdir.md) | **记忆召回是框架主动做的**：便宜模型按 header manifest 选 ≤5 篇；外加 memoryAge 的陈旧警告 | 精读 | src/pai/core/memory.py |
+| [memory/claude-memory.md](memory/claude-memory.md) | 官方两套记忆（人写的分层指令 / 模型自写的自动记忆）、加载算法，及压缩重注入这条 pai 尚不存在的 bug | 精读 | roadmap 阶段 3 |
+| **`permissions/`** | | | |
+| [permissions/cc-pi-permission-boundaries.md](permissions/cc-pi-permission-boundaries.md) | **CC 的默认不是常量是函数**（`in_working_dir ? allow : ask`）；pi 零内置权限 + 明写免责；钩子失败语义两家都 fail-closed 而 pai 反着来 | 精读 | src/pai/core/permissions.py、features/09 |
+| [permissions/claude-permissions-hooks.md](permissions/claude-permissions-hooks.md) | 权限三态求值顺序、Bash 匹配四个坑、「语义下放给工具」的官方原文、hooks 决策协议 | 精读 | roadmap 阶段 4 |
+| [permissions/hooks-gates.md](permissions/hooks-gates.md) | hooks 事件与工具调用门禁模式（阶段 4 设计输入）；**fail-open vs fail-closed 按失败代价分场景** | 沉淀 | roadmap 阶段 4、decisions #54 |
+| [permissions/path-boundary-checks.md](permissions/path-boundary-checks.md) | 路径边界判定四条坑：前缀≠包含、**两个 cwd 锚点**（合并即 cd 逃逸）、符号链接双路径且 allow/deny 反向、判不出来≠没问题 | 沉淀 | src/pai/core/boundary.py、decisions #51 #52 |
+| **`tui/`** | | | |
+| [tui/alt-screen-and-mouse.md](tui/alt-screen-and-mouse.md) | `?1049h` **不幂等**（已在备用屏时重发=清屏+回原点，两个 macOS 终端实测一致，有源码把它写反）；1000/1002/1003 是**互斥单选**、1006 只是编码；**DECRQM 在 Terminal.app 完全不可用**且不被识别的查询会漏成可见字符污染测量；备用屏里 resize 终端不替你重排；**OSC 52 会被静默拒绝**（本机 iTerm2 实测写不进剪贴板）故自写选区不能只靠它 | 沉淀 | src/pai/tui/terminal.py、features/13 |
+| [tui/cc-alt-screen.md](tui/cc-alt-screen.md) | CC 的 alt-screen **对外部用户默认关**（`USER_TYPE==='ant'` 才开）+ 三个逃生口 + tmux -CC 同步探测；命中测试只要 130 行**便宜**，选区要 917 行**昂贵**（拿走鼠标=拿走终端原生选中复制）；「进 alt」必须早于「第一帧」否则**退出后**才暴露；alt 屏是个需要自愈的状态 | 精读 | src/pai/tui/terminal.py、features/13 |
+| [tui/cc-input-ownership-and-modes.md](tui/cc-input-ownership-and-modes.md) | **对话框不抢焦点，它等你停手**（输入框非空即压住权限/提问框，停手 1500ms 才弹，且显式提示「Waiting for permission…」）——与 pai TODO 里凭文档推出的「问题框接管输入焦点」方向相反；模式轮转 `plan` 在环里而 `dontAsk` 不在；resize 刻意不去抖 | 精读 | src/pai/modes/interactive.py、src/pai/core/tools/ask.py、roadmap 阶段 2 |
+| [tui/claude-interactive-mode.md](tui/claude-interactive-mode.md) | 官方交互契约（中断两级 / 干活时输入 / `!` shell 模式 / 历史），及 pai REPL 取舍 | 精读 | roadmap 阶段 2 |
+| [tui/pi-alt-screen.md](tui/pi-alt-screen.md) | alt-screen 是**另一个渲染器**不是补丁：VStack/ScrollView/每帧重建的布局树；follow-end 状态机是「流式时用户在往回翻」的唯一解；**退出时要重渲染完整文档打回主屏**（拿最后一帧顶替就是裁剪过的视口）；原则 2 的原文是「别在 main-screen 里假装」**不是**「别做 alt-screen」 | 精读 | src/pai/tui/、roadmap 阶段 2 原则 2、features/13 |
+| [tui/pi-tui-main-screen.md](tui/pi-tui-main-screen.md) | main-screen 的差量重绘 diff 的是**整份文档的行数组**，宽度一变就全量重绘并 `\x1b[3J` **清掉 scrollback**（只有持有整份文档才敢清）；`CURSOR_MARKER` 的位置**永远要摆**、`showHardwareCursor` 只管可不可见；超宽行 fail-loud。另纠一条范围错误：`tui-plan.md` 讲的是 alt-screen（**当时不做，feature 13 已做，见 pi-alt-screen.md**） | 精读 | src/pai/modes/interactive.py、roadmap 阶段 2 |
+| [tui/terminal-raw-mode.md](tui/terminal-raw-mode.md) | raw mode 的三条静默陷阱：`input()` **永远等不到行尾**（Enter 发 `\r`）且 Ctrl+C/D 同时失效 = 程序必死；终端替你折行而你的光标算术不知道；**emoji 不能做界面字形**（字体缺字 + 宽度不确定）。外加退出时无条件复原 | 沉淀 | src/pai/tui/、features/12 |
+| [tui/terminal-width.md](tui/terminal-width.md) | 中文占两列、ANSI 不占列；必须先按可见文本截断再上色 | 沉淀 | src/pai/modes/statusline.py |
+| **`streaming/`** | | | |
+| [streaming/cc-streaming-tools.md](streaming/cc-streaming-tools.md) | 工具在模型还没说完就开跑：能力标志是**收 input 的函数**（默认全 false）、保序贪心分批、**只有 Bash 出错才杀兄弟**、子 AbortController 不向上传播；`getAssistantMessageId` 那条**不适用于 pai**（协议不同） | 精读 | src/pai/core/loop.py、roadmap 阶段 5 |
+| [streaming/streaming-tool-calls.md](streaming/streaming-tool-calls.md) | 流式下 tool_calls 按 `index` 归并且 `arguments` **逐字符**分片；usage 实测**永远在末块**（`include_usage` 是空操作，惯用的「choices 为空即 usage 块」分支永不触发 → 用量静默丢失）；中断的流没有 usage | 沉淀 | src/pai/core/loop.py、roadmap 阶段 5 |
+| **`model-api/`** | | | |
+| [model-api/pi-cc-api-keys.md](model-api/pi-cc-api-keys.md) | pi 的映射表+注入钩子 vs CC 的带来源+apiKeyHelper；结论：key 留 .env 不进 settings.json | 精读 | src/pai/config.py |
+| [model-api/reasoning-models-max-tokens.md](model-api/reasoning-models-max-tokens.md) | 推理模型的 reasoning 计进 `max_tokens`：上限设小不省钱，只会让 content **静默变空串**（实测同 query 思考量差 17 倍） | 沉淀 | src/pai/core/recall.py |
+| **`engineering/`** | | | |
+| [engineering/injection-seams.md](engineering/injection-seams.md) | **装配期捕获**：依赖会变时闭包存的还是当时那个值，症状是「我改了但没反应」；判据、兼容写法、**「改完立刻生效」的测试前后结果必须不同**（否则假绿）、**同一个坑会连撞两次**；外加「接缝上的 bug 离线测试结构上看不见」 | 沉淀 | src/pai/core/gate.py、features/12 |
+| [engineering/instruments-lie.md](engineering/instruments-lie.md) | **观测工具骗人的四种方式**：污染被测对象／全量记录器漏掉第二个写入出口／读取工具给的是复合视图／**能力探测探的是另一个能力**。前三种都长得像「被测代码有 bug」，第四种让你以为自己做过了一次根本没发生的观测 | 沉淀 | src/pai/tui/record.py、features/13 复盘、features/16 |
+| [engineering/mutation-testing-pitfalls.md](engineering/mutation-testing-pitfalls.md) | 注入反证的坑：**注错了和没测住现象一样（全绿）**；「没被执行到」分**控制流被屏蔽**与**测试场景压根不走那条路**两种；正交防线要分别注；红阶段就绿的测试不具本次鉴别力 | 沉淀 | features/07、features/09、features/13 的 devlog |
+| [engineering/process-groups-and-interrupts.md](engineering/process-groups-and-interrupts.md) | 独立进程组 + killpg 才杀得干净；杀不净的第一个症状是**输出丢失**不是资源泄漏 | 沉淀 | src/pai/core/tools/shell.py |
+| **`overview/`** | | | |
+| [overview/claude-docs-map.md](overview/claude-docs-map.md) | 官方文档章节 → pai 归属/不做 的覆盖图 | 沉淀 | docs/dev/roadmap.md |
+| **`anna/`** | | | |
 | [anna/gates.md](anna/gates.md) | anna 确定性门禁方法论（含短板教训）。**本地不入库**（R2#1 裁决，.gitignore 排除）——克隆本仓库的读者看不到此文件 | 沉淀 | roadmap 阶段 4 |
-
-## 外部参照（本机路径，对外部读者是死链；笔记正文以「外部参照 N」引用）
-
-面试准备仓库 `/Users/sakuzeng/improve/job/agent/agent面试准备/`：
-
-1. `09_项目连接_pi-agent/README.md` —— 知识点 → pi/CC/mini-pi/pai 代码位置速查表（精确到行号）
-2. `01_Agent核心机制/深度_agentloop三层对照.md` —— mini-pi / pi / CC 三层 agent loop 对照
-3. `02_上下文工程与记忆/深度_compaction源码走读.md` —— pi 压缩全家走读 + CC 摘要请求与 usage 口径对照（655 行；CC 压缩策略部分见本库 cc-compaction.md，不在此文）
-4. `11_工具系统/README.md`、`13_安全与权限/深度_权限与安全.md`、`12_记忆系统/深度_CC记忆系统.md`
-
-参照仓库：
-
-5. pi-mono `/Users/sakuzeng/improve/coding/agent/pi-mono/`
-6. CC 反编译源码 `/Users/sakuzeng/improve/coding/agent/projects/claude-code-source-code/`（v2.1.88）
-7. anna 工作区（本机私有目录，路径不公开——含雇主内部信息，见 [anna/gates.md](anna/gates.md) 来源说明）
+| [inbox.md](inbox.md) | 待消化收件箱（准入豁免区，一行一项） | 常驻 | 升格前豁免 |

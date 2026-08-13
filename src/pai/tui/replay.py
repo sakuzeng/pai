@@ -7,7 +7,7 @@
 
 出图用 PIL 逐格绘制，而不是把整行交给字体去排——
 终端本来就是格子，逐格画才能保证「一个中文两列」与终端一致
-（K concepts/terminal-width.md）。ASCII 用 Menlo、CJK 用 Hiragino：
+（K tui/terminal-width.md）。ASCII 用 Menlo、CJK 用 Hiragino：
 **等宽字体没有中文，交给一个字体去排会得到与真终端不同的列位**。
 
 用法：

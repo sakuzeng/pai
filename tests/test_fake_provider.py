@@ -15,7 +15,7 @@ def client(provider):
 
 
 def test_streaming_yields_content_character_by_character():
-    """真实流式就是逐字符切的（K concepts/streaming-tool-calls.md 实测）。"""
+    """真实流式就是逐字符切的（K streaming/streaming-tool-calls.md 实测）。"""
     with FakeProvider([turn("你好世界")]) as p:
         chunks = list(client(p).chat.completions.create(
             model="m", messages=[{"role": "user", "content": "hi"}], stream=True))

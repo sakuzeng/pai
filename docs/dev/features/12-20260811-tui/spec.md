@@ -38,7 +38,7 @@ dock」** 这一种形态，从而让「一个输入流两个消费者」「干�
 
 - `Component` 契约：`render(width: int) -> list[str]` **纯函数**（不持终端句柄、不写 IO），
   外加 `invalidate() -> None`。理由与 pi 的四成员契约对照见
-  [K pi-tui-main-screen 第二节](../../../../knowledge/source-walks/pi-tui-main-screen.md)。
+  [K pi-tui-main-screen 第二节](../../../../knowledge/tui/pi-tui-main-screen.md)。
 - `Container`：按顺序拼接子组件的行，`invalidate()` 递归下发。
 - **dock 渲染器**：把根组件渲染成行数组，用相对光标移动（`CSI nA/nB`）+ `CSI 2K` 清行
   重绘 dock 区，整段写入包在同步输出 `\x1b[?2026h` / `\x1b[?2026l` 里。
@@ -60,7 +60,7 @@ dock」** 这一种形态，从而让「一个输入流两个消费者」「干�
 
 - **一个仲裁函数**决定此刻谁拥有输入，消费者只有一个 `is_active` 开关——
   替掉今天「asker 与主循环共用一个阻塞 reader，谁先 `read()` 谁拿到」。
-- 抑制语义照抄 CC（[K cc-input-ownership 第一节](../../../../knowledge/source-walks/cc-input-ownership-and-modes.md)）：
+- 抑制语义照抄 CC（[K cc-input-ownership 第一节](../../../../knowledge/tui/cc-input-ownership-and-modes.md)）：
   - 输入框**非空** → 压住所有权限框/提问框；
   - 距最后一次按键满 **1500ms** → 放行队首对话框；
   - 被压期间在状态行**显式提示**「N 个请求在等」，**不许静默**；

@@ -1,7 +1,7 @@
 # 路径边界判定：把「这个文件在不在允许范围内」写对
 
 - 来源：无单一外部原文。CC `src/utils/permissions/filesystem.ts` 的实现与注释
-  （见 [source-walks/cc-pi-permission-boundaries.md](../source-walks/cc-pi-permission-boundaries.md)）
+  （见 [permissions/cc-pi-permission-boundaries.md](../permissions/cc-pi-permission-boundaries.md)）
   + POSIX 路径语义 + 2026-08-11 在 pai 上的实测（features/09 的四条注入反证）
 - 精读日期：2026-08-11
 - pai 锚点：`src/pai/core/boundary.py`、docs/dev/decisions.md #51 #52

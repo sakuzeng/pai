@@ -125,7 +125,7 @@ feature 12 被用户打回的三条 bug 各钉了一条 e2e。
 + **feature 13 alt-screen task 1-7** + **feature 16 鼠标与选区 task 1-9**
 + **feature 17 viz-flow task 1-3.5**（事件落盘 + RecallInjected/ConversationCleared + 装配））：
 
-- `./test.sh` → **1069 passed, 3 deselected**，全部离线，约 82s。**这是默认路径。**
+- `./test.sh` → **1093 passed, 3 deselected**，全部离线，约 80s。**这是默认路径。**
   两套假 provider 分工是硬的：`tests/fake_llm.py` **注入**的假客户端测装配与逻辑；
   `tests/fake_provider.py` **起一个真 HTTP 服务**，让真 pai 进程经 `PAI_BASE_URL` 打进来——
   于是 `tests/test_e2e_tui.py` 能在真 pty 里跑完整回合（真 SSE、真 gate、真 TUI），
@@ -217,7 +217,7 @@ feature 12 的遗留见 TODO「feature 12（TUI）交付遗留」，其中一条
 阶段 1 遗留的两条候选仍在 TODO：
 - **reserve_tokens / keep_recent_tokens 实测校准**——目前仍是从 pi 借来的经验值，
   需要真实会话（或 `--llm` 冒烟测试）的真实摘要长度与触发频率数据才能定。
-- **microcompact 评估**（K source-walks/cc-compaction.md）——pai 的 4 个工具全部可重放，
+- **microcompact 评估**（K context/cc-compaction.md）——pai 的 4 个工具全部可重放，
   按 tool_call_id 清旧结果不用调模型，可能是性价比最高的第二级压缩，阶段 1 跑通后评估。
 
 阶段 2 REPL 的 6 条遗留见 TODO「feature 05（REPL）遗留」小节，其中两条值得先知道：

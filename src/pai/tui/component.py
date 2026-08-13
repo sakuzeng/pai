@@ -1,6 +1,6 @@
 """组件契约：`render(width) -> list[str]` 纯函数 + `invalidate()`。
 
-契约取 pi 四成员里的两个必需项（K source-walks/pi-tui-main-screen.md 第二节）。
+契约取 pi 四成员里的两个必需项（K tui/pi-tui-main-screen.md 第二节）。
 另两个（`handle_input` / `wants_key_release`）不在这里——pai 的输入不走「焦点组件收字节」，
 走一个显式的仲裁函数（T3），理由见 features/12 的 spec G3。
 

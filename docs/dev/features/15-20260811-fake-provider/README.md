@@ -102,7 +102,7 @@ feature 14 的复盘写过：**「为了省钱而绕开的路径，正是唯一�
 
 ## 用到的知识
 
-- [K concepts/streaming-tool-calls.md](../../../../knowledge/concepts/streaming-tool-calls.md)
+- [K streaming/streaming-tool-calls.md](../../../../knowledge/streaming/streaming-tool-calls.md)
   （SSE 的真实形状：tool_calls 按 index 归并、`arguments` 逐字符分片、usage 在末块）
-- [K concepts/injection-seams.md](../../../../knowledge/concepts/injection-seams.md)
+- [K engineering/injection-seams.md](../../../../knowledge/engineering/injection-seams.md)
   （接缝上的 bug 离线测试结构上看不见——本档案就是它的对策）

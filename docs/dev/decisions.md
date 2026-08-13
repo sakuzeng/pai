@@ -424,7 +424,7 @@
     用户拍板中断做到「工具执行中途可断」又必然要改 `tools/shell.py`。两者不可兼得。
     改为：**core 可动，但只加不改语义**——新参数一律 keyword-only 且默认值维持旧行为
     （沿用压缩接线的先例），唯一的破坏性改动是 `on_event` 的参数类型，用户已知情选择。
-    对照：pi 把可变性全部收进 `AgentLoopConfig` 钩子（K source-walks/pi-agentloop.md），
+    对照：pi 把可变性全部收进 `AgentLoopConfig` 钩子（K loop/pi-agentloop.md），
     pai 用「keyword-only + 默认 None」达到同样效果而不引入配置对象——工具少时更直接。
 
 39. **事件流用 frozen dataclass 扁平联合，且砍掉 `turn_end`/`message_update`**
@@ -451,7 +451,7 @@
     置标志 → 剩余 tool_calls 各回一条「(已取消，用户中断)」→ 在下一次 create() 前干净返回。
     同理 REPL 里干活期间的 SIGINT 只置标志不抛 KeyboardInterrupt——抛了会把
     已完成的工作连同栈一起丢掉，而官方对中断的承诺恰恰是「保留迄今完成的工作」
-    （K claude-docs/interactive-mode.md）。
+    （K tui/claude-interactive-mode.md）。
 
 42. **分层指令进「system 之后的第一条 user 消息」，不塞进 system**（2026-08-10，
     feature 06 拍板问 1）：CC 就是这么做的，并自陈「因此没有严格遵守的保证」。
@@ -654,7 +654,7 @@
     改成「在回复里找已知文件名、取最长匹配」，白名单仍然说了算。
     连带把「解析不出来」与「明确选了空列表」在解析层分开（前者才是故障），并加
     `RecallFailed` 事件。**教训**：抄来的常数带着它原本的模型假设，前提不会自己跟过来。
-    见 [K concepts/reasoning-models-max-tokens.md](../../knowledge/concepts/reasoning-models-max-tokens.md)。
+    见 [K model-api/reasoning-models-max-tokens.md](../../knowledge/model-api/reasoning-models-max-tokens.md)。
 
 57. **一次流式响应装配成一条 assistant 消息**（2026-08-11，feature 11 Task 1）。
 
@@ -673,7 +673,7 @@
     （实测：2 个并行 tool_calls、1 份 usage，流式与非流式一致）。
 
     **反过来仍要警惕**：若将来为了「边流边显示」把一次响应拆成多条记录，
-    就是亲手复制这个 bug。判据写在 [K concepts/streaming-tool-calls.md](../../knowledge/concepts/streaming-tool-calls.md) 第四节：
+    就是亲手复制这个 bug。判据写在 [K streaming/streaming-tool-calls.md](../../knowledge/streaming/streaming-tool-calls.md) 第四节：
     **问「一次 API 响应在我的数据结构里变成了几条记录」**。
 
 58. **usage 的取法是「每块都看，最后一个非空的赢」，不照文档认 `include_usage`**
@@ -762,7 +762,7 @@
 
     **理由与更值钱的那条**：第二次撞坑时，代码里那个模式我一天前刚修过一遍。
     修第一个时想的是「模式要能切」，而不是「装配期捕获这个模式还有几处」。
-    → 沉淀为 [K concepts/injection-seams.md](../../knowledge/concepts/injection-seams.md)：
+    → 沉淀为 [K engineering/injection-seams.md](../../knowledge/engineering/injection-seams.md)：
     **修掉一个装配期捕获的 bug 之后，立刻把同一个装配函数的其余参数逐个过一遍。**
 
 63. **TUI 的字形不用 emoji，且用测试把物理约束卡死**（2026-08-11，feature 12 T9）。

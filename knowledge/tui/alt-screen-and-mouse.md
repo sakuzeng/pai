@@ -136,7 +136,7 @@ button & 64   → 滚轮
    把查询顺序换一下，结论就反了。
    **测量手段与被测现象在同一根管子里，这是终端编程特有的一类假象。**
    同一类假象后来又撞了两次（读屏工具给的是复合视图、录制工具漏了一个写入出口），
-   三次凑成了一条独立的方法论：[K concepts/instruments-lie.md](instruments-lie.md)。
+   三次凑成了一条独立的方法论：[K engineering/instruments-lie.md](instruments-lie.md)。
 
 ## 六、备用屏里 resize：终端**不替你重排**
 
@@ -164,7 +164,7 @@ button & 64   → 滚轮
 
 （相关但别搞混：主屏模式下若应用持有整份文档，宽度一变有些实现会连
 `\x1b[3J` 清 scrollback 一起做——那是**另一回事**，见
-[K pi-tui-main-screen 第四节](../source-walks/pi-tui-main-screen.md)。）
+[K pi-tui-main-screen 第四节](../tui/pi-tui-main-screen.md)。）
 
 ## 七、备用屏带来的**新失败模式**：「我以为我在，其实不在」
 

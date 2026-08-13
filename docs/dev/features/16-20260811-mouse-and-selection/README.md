@@ -154,13 +154,13 @@ OSC 52 在本机 iTerm2 上**根本写不进剪贴板**（BEL 与 ST 两种结�
 
 ## 用到的知识
 
-- [K concepts/alt-screen-and-mouse.md](../../../../knowledge/concepts/alt-screen-and-mouse.md)
+- [K tui/alt-screen-and-mouse.md](../../../../knowledge/tui/alt-screen-and-mouse.md)
   —— 鼠标 1000/1002/1003 **互斥单选**（照抄 pi/CC 那串四条序列会选中最费的 1003）、
   SGR 1006 的编码、以及「拿走鼠标 = 拿走终端原生选中复制」。
-- [K source-walks/cc-alt-screen.md](../../../../knowledge/source-walks/cc-alt-screen.md)
+- [K tui/cc-alt-screen.md](../../../../knowledge/tui/cc-alt-screen.md)
   第四节 —— **命中测试只要 130 行（便宜），选区要 917 行（昂贵）**，含选区状态机的字段清单
   （那份清单本身就是坑清单）。
-- [K concepts/instruments-lie.md](../../../../knowledge/concepts/instruments-lie.md)
+- [K engineering/instruments-lie.md](../../../../knowledge/engineering/instruments-lie.md)
   —— 本轮要合成鼠标事件来测，而 feature 13 的手工清单里鼠标那一整块**至今没有任何观测**。
 - **动工前必须先解决**：[features/13 手工清单](../13-20260811-alt-screen/evidence/20260811-alt-screen反向对照/手工清单.md)
   第一节的六条（单击/滚轮/拖动的真实字节、1002 vs 1003 的吵闹程度、

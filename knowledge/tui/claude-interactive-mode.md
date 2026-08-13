@@ -7,7 +7,7 @@
 
 **这页是什么、不是什么**：它是**产品交互参考**（快捷键、输入模式、可见行为），
 不讲实现。所以本笔记从它取的是**交互契约**——「一个交互式 coding agent 必须提供哪些
-交互」——而实现结构仍看 [pi-agentloop.md](../source-walks/pi-agentloop.md)（事件流、双队列）。
+交互」——而实现结构仍看 [pi-agentloop.md](../loop/pi-agentloop.md)（事件流、双队列）。
 官方页面全程不提「steering / followUp 队列」这类内部语义，别把 pi 的词硬塞给它。
 
 ## 一、对 pai 阶段 2 真正有用的四条

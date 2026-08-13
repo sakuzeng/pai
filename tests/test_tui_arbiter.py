@@ -3,7 +3,7 @@
 病是「asker 与 REPL 主循环共用一个阻塞 reader，谁先 read() 谁拿到」，
 实际发生过 `!echo 我是命令` 被当成了对问题的回答（08 遗留的铁证）。
 药方照 CC：**一个仲裁函数**算出此刻谁拥有输入，消费者只有 is_active 开关；
-且仲裁**偏袒正在打字的人**（K source-walks/cc-input-ownership-and-modes.md 第一节）。
+且仲裁**偏袒正在打字的人**（K tui/cc-input-ownership-and-modes.md 第一节）。
 """
 
 from pai.tui.arbiter import EDITOR, InputArbiter

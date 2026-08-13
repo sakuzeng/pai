@@ -21,7 +21,7 @@
 
 ### 空缺从哪来
 
-三条都出自 [K source-walks/cc-memdir.md](../../../../knowledge/source-walks/cc-memdir.md)
+三条都出自 [K memory/cc-memdir.md](../../../../knowledge/memory/cc-memdir.md)
 （06 复盘第五节留的悬案「`findRelevantMemories` 是否有相关性筛选」的裁决走读），
 当时全部降格进了 TODO：
 
@@ -148,7 +148,7 @@ mtime 只反映最后一次追加）。
    ② 模型把 manifest 的 `[type]` 装饰一起抄回来，逐字相等的白名单把结果全丢了。
    连带修了根因：`_parse_selection` 原本分不清「没说话」与「明确选空」，故障永远触发不了熔断。
    已加 `RecallFailed` 事件。详见 [devlog](devlog.md) 最后一条与
-   [K concepts/reasoning-models-max-tokens.md](../../../../knowledge/concepts/reasoning-models-max-tokens.md)。
+   [K model-api/reasoning-models-max-tokens.md](../../../../knowledge/model-api/reasoning-models-max-tokens.md)。
 2. **`recentTools` 去噪未做**（CC 有：正在用的工具，用法文档不选、但坑与警告要选）。→ TODO。
 3. **召回没有开关**。唯一的「关」是记忆目录为空。真要开关应落在 `.pai/settings.json`。→ TODO。
 4. **索引膨胀变快了**：一事一文件让索引行数 = 记忆条数，200 行上限比 06 时代撞得早得多。
@@ -161,7 +161,7 @@ mtime 只反映最后一次追加）。
 
 ## 用到的知识
 
-- [K source-walks/cc-memdir.md](../../../../knowledge/source-walks/cc-memdir.md)
+- [K memory/cc-memdir.md](../../../../knowledge/memory/cc-memdir.md)
   ——本需求三条空缺的来源（读侧：`findRelevantMemories` / `memoryScan` / `memoryAge`）。
 - **本机 CC 记忆目录实测**（2026-08-11，写侧格式的一手样本，走读笔记未覆盖）：
   `~/.claude/projects/<slug>/memory/` 的 frontmatter 字段、`MEMORY.md` 行格式、

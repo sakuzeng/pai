@@ -7,7 +7,7 @@
 **目标**：建档案、补 roadmap 阶段 5 的前置精读、拿真实请求验一遍再动工。
 
 **改动**：`features/11-20260811-streaming/`（档案 + evidence）、
-`knowledge/source-walks/cc-streaming-tools.md`、`knowledge/concepts/streaming-tool-calls.md`、
+`knowledge/streaming/cc-streaming-tools.md`、`knowledge/streaming/streaming-tool-calls.md`、
 `knowledge/README.md` 登记、`roadmap.md` 清单打勾、`TODO.md`（划掉一条 + 新增两条）、
 `pai_playground/smoke/streaming_probe{,2}.py`。
 
@@ -173,7 +173,7 @@ roadmap 勾选链接可达、笔记已登记、pai 锚点齐，均通过）。
 **测试**：绿 `19 passed`（该文件），全量 **509 passed, 3 deselected**。
 
 **如实记一条 TDD 违规**：这个 task 我**先写了实现再写测试**，违反了 AGENTS.md
-「不允许先写实现，再补测试」。补救办法是做**注入反证**（K concepts/mutation-testing-pitfalls.md）：
+「不允许先写实现，再补测试」。补救办法是做**注入反证**（K engineering/mutation-testing-pitfalls.md）：
 - 注入①：去掉 `reason != "final"` 判断 → `test_..._not_printed_twice` 打红；
 - 注入②：每个增量块都戴 `🤖` 帽子 → `test_..._one_robot_prefix` 打红。
 两条注入各自只打红对应的那一条，说明测试有鉴别力、不是照着实现描下来的。

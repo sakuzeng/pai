@@ -111,7 +111,7 @@ superpowers 全链路：[spec.md](spec.md) → [plan.md](plan.md) → SDD →
 
 ## 用到的知识
 
-[knowledge/claude-docs/permissions-hooks.md](../../../../knowledge/claude-docs/permissions-hooks.md)（求值顺序、
+[knowledge/permissions/claude-permissions-hooks.md](../../../../knowledge/permissions/claude-permissions-hooks.md)（求值顺序、
 Bash 匹配四坑、「语义下放给工具」原文、hook 决策协议）、
-[knowledge/concepts/hooks-gates.md](../../../../knowledge/concepts/hooks-gates.md)、
+[knowledge/permissions/hooks-gates.md](../../../../knowledge/permissions/hooks-gates.md)、
 [knowledge/anna/gates.md](../../../../knowledge/anna/gates.md)（本地不入库）

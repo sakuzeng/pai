@@ -202,10 +202,10 @@ bash 的只读判定器（feature 07 已明确不做）；流式开关（拍板�
 
 第 2 步「前置精读」的产物（roadmap 阶段 5 清单已同步打勾）：
 
-- [K source-walks/cc-streaming-tools.md](../../../../knowledge/source-walks/cc-streaming-tools.md)
+- [K streaming/cc-streaming-tools.md](../../../../knowledge/streaming/cc-streaming-tools.md)
   ——CC `StreamingToolExecutor` / `Tool.ts` 能力标志 / `toolOrchestration` 保序分批 /
   兄弟取消 / `getAssistantMessageId`。末节是「抄什么、不抄什么」的 pai 视角对照表。
-- [K concepts/streaming-tool-calls.md](../../../../knowledge/concepts/streaming-tool-calls.md)
+- [K streaming/streaming-tool-calls.md](../../../../knowledge/streaming/streaming-tool-calls.md)
   ——OpenAI 兼容协议流式的通用工程知识：`index` 归并、`arguments` 逐字符分片、
   usage 位置、中断无 usage、并行调用**不会**重复计 usage。
 - **反向对照的原始证据**：[evidence/20260811-流式探针/](evidence/20260811-流式探针/说明.md)
@@ -215,7 +215,7 @@ bash 的只读判定器（feature 07 已明确不做）；流式开关（拍板�
 
 roadmap 原文写的是「官方 streaming 相关章节 → 届时落 `knowledge/claude-docs/`」。
 落笔时发现**官方 Claude Code 文档没有 streaming 章节**
-（[K claude-docs/map.md](../../../../knowledge/claude-docs/map.md) 的覆盖图里也没有），
+（[K overview/claude-docs-map.md](../../../../knowledge/overview/claude-docs-map.md) 的覆盖图里也没有），
 而真正约束 pai 的是它实际说的协议——**OpenAI 兼容协议打 DeepSeek**。
 所以这条改落 `concepts/`（无单一外部原文可链），理由已在 roadmap 就地留档，原条目划掉保留。
 

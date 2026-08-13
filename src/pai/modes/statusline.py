@@ -35,7 +35,7 @@ RESET = "\x1b[0m"
 #   APC  \x1b_...\x07      TUI 的 CURSOR_MARKER（pai.tui.component）
 # 状态行自己撞不上（它先按可见文本截断再上色），但 TUI 组件会把 CURSOR_MARKER
 # 嵌进文本里——宽度算错，硬件光标就摆错列，中文 IME 候选框跟着漂。
-# pi 的 visibleWidth 同样显式处理 APC（K source-walks/pi-tui-main-screen.md 第六节）。
+# pi 的 visibleWidth 同样显式处理 APC（K tui/pi-tui-main-screen.md 第六节）。
 _ESCAPES = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]|\x1b[\]_][^\x07]*\x07")
 
 

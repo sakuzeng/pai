@@ -1,6 +1,6 @@
 # 2026-08-11 · 召回真跑冒烟（原件）
 
-D#56 的实测校正、[K concepts/reasoning-models-max-tokens.md](../../../../../knowledge/concepts/reasoning-models-max-tokens.md)
+D#56 的实测校正、[K model-api/reasoning-models-max-tokens.md](../../../../../knowledge/model-api/reasoning-models-max-tokens.md)
 里引用的数字都来自这里。脚本原本在 `pai_playground/smoke/`（gitignore），
 按 features/README 规矩 9 复制进版本库——否则 decisions 引用的数字没有可查证的原件。
 

@@ -153,7 +153,7 @@ def test_interrupt_stops_consuming_and_reports_no_usage():
 **一次响应 = 一条 assistant 消息**，这条不许改。
 CC 走 Anthropic 协议时把每个 content block 变成一条独立记录、共享 message.id，
 于是必须再写一个 getAssistantMessageId 把它们认回去，否则上下文估算重复计数
-（K source-walks/cc-streaming-tools.md 第四节）。那个补丁存在的唯一原因是那个建模选择。
+（K streaming/cc-streaming-tools.md 第四节）。那个补丁存在的唯一原因是那个建模选择。
 谁将来想为了「边流边显示」把这里拆成多条记录，先读这段。
 
 装配规则全部来自真实探针（features/11 的 evidence），不是从文档推的——

@@ -203,9 +203,9 @@ readline-vs-dock）；B 的代价（清 scrollback、虚拟滚动）这个阶段
 
 ## 用到的知识
 
-- [K source-walks/pi-tui-main-screen.md](../../../../knowledge/source-walks/pi-tui-main-screen.md)（绘制侧）
-- [K source-walks/cc-input-ownership-and-modes.md](../../../../knowledge/source-walks/cc-input-ownership-and-modes.md)（输入侧）
-- [K concepts/terminal-width.md](../../../../knowledge/concepts/terminal-width.md)（中文宽度）
-- [K concepts/terminal-raw-mode.md](../../../../knowledge/concepts/terminal-raw-mode.md)（本轮沉淀：raw mode 三条静默陷阱）
-- [K concepts/injection-seams.md](../../../../knowledge/concepts/injection-seams.md)（本轮沉淀：装配期捕获 + 接缝测试）
+- [K tui/pi-tui-main-screen.md](../../../../knowledge/tui/pi-tui-main-screen.md)（绘制侧）
+- [K tui/cc-input-ownership-and-modes.md](../../../../knowledge/tui/cc-input-ownership-and-modes.md)（输入侧）
+- [K tui/terminal-width.md](../../../../knowledge/tui/terminal-width.md)（中文宽度）
+- [K tui/terminal-raw-mode.md](../../../../knowledge/tui/terminal-raw-mode.md)（本轮沉淀：raw mode 三条静默陷阱）
+- [K engineering/injection-seams.md](../../../../knowledge/engineering/injection-seams.md)（本轮沉淀：装配期捕获 + 接缝测试）
 - 本档案 [evidence/](evidence/)：终端反向对照（6 条）+ CC 实物截图转录

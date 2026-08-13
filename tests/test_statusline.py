@@ -171,7 +171,7 @@ def test_display_width_ignores_escape_sequences():
 
     今天状态行不会撞上（它**先按可见文本截断再上色**），但 TUI 的 CURSOR_MARKER
     是嵌在组件文本里的 APC 序列，宽度算错光标列就漂。pi 的 visibleWidth 同样
-    显式处理 APC（K source-walks/pi-tui-main-screen.md 第六节）。
+    显式处理 APC（K tui/pi-tui-main-screen.md 第六节）。
     """
     assert display_width("\x1b[36m中文\x1b[0m") == 4          # CSI（颜色）
     assert display_width("ab\x1b_pai:c\x07cd") == 4           # APC（CURSOR_MARKER）

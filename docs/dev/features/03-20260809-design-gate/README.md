@@ -65,5 +65,5 @@ PreToolUse 注册 + `docs/dev/features/.active` 指针。测试 **10 条**全绿
 
 ## 用到的知识
 
-[knowledge/concepts/hooks-gates.md](../../../../knowledge/concepts/hooks-gates.md)、
+[knowledge/permissions/hooks-gates.md](../../../../knowledge/permissions/hooks-gates.md)、
 knowledge/anna/gates.md（本地）

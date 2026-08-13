@@ -6,7 +6,7 @@ BEL 与 ST 两种结尾都试过，剪贴板保持测试前的哨兵值，而且
 多数终端出于安全默认禁止应用写剪贴板，且拒绝时不给任何回应。
 
 配合另一条实测（DECRQM 在 Terminal.app 完全不可用，见
-[K alt-screen-and-mouse 第五节](../../../knowledge/concepts/alt-screen-and-mouse.md)）
+[K alt-screen-and-mouse 第五节](../../../knowledge/tui/alt-screen-and-mouse.md)）
 ——**没法先问终端支不支持**——只能：
 
 1. 本地优先走**系统剪贴板命令**（有退出码，成败判得出来）；

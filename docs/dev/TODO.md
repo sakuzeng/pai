@@ -82,6 +82,63 @@
 
 ## P2 · 值得改
 
+### 观测流的两个术语/死事件问题 —— 2026-08-13（feature 18 期间旁生）
+
+- [ ] **`TurnStart` 是个死事件：定义了、登记了、画了节点，但 `src/` 里没有一处发它**
+      （出处：features/18 T5 探针实测，事件序列只有 `AgentStart → AssistantMessage → AgentEnd`）。
+      `events.py:26` 有 dataclass，`viz/collect.py:150` 声称它住在 `core/loop.py`，
+      `viz/index.html:302` 配了节点映射——而 `loop.py` 从不发。
+      于是 viz 时间线上那一格**永远不会亮**，页面上「这个环节住哪」还指着一个不存在的发射点。
+      **`EVENT_SRC` 的防漂移测试挡不住这类**：它只校验「键集合 == 事件类名集合」，
+      校验不了「这个事件真有人发」。两条出路二选一：loop 每步真发一条（那就得先想清
+      它与 `step` 的关系），或者删掉它并同步清 viz 映射。
+- [ ] **术语两套并存：事件叫 `TurnStart`，字段却是 `step`**（同上出处）。
+      按 K [loop/cc-loop.md](../../knowledge/loop/cc-loop.md) 第二节的对照表，
+      pai 的内部一步就叫 **step**（pi/CC 才叫 turn）。名字与字段各说一套，
+      读事件流的人要先猜一次。与上一条一起处理。
+
+### feature 18（steering 输入源）前置缺陷 —— 2026-08-13
+
+- [ ] **steering 队列在「模型这轮不调工具」时永久卡死**（出处：
+      [features/18 spec](features/18-20260813-steering-input/spec.md)「前置缺陷」节，
+      由 K [loop/cc-message-queue.md](../../knowledge/loop/cc-message-queue.md)
+      第六节撞出）：pai 把 pi 的双层 while 压成单层 `for` + `continue`
+      （`loop.py:167`/`:284-288`），于是 `:283-289` 的「不发 tool_calls 就 return」
+      在 `:352-355` 的 steering poll **之前**。模型收尾那轮通常就不调工具，
+      于是队列里的 steering 既不会被注入、也不会退化成 followUp，**卡在那儿**。
+      pi 靠内层 while 的 `|| pendingMessages.length > 0` 挡住（agent-loop.ts:174），
+      CC 靠 `next`/`later` 两档各有各的出口。
+      **这条必须在给 steering 接输入源之前修**，随 feature 18 一并交付；
+      方案 (a) 加分支检查 / (b) 改回双层循环（会动 `max_steps` 语义）见该 spec。
+
+### loop 的健壮性缺口 —— 2026-08-13（读 pi/CC 真源码撞出来）
+
+- [ ] **被 token 上限截断的 assistant 消息，它的 tool_call 应当全部判失败**（出处：
+      K [loop/pi-loop.md](../../knowledge/loop/pi-loop.md) 第五节，pi `agent-loop.ts:207-216`）：
+      pi 在执行工具前先看 `message.stopReason`，为 `"length"` 时**这条消息里的每个
+      tool_call 直接判失败，一个都不执行**。注释理由：*截断意味着每个 tool call 的
+      arguments 都可能是残的，与其执行可能已损坏的调用，不如全部失败掉*。
+      **pai 没有这条**：`core/streaming.py` 的 `assemble` 把 `arguments` 拼完就解析，
+      **解析失败才报错**——一个恰好截在合法 JSON 边界上的残参数会被照常执行
+      （例：本该是 `{"path": "src/pai/core/loop.py"}`，截在 `{"path": "src/pai/core"}`
+      仍是合法 JSON）。**失效方式是静默的**：没有异常、没有日志，只有一次参数不对的工具调用。
+      修法：`assemble` 保留 provider 的 finish_reason，loop 在派发前检查；
+      每个被判失败的 tool_call **同样要回填一条结果**（对齐 `loop.py:326-331` 那条
+      「被拒绝的调用也必须回结果」不变量），否则下一轮 400。
+      ⚠️ **动工第一步是实测**：确认 DeepSeek 在 OpenAI 兼容协议下回的是
+      `finish_reason == "length"`（未实测，别照 Anthropic 的字段名写）。
+
+- [ ] **注入进 messages 的消息不发事件，界面看不见**（出处：
+      K [loop/cc-loop.md](../../knowledge/loop/cc-loop.md) 第四节）：
+      `loop.py:395-399` 的 `_extend` 只 append 进 `messages` 与 `session`，**不发任何事件**，
+      TUI 完全不知道有东西被注入——用户看不见自己刚插的话进了上下文。
+      **CC 踩过同款并修了**：`utils/messages.ts` 的 `case 'queued_command'` 曾硬编码
+      `isMeta:true`，把用户自己打的字从 transcript 里隐藏了（注释原话：
+      *"Previously this hardcoded isMeta:true, which hid user-typed messages"*）。
+      连带一条：`dock.set_queued` 只在 `interactive.py:766`/`:831` 被调用，
+      **`run_agent` 内部 drain 掉队列后没人更新**，队列区会一直显示旧数字。
+      随 feature 18 一并处理（已登记进该 feature 的补充项）。
+
 ### feature 09（工作目录边界）遗留（2026-08-11 交付）
 
 - [ ] **配了 Bash allow 规则 = 该命令可越界，但没有任何提示**（复盘质疑一，D#52）。
@@ -183,7 +240,7 @@
       **仍然坏的**：① `!命令` 仍被当成答案（没一并拦是因为真实答案以 `!` 开头的可能性
       不为零，硬拦会误伤）；② 提问期间用户**无法执行任何命令**，只能答或退。
       **真正的解法在 TUI 阶段**：模态输入——问题框接管输入焦点、Esc 取消
-      （CC 的 AskUserQuestion 就是这么做的，见 K claude-docs/interactive-mode.md 的
+      （CC 的 AskUserQuestion 就是这么做的，见 K tui/claude-interactive-mode.md 的
       「Esc 关闭对话框而不是中断 Claude」）。纯 REPL 里做不出模态，
       所以这条**不该在 REPL 阶段继续打补丁**，等 TUI 一并解决。
 
@@ -207,13 +264,13 @@
 
 ### knowledge 缺口（2026-08-10 用户问「有没有归纳」时自查出来的）
 
-- [ ] **`source-walks/pi-agentloop.md` 该从「指针」升「精读」**：阶段 2 实际深读了
+- [ ] **`loop/pi-agentloop.md` 该从「指针」升「精读」**：阶段 2 实际深读了
       `agent.ts:123`（PendingMessageQueue 的 all/single 两种 drain 语义）与
       `types.ts:422`（AgentEvent 扁平联合共 9 种事件），这些结论现在只活在
       features/05 的档案里，没回流笔记。登记规约写明「指针升精读的时机：
       动工时发现指针的结论粒度不够用」——正是这个情形。
 - [x] ~~**CC `src/memdir/` 源码走读没做**~~ **已补 2026-08-10**，见
-      [K source-walks/cc-memdir.md](../../knowledge/source-walks/cc-memdir.md)。
+      [K memory/cc-memdir.md](../../knowledge/memory/cc-memdir.md)。
       **悬案裁决：属实**——CC 的召回是**框架主动做的**（便宜模型按 header manifest
       选 ≤5 篇塞进上下文），不是「模型自己想起来 read_file」。pai 少的是一整层机制。
       衍生出下面三条。
@@ -249,14 +306,14 @@
       官方数字是给英文 + Claude 调的；pai 跑中文、token 密度差一倍以上。
       与 `reserve_tokens=16384`「从 pi 借来的经验值」同一类债。
 - [x] ~~**两块硬拿的工程知识没沉淀**~~ **已补 2026-08-10**：
-      [concepts/process-groups-and-interrupts.md](../../knowledge/concepts/process-groups-and-interrupts.md)、
-      [concepts/terminal-width.md](../../knowledge/concepts/terminal-width.md)。
+      [engineering/process-groups-and-interrupts.md](../../knowledge/engineering/process-groups-and-interrupts.md)、
+      [tui/terminal-width.md](../../knowledge/tui/terminal-width.md)。
       顺带把 knowledge/ 的分类标准从「按主题」改成**「按来源」**（原先 concepts/ 是
       否定式定义「不专属某家源码的」，边界靠猜，当天就误放了一篇双源走读进去），
       并在 README 与 AGENTS.md 里写明：开发知识里「只关于 pai 的」进 docs/dev/，
       「换个项目仍成立的」才进 concepts/。
 
-### API key 解析（2026-08-10，K source-walks/pi-cc-api-keys.md）
+### API key 解析（2026-08-10，K model-api/pi-cc-api-keys.md）
 
 - [ ] **provider → env 变量名映射表**（学 pi `env-api-keys.ts`）：现在 `DEEPSEEK_API_KEY`
       硬编码在 config.py，换 provider 要改代码。一张表 + `find_env_keys(provider)`。
@@ -409,7 +466,7 @@
       13 拍板**不接管鼠标**（保住终端原生的拖选复制与 `Cmd+F`——一旦上报鼠标终端就不管了，
       且失败是静默的）。13 建的是「每帧知道每个条目画在哪几行」这个前提；
       加鼠标是 SGR 1006 解析 + 命中测试（CC 实测只要 130 行，**便宜**），单独立项。
-      动工前先看 [K concepts/alt-screen-and-mouse.md](../../knowledge/concepts/alt-screen-and-mouse.md)
+      动工前先看 [K tui/alt-screen-and-mouse.md](../../knowledge/tui/alt-screen-and-mouse.md)
       第 3 节：`1000/1002/1003` **互斥单选**，照抄 pi/CC 那串四条序列会选中最费的 1003。
 - [ ] **transcript 内搜索没做**（13 brainstorm 问 5）：需求第 2 条「滚动**与搜索**」
       只做了滚动那一半。搜索要额外的输入模式，与已有的输入归属仲裁、对话框、
@@ -482,7 +539,7 @@
 - [ ] **`display_width` 的家不对了**（12 T1）：它住在 `modes/statusline.py`，
       而 `pai/tui/` 要用它，形成 tui → modes 的依赖（无环，statusline 不反向依赖 tui）。
       **T6 把状态行搬进 dock 时，应把这个宽度原语一并挪进 tui 包**，
-      并同步 K concepts/terminal-width.md 的锚点。
+      并同步 K tui/terminal-width.md 的锚点。
 
 ### feature 12（TUI）拍板后已知的功能回退 —— 2026-08-11
 
@@ -492,6 +549,8 @@
 - [ ] **steering 队列仍不通电**（12 spec G6）：本轮拍板选的是 followUp（排队，
       本轮结束后发），steering 的结构与注入点继续闲置。
       05 那条遗留因此**只关掉一半**——「干活时打字」通了，「立即插队」没通。
+      **2026-08-13 立 [features/18](features/18-20260813-steering-input/README.md) 处理中**
+      （待拍板），交付时与 05 那条一并关闭。
 
 ### feature 12（TUI）前置发现 —— 2026-08-11
 
@@ -530,7 +589,7 @@
       真跑抓到两个离线测不出的 bug（`max_tokens=256` 被推理 token 吃光、模型抄回
       `[type]` 装饰被白名单全丢），召回当时在真实环境 100% 失效且完全静默。
       已加 `RecallFailed` 事件、解析层区分「没说话/明确选空」、
-      沉淀 [K concepts/reasoning-models-max-tokens.md](../../knowledge/concepts/reasoning-models-max-tokens.md)。
+      沉淀 [K model-api/reasoning-models-max-tokens.md](../../knowledge/model-api/reasoning-models-max-tokens.md)。
 - [ ] **给「照抄来的常数」建一条检查习惯**（10 冒烟教训，与 06 复盘质疑四同类）：
       `max_tokens=256`（CC 的 Sonnet 档）、`MEMORY.md` 200 行/25KB（英文调的）、
       `reserve_tokens=16384`（从 pi 借的）——三条都是**抄来的数字带着它原本的模型/语言假设**。
@@ -616,6 +675,9 @@
       下一个提示符上。所以缺的不是「独立输入线程」这么重的东西，**在干活期间对
       stdin 做非阻塞读/`select` 就取得到**。证据见
       [features/12 evidence](features/12-20260811-tui/evidence/20260811-终端反向对照/说明.md) 第 2 条。
+      **2026-08-13 立 [features/18](features/18-20260813-steering-input/README.md) 处理中**
+      （待拍板）：非阻塞读在 12 已做到（`driver.poll(timeout=0)`），
+      缺的只剩「那些字进哪条队列」这个拍板。
 - [ ] **`AgentStart.task` 在多轮 REPL 里语义歧义**（05 task 5）：字段是「本轮的任务」
       而非「整个会话的任务」，多轮时名字容易误读。改名或拆事件，小事。
 - [ ] **`statusline._preview` 只取第一个参数值**（05 task 8）：`bash` 只有 command 正好，
@@ -706,7 +768,7 @@
       [features/11 evidence](features/11-20260811-streaming/evidence/20260811-流式探针/说明.md)。
       **仍需警惕的是自己造出来**：若 pai 为了边流边显示把一次响应拆成多条 assistant 记录，
       就会亲手复制这个 bug。判据写进
-      [K concepts/streaming-tool-calls.md](../../knowledge/concepts/streaming-tool-calls.md) 第四节。
+      [K streaming/streaming-tool-calls.md](../../knowledge/streaming/streaming-tool-calls.md) 第四节。
       与「单轮多 tool_calls 无测试覆盖」（R#11）仍是同一场景的两面，**R#11 那条不受影响，照做**。
 - [ ] **接流式后真正会咬人的是这两条**（2026-08-11 探针替换上面那条，归 feature 11）：
       ① **usage 的取法**——`stream_options.include_usage` 在 DeepSeek 上是**空操作**，
@@ -775,7 +837,7 @@
       补事件源要动 `core/scheduler.py` 与 `core/queue.py`，是下一轮的事。
 - [ ] **面试准备仓库加反向链接指向 pai knowledge/**（2026-08-09，D#35）：
       在其 04_Harness 专题 README 加一行即可。属另一仓库的独立小改动，在这里备忘。
-- [ ] **microcompact 评估**（2026-08-09，K source-walks/cc-compaction.md）：
+- [ ] **microcompact 评估**（2026-08-09，K context/cc-compaction.md）：
       **触发条件已满足**（阶段 1 压缩闭环 2026-08-09 已跑通接进 loop）——pai 的 4 个工具
       全部可重放，按 tool_call_id 清旧结果
       不用调模型，可能是性价比最高的第二级压缩。
@@ -800,7 +862,7 @@
 - [x] ~~**model-config 页的 auto-compact 阈值未查**~~（R2 未核实节）**已查证 2026-08-10**：
       官方给数字——Sonnet 5 的 1M 窗口默认 ~967K 触发（预留 ~33K，
       `CLAUDE_CODE_AUTO_COMPACT_WINDOW` 可调）。pai 的 16384 约其一半、同数量级；
-      已录 K claude-docs/context-management.md，作为 reserve 校准参照之一。
+      已录 K context/claude-context-management.md，作为 reserve 校准参照之一。
 
 ---
 

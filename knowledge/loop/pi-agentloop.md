@@ -12,15 +12,42 @@
 的档案，没回流笔记——登记规约说的「指针升精读的时机：动工时发现指针的结论粒度不够用」
 正是这个情形。
 
-## 一、四层分层（原指针内容，保留）
+## 一、~~四层分层~~ 四个组件（🔴 2026-08-13 更正：原文的分层关系是错的）
 
-1. `agentLoop()` —— 无状态纯循环函数（792 行，不含任何业务）
-2. `Agent` 类 —— 有状态 + 事件订阅
-3. `AgentHarness` —— 会话/技能/压缩/工具
-4. `AgentSession` —— 应用层编排（interactive / print / rpc 三种模式共用它，
-   在 `packages/coding-agent/src/core/agent-session.ts`，不在 packages/agent 下）
+> 🔴 **本节原先写的是「四层分层：1 → 2 → 3 → 4」，与源码不符。**
+> `AgentHarness` **不是** `Agent` 的上层，它是 `Agent` 的**兄弟**——两者各自直接调 `runAgentLoop`。
+> 完整结构与逐个组件的职责见 [pi-loop.md](pi-loop.md) 第一节，本节只留更正与索引。
+>
+> **三条证据**：
+> 1. `harness/agent-harness.ts:11` 是 `import { runAgentLoop } from "../agent-loop.ts"`，全文件无 `new Agent`
+> 2. `coding-agent/src/core/agent-session.ts:304` 是 `readonly agent: Agent`——**跳过了 `AgentHarness`**
+> 3. `grep -rn "AgentHarness" packages/coding-agent/src/` **零命中**——它不在 pi 自己的生产链路上，
+>    使用者是 `packages/agent/test/` 与 `packages/evals/`
+>
+> **错误成因（这条方法论比错误本身值钱）**：本节是 2026-08-09 立的**指针**内容，
+> 08-10 升精读时只回流了第二、三节（事件与队列），**第一节没回去核，
+> 而整篇的状态标记已经改成了「精读」。**
+> **教训：笔记的状态标记应该到节，不到篇。** 升级时没核的部分要显式留标记，
+> 否则「精读」这个标签会替没读过的内容背书。
 
-pai 现状 = 第 1 层（`run_agent`）+ 半个第 4 层（`modes/`）。
+真实形状（详见 [pi-loop.md](pi-loop.md)）：
+
+```
+        agentLoop()  ← 唯一的循环，792 行，零业务
+         ↑        ↑
+    Agent 类      AgentHarness（自带电池的 SDK 门面，pi 自己不用）
+         ↑
+   AgentSession → modes/{interactive, print, rpc}
+```
+
+- `agentLoop()` —— 无状态纯循环函数（792 行，不含任何业务）
+- `Agent` 类 —— 有状态 + 事件订阅 + 两条队列；`createLoopConfig()` 是它与纯循环之间唯一的桥
+- `AgentHarness` —— 会话/技能/提示模板/压缩/工具/生命周期，**与 `Agent` 平级的另一条组装线**
+- `AgentSession` —— 应用层编排（interactive / print / rpc 三种模式共用它，
+  在 `packages/coding-agent/src/core/agent-session.ts`，不在 packages/agent 下），**坐在 `Agent` 上**
+
+pai 现状 = `agentLoop` 那一层（`run_agent`）+ 半个 `AgentSession`（`modes/`）；
+`Agent` 那一层被 REPL 兼任，`AgentHarness` 那条线整条没有。
 
 ## 二、事件：扁平 discriminated union，三层生命周期（`types.ts:422`）
 
@@ -89,7 +116,7 @@ pai 的实现（feature 05 task 2/5）与之一致：steering 注入点在**本�
 | `beforeToolCall` | 权限挂点，返回 block + reason 即拦截 | 🔜 阶段 4 |
 | `afterToolCall` | 结果后处理 | ❌ 未做 |
 | `getSteeringMessages` / `getFollowUpMessages` | 双队列 | ✅ 阶段 2 已做 |
-| `getApiKey` | **每次 LLM 调用动态取 key**（为短时 OAuth token 而设，工具执行期间可能过期） | ❌ 见 K source-walks/pi-cc-api-keys.md |
+| `getApiKey` | **每次 LLM 调用动态取 key**（为短时 OAuth token 而设，工具执行期间可能过期） | ❌ 见 K model-api/pi-cc-api-keys.md |
 | `shouldStopAfterTurn` | 每轮结束后问一次「要不要优雅停机」，返回 true 则发 `agent_end` 并**在轮询两个队列之前**退出。注释举的例子正是「上下文快满之前」 | ❌ 未做 |
 | `prepareNextTurn` | 在 `turn_end` 之后、决定是否发下一次请求之前，返回替换的上下文/模型/thinking 状态 | ❌ 未做 |
 | 工具执行模式 | `"sequential"` / `"parallel"`（并行时先顺序预检、再并发执行；`tool_execution_end` 按完成序发，工具结果消息按 assistant 源序发） | 🔜 阶段 5 |
@@ -103,7 +130,7 @@ pai 若将来要做「切换模型」或「上下文满了优雅收尾」，这�
 
 - `Component.render(width) -> list[str]` 是唯一必须实现的契约；不用 React/Ink，
   pi-tui 运行时依赖只有 marked + get-east-asian-width
-  （宽度计算为什么要单独引一个包，见 K concepts/terminal-width.md）。
+  （宽度计算为什么要单独引一个包，见 K tui/terminal-width.md）。
 - CURSOR_MARKER 技巧：焦点组件在光标位置吐零宽 APC 序列，TUI 扫描剥离后把硬件光标
   定位过去——IME（中文输入）候选框位置正确的关键。
 - main-screen（渲染进主屏 + scrollback）与 alt-screen 两种模式；

@@ -1,6 +1,6 @@
 """滚动状态机：纯状态、零 IO、离线可测。
 
-语义照 pi 的 `ScrollView`（K source-walks/pi-alt-screen.md 第三节）：
+语义照 pi 的 `ScrollView`（K tui/pi-alt-screen.md 第三节）：
 **跟随末尾是默认**，手动往上滚就关掉跟随，滚回底部再打开。
 
 为什么这件小事值一个模块：alt 屏下「新内容到达」与「用户正在往回读」会同时发生，

@@ -84,6 +84,7 @@
 
 | 功能 | 状态 | 一句话结果 |
 |---|---|---|
+| [18-20260813-steering-input](18-20260813-steering-input/README.md) | 讨论中 | 给 steering 队列接真实输入源（改 12 的行为：干活时打的字默认排队 → 照 CC 默认中途注入）。五问已抛待拍板；spec 另立一节记**前置缺陷**：模型某轮不调工具时队列里的 steering 会永久卡死 |
 | [17-20260812-viz-flow](17-20260812-viz-flow/README.md) | 已验收 | viz v2 运行时流转可视化：新增观测流落盘（`core/trace.py`，14 种事件并排落 `.events.jsonl`）+ 回合时间线（分组配对、2s 游标轮询、跨项目回放）+ 每处标代码位置可跳编辑器。8 task，1069 passed；**每个 task 真数据/真浏览器复验各抓出问题**，含两个只有 pty e2e 与肉眼能发现的 bug |
 | [00-20260802-harness-skeleton](00-20260802-harness-skeleton/README.md) | 已验收 | `pai "任务"` 可真跑：loop/4 工具/JSONL 落盘/once 模式，冷眼评审严重项清零 |
 | [01-20260803-viz](01-20260803-viz/README.md) | 已验收 | `pai-viz` 本地网页：结构图自动自省 + 阶段路线图，14 条测试 |
