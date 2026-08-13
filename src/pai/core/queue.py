@@ -6,9 +6,16 @@
 - followUp：agent 本该停下时排队续问。注入点在**模型不再发 tool_calls、即将返回**处，
   用 "single" 模式一条一轮——每条各触发一轮，中间还可能被中断。
 
-诚实边界：纯 REPL 的 input() 是阻塞的，agent 干活时用户根本没法打字，
-所以 REPL 阶段只有 followUp 有真实输入源，steering 的注入位置靠测试（假回调）钉死，
-等 TUI/流式才通电。
+诚实边界：**steering 至今没有真实输入源**，只有 followUp 有。
+
+原因分两段。纯 REPL 阶段是物理上做不到——`input()` 阻塞着，agent 干活时用户没法打字。
+TUI 交付（feature 12/13/16）之后这个限制没了，用户确实能在干活时打字，
+但那条路仍然只接 followUp（`modes/interactive.py` 的 SUBMIT 分支进 `follow_up.enqueue`）：
+followUp 接上就是纯收益，steering 还要处理「插在哪不会劈开 tool_calls 与它的结果」，
+本轮没做。原来这里写的是「等 TUI/流式才通电」——**TUI 到了，这句没兑现**，
+2026-08-12 按实况改写，免得注释与现实各说各话。
+
+现状：**结构就位、注入点由 loop 备好、注入位置靠测试（假回调）钉死、没有调用方。**
 """
 
 from __future__ import annotations
