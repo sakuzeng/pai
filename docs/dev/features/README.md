@@ -84,7 +84,7 @@
 
 | 功能 | 状态 | 一句话结果 |
 |---|---|---|
-| [17-20260812-viz-flow](17-20260812-viz-flow/README.md) | 已交付 | viz v2 运行时流转可视化：新增观测流落盘（`core/trace.py`，14 种事件并排落 `.events.jsonl`）+ 回合时间线（分组配对、2s 游标轮询、跨项目回放）+ 每处标代码位置可跳编辑器。8 task，1069 passed；**每个 task 真数据/真浏览器复验各抓出问题**，含两个只有 pty e2e 与肉眼能发现的 bug |
+| [17-20260812-viz-flow](17-20260812-viz-flow/README.md) | 已验收 | viz v2 运行时流转可视化：新增观测流落盘（`core/trace.py`，14 种事件并排落 `.events.jsonl`）+ 回合时间线（分组配对、2s 游标轮询、跨项目回放）+ 每处标代码位置可跳编辑器。8 task，1069 passed；**每个 task 真数据/真浏览器复验各抓出问题**，含两个只有 pty e2e 与肉眼能发现的 bug |
 | [00-20260802-harness-skeleton](00-20260802-harness-skeleton/README.md) | 已验收 | `pai "任务"` 可真跑：loop/4 工具/JSONL 落盘/once 模式，冷眼评审严重项清零 |
 | [01-20260803-viz](01-20260803-viz/README.md) | 已验收 | `pai-viz` 本地网页：结构图自动自省 + 阶段路线图，14 条测试 |
 | [02-20260803-compaction](02-20260803-compaction/README.md) | 已交付 | 压缩闭环全链接进 loop（触发/切/摘/重建/熔断），SDD 6 task+终审修复波，115 passed；实测裁决默认拍平（D#37） |

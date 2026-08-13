@@ -1,5 +1,5 @@
 # 17-viz-flow —— 运行时流转可视化（viz v2）
-状态：已交付
+状态：已验收（2026-08-13 经 PR #1 合并入 main，tag `viz-v2`）
 分支：feat/17-viz-flow（立项、四问拍板、T1–T8 全部实现与交付）
 流程：superpowers 全链路（brainstorm 2026-08-12 会话完成 → 四问拍板 2026-08-13 →
       [spec.md](spec.md) → [plan.md](plan.md) → SDD。理由：动 core 装配 + viz 前后端两头）
