@@ -6,7 +6,8 @@
 ## 结构：按「这是哪个知识点」分
 
 **分类标准是知识点（主题），不是来源。** 目录 = 一个知识点，同一个知识点下
-官方文档、pi 源码、CC 源码、自己的沉淀**并排放**——因为读的时候本来就要并排读。
+官方文档、pi 源码、CC 源码、dsh 源码与其第一方文档、自己的沉淀**并排放**——
+因为读的时候本来就要并排读。
 
 ```
 loop/            agent loop 的结构与运行时、消息注入与队列
@@ -29,9 +30,16 @@ inbox.md         还写不出锚点的：新工具/想法一行一项待消化
 |---|---|---|
 | `cc-` | Claude Code 反编译源码 | `loop/cc-loop.md` |
 | `pi-` | pi-mono 源码 | `loop/pi-loop.md` |
-| `pi-cc-` | 对照两家的走读 | `permissions/cc-pi-permission-boundaries.md` |
+| `dsh-` | deepseek-harness 源码**或**其仓内第一方文档（`docs/*.zh.md`） | `loop/dsh-loop.md` |
+| `pi-cc-` / `cc-dsh-` 等 | 对照多家的走读（前缀按字母序拼，最多两家；三家以上用无前缀 + 标题写清） | `permissions/cc-pi-permission-boundaries.md` |
 | `claude-` | Claude Code **官方文档**（不是源码） | `memory/claude-memory.md` |
 | 无前缀 | 没有单一外部原文的沉淀（横切概念 / 方法论回流 / 开发中撞出的通用知识） | `tui/terminal-width.md` |
+
+> **`dsh-` 为什么不拆成「源码」与「官方文档」两个前缀**（D#69）：CC 那边拆是因为
+> **两者出处根本不同**——官方文档在 anthropic.com，源码是反编译来的，且两者常互相打脸。
+> dsh 的文档与源码**在同一个仓库、同一个 commit 里**，拆开只会制造一个每次都要问
+> 「这算哪个」的边界。**但证据等级仍要在正文里标**：写「dsh 文档说」还是「dsh 源码是」，
+> 一句话的事，别省。
 
 目录随第一篇笔记创建，禁止空目录占位；不嵌套二级目录。
 
@@ -95,6 +103,7 @@ inbox.md         还写不出锚点的：新工具/想法一行一项待消化
 | **`loop/`** | | | |
 | [loop/cc-loop.md](loop/cc-loop.md) | CC 的 loop **结构与运行时**：`query()` 是异步生成器（外壳只负责「正常返回才补发 completed」，**started-without-completed 是刻意保留的失败信号**）；run↔query 术语对照；**CC 的 loop 内部只有一个队列出口**（另一个 `useQueueProcessor` 在循环之外，起的是**新 query**）→ 循环条件不看队列，故 **`next` 在纯答话轮次退化成 `later`**（⚠️ 「退化」指**投递时机**，`priority` 字段**入队即定终身不改**，出队排序上 next 仍优先于 later），而 pi 不退化。另含：**Ⓐ 的门槛由调用方传**（全仓仅两个调用点）+ **门槛切片 vs 取最高的双语义**、**Ⓐ 的空转路径**（空数组一路流过 + `snapshot` 引用稳定性是 `useSyncExternalStore` 的命门）、**路 B 是自驱动 effect**（两个订阅源 / 三道守卫 / 靠同步执行顺序防重入）、**标签怎么打**（选函数而非判内容；`LocalShellTask` 用 feature flag 调档）、**术语出处**（mid-turn drain 是 CC 行话不是标识符）、**四条具体走位 + 一次完整时间线**。⚠️ **CC 没有 followUpQueue**；`attachment` 是 58 个分支的**注入物中间层**，它做的三件事里 pai 只需补两件（可见性靠事件流、**语气外壳靠字符串包装**，都与协议无关） | 精读 | src/pai/core/loop.py、src/pai/core/recall.py、features/18 |
 | [loop/cc-message-queue.md](loop/cc-message-queue.md) | **不是两条队列，是一条队列 + 三档优先级**（`now`/`next`/`later`）；**用户输入默认 `next` 即中途注入**、系统消息默认 `later`（「人说话默认优先，机器说话默认等着」）；`now` 会 abort 在跑的工具但**交互式用户产生不了**，只有 SDK 能设；注入形状是 **attachment 跟在 toolResults 后**不是 user 消息；slash 命令排除在 mid-turn drain 外。附一条 pai 自己的前置缺陷：单层 `for` 压平了 pi 的双层 while，**不调工具的回合会把 steering 卡死在队列里** | 精读 | src/pai/core/queue.py、src/pai/core/loop.py、features/18 |
+| [loop/dsh-loop.md](loop/dsh-loop.md) | dsh 的 loop：**一个 inbox（两个列表 next-turn / next-step）+ 两层循环**，`kick()` 的 `while (await this.turn())` 外套 `turn()` 的 step 循环。**三个出口全在 loop 内**：`:266` 每个 step 边界都 claim、`:299` **循环条件本身带「队列非空」**（= pi 的形状）、`:324` turn/end 后 `hasPending` 直接开新 turn（= CC 的「重开」但**位置在 agent 自己手里**，dsh 没有「loop 之外」这个位置）。⚠️ **本篇更正 pi-loop.md**：「在 loop 内部问队列是 pi 独有的」加进 dsh 后不成立，真正独有的是 CC。另含：**术语上 dsh 与 pai 同边、与 pi/CC 相反**（step = 一次请求+工具，turn = 一条用户消息到下一条）；`claim` 两个列表**取法不对称**（next-step 全量抽干 / next-turn 每 turn 只取 1 条）；**inbox 持久化**（`agent/inbox/spliced` 落会话日志，重启还在）；**三个动词 = 两个正交轴**（followup/steer/inject = 列表 × 唤不唤醒，`inject()` 的「注入不唤醒」pai/CC 都没有）；`agent/turn-stopping` 把**pai 当 bug 修掉的那条前置缺陷做成了公开插件接缝**（`/loop` 模式住在这里）。★ **默认值与 CC/pai 相反**：忙碌时回车默认 `queue`（等你干完），Cmd/Ctrl+Enter 才插话，且默认值用户可配 —— **直接推翻 D#68「没有参照实现」这条论据** | 精读 | src/pai/core/loop.py、src/pai/core/queue.py、decisions #68 #69、features/18 |
 | [loop/pi-agentloop.md](loop/pi-agentloop.md) | pi 四层分层 + 十种事件 + 双队列注入时机 + AgentLoopConfig 全部钩子 | 精读 | roadmap 阶段 2 |
 | [loop/pi-loop.md](loop/pi-loop.md) | pi 的 loop **结构与运行时**：四者**不是四层栈**（`AgentHarness` 是 `Agent` 的兄弟，两者各自直接调 `runAgentLoop`，且 pi 自己的 coding-agent 里 `AgentHarness` **零命中**）；**两层 while 就是双队列语义的物理形态**——内层条件 `hasMoreToolCalls \|\| pendingMessages.length > 0` 保证「模型不调工具也能同 run 内注入」；agent/run/turn 三个术语的边界；**首个 turn 不发 `turn_start`**；`stopReason === "length"` 时该轮 tool_call **全部判失败**；**无步数上限**；**「在 loop 内部问队列」是 pi 独有的形状**（与 CC/pai 的结构性分歧表）。⚠️ 本篇更正了 `loop/pi-agentloop.md` 的四层分层错误 | 精读 | src/pai/core/loop.py、src/pai/core/queue.py、features/18 |
 | **`context/`** | | | |

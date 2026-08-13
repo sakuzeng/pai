@@ -1,6 +1,8 @@
 # pai
 
-从零手写的最小编码 agent harness（Python）。架构参照精读 pi（github.com/earendil-works/pi，MIT）与对 Claude Code 的实现分析得出的设计，零代码依赖两者——所有实现都是独立写的，取舍见 docs/dev/decisions.md。
+从零手写的最小编码 agent harness（Python）。架构参照精读 pi（github.com/earendil-works/pi，MIT）、
+对 Claude Code 的实现分析、以及 deepseek-harness（github.com/deepseek-ai/deepseek-harness，MIT）
+得出的设计，零代码依赖三者——所有实现都是独立写的，取舍见 docs/dev/decisions.md。
 
 ## 安装与运行
 

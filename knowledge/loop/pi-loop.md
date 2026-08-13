@@ -147,7 +147,13 @@ emit agent_end
 > 模型某轮直接作答时，队列里的 steering 消息永久卡死。
 > 这是 feature 18 的前置缺陷，修法就是把上面这个 `||` 条件补回来。
 
-### 🔑 与 CC 的结构性分歧：**两个队列出口都在 loop 内部，是 pi 独有的**
+### 🔑 与 CC 的结构性分歧：**两个队列出口都在 loop 内部**
+
+> ⚠️ **2026-08-13 更正（[dsh-loop.md](dsh-loop.md)）**：本节原标题与末尾结论都写着
+> 「**是 pi 独有的**」。加进第三参照源 dsh 之后**这个量词不成立** —— dsh 的 `:299`
+> `if (turnEnds && this.inbox.nextStep.length === 0) break` 同样是「循环条件带队列非空」。
+> **下面这张三家对照表本身没有错，错的只是「独有」。** 真正独有的是 **CC**：
+> 四家里只有它把出口放在了循环之外。
 
 上面那个 `||` 条件不只是「少了一个判断」，它标定了 pi 与 CC 的分界：
 
@@ -157,7 +163,8 @@ emit agent_end
 | **CC** | **只有 mid-turn 那个在 loop 内**；另一个（`useQueueProcessor`）**在 loop 之外** | ❌ 没有 tool_calls 就直接 `return`，队列压根不问 | `next` **退化成 `later`**，只能开一个新 query |
 | **pai**（feature 18 后） | 出口一在 loop 内、**出口二（T2）也在 loop 内**、T4 兜底在 loop 外 | ✅ 取 pi 的做法 | 不退化 |
 
-> **所以「在 loop 内部问队列拿到就重开一轮」是 pi 独有的形状。**
+> **所以「在 loop 内部问队列拿到就重开一轮」是 pi 与 dsh 共有、CC 没有的形状**
+> （原文写「pi 独有」，见本节开头的更正）。
 > CC 与 pai 都把「agent 已经停了之后怎么办」挪到了 loop 外面——
 > **那已经不是同一次运行了**（CC 的 `turnCount` 归零；pai 是 `run_agent` 重新调一次）。
 >
