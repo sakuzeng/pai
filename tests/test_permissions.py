@@ -707,3 +707,49 @@ def test_dangerous_write_reason_names_the_path(tmp_path):
 
     assert decision.kind == "ask"
     assert "持久化" in decision.reason or "危险" in decision.reason
+
+
+# ---- R4#1：规则匹配不许依赖参数键序（2026-08-18 评审）----
+
+
+def test_rule_matching_does_not_depend_on_argument_order(tmp_path):
+    """取的必须是**声明的那个参数**，不是「参数字典的第一个值」。
+
+    模型序列化 `arguments` 时的键序不受任何约束（JSON 不保证顺序，schema 里的
+    先后也不是承诺）。取第一个值时，`{"content": …, "path": …}` 这种完全合法的
+    形状会拿 **content 正文**去比对路径 pattern —— 规则静默不命中。
+    后果不是「少匹配一次」：deny 落空后降级成 ask，而在 bypassPermissions 模式下
+    deny 本该在第 1 步免疫拦截、落空即放行，**是一条 deny 绕过**。
+
+    同文件的 `path_access_for` 早就按参数名取了（旁边注释写着「写成取第一个
+    在加第四个工具时会静默出错」）—— 那条硬化当时只做在了边界判定上，
+    匹配器这一侧漏了，本测试把它补上。
+    """
+    cwd = tmp_path / "proj"
+    home = tmp_path / "home"
+    rules = RuleSet.from_lists(
+        deny=["write_file(**/secret.txt)"], anchor=str(cwd), default_decision="allow"
+    )
+    target = str(cwd / "secret.txt")
+
+    def kind(args):
+        return permissions.decide(
+            "write_file", args, rules, cwd=str(cwd), home=str(home)
+        ).kind
+
+    assert kind({"path": target, "content": "x"}) == "deny"      # 一直是对的那一侧
+    assert kind({"content": "x", "path": target}) == "deny"      # 同一次调用，同一个目标
+
+
+def test_edit_file_rule_survives_a_path_last_ordering(tmp_path):
+    """三参工具更容易撞上：`old`/`new` 在前时，取到的是**待替换的正文**。"""
+    cwd = tmp_path / "proj"
+    home = tmp_path / "home"
+    rules = RuleSet.from_lists(
+        deny=["edit_file(**/secret.txt)"], anchor=str(cwd), default_decision="allow"
+    )
+    args = {"old": "a", "new": "b", "path": str(cwd / "secret.txt")}
+
+    assert permissions.decide(
+        "edit_file", args, rules, cwd=str(cwd), home=str(home)
+    ).kind == "deny"

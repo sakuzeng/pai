@@ -1,1 +1,1 @@
-18-20260813-steering-input
+!小修:R4#1 权限匹配器 target_path 取错参数（deny 可被 JSON 键序绕过），修法确定=与同文件 path_access_for 对齐按参数名取
