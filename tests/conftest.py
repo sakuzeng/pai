@@ -44,6 +44,14 @@ def pytest_collection_modifyitems(config, items):
 # 为什么用 autouse 兜底而不是「逐个测试传参」：20 个调用点意味着第 21 个还会忘。
 # 把「碰不到真实 home」变成**结构上做不到**，比依赖记性可靠。
 
+# ---- 2026-08-18 追加：挂死必须变红（R4#T6）----
+#
+# 机制与理由都在 tests/pai_test_timeout.py（那里也是子进程验证时 `-p` 加载的同一份）。
+# 这里只是把 autouse fixture 拉进 conftest 命名空间，让整套默认都装上。
+# 不用 `pytest_plugins = [...]`：pytest 8 起非顶层 conftest 里写它是错误。
+from pai_test_timeout import hang_becomes_red    # noqa: F401  autouse fixture
+
+
 import site
 from pathlib import Path
 

@@ -29,6 +29,7 @@ where = ["src"]
 testpaths = ["tests"]
 markers = [
     "llm: 需要真实 LLM API key 的测试（无 key 自动跳过）",
+    "timeout_seconds: 这条测试的挂死预算（秒），默认 60；见 tests/pai_test_timeout.py",
 ]
 
 [tool.setuptools.package-data]
