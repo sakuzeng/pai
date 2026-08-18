@@ -1,1 +1,1 @@
-18-20260813-steering-input
+!小修:R4#4+#5 配对不变量在异常路径上无保障（self 键击穿 Tool.run + 逃逸时 tool 结果零回填）

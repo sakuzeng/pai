@@ -1460,3 +1460,122 @@ def test_session_append_is_thread_safe(tmp_path):
     assert len(lines) == 180
     for line in lines:
         json.loads(line)          # 有半行交织的话这里会抛
+
+
+# ---- R4#4 / R4#5：配对不变量在**异常路径**上也必须成立（2026-08-18 评审）----
+
+
+class _FakeToolCall:
+    """与 SDK / `streaming.assemble` 同形状（`.id` / `.function.name` / `.arguments`）。"""
+
+    def __init__(self, name: str, arguments: str, call_id: str = "call_1") -> None:
+        self.id = call_id
+        self.function = type("F", (), {"name": name, "arguments": arguments})()
+
+
+def _tool_call(name: str, arguments: str) -> "_FakeToolCall":
+    return _FakeToolCall(name, arguments)
+
+
+def test_a_self_argument_is_rejected_at_the_door_not_left_to_explode():
+    """`{"self": …}` 是合法 JSON **对象**，所以躲过了「必须是对象」那道检查，
+    却在 `t.run(**args)` 处把绑定方法打穿——`TypeError: got multiple values
+    for argument 'self'` 抛在**进入 `Tool.run` 的 try 之前**，
+    「工具错误不 throw」那条架构约束够不着它。
+
+    与旁边那条 `null` / `[1,2]` / `"hi"` 的检查是同一击的不同形状：
+    错误吸收边界在函数内部，而这一击落在函数门口。
+    """
+    from pai.core.loop import _run_tool
+
+    tc = _tool_call("bash", json.dumps({"self": "x"}))
+    args, result, is_error = _run_tool(get_tools(), tc)      # 不许抛
+
+    assert is_error is True
+    assert "self" in result
+
+
+def test_every_declared_tool_call_gets_a_result_even_when_something_explodes(tmp_path):
+    """**配对是硬不变量，异常路径上也得成立。**
+
+    `on_event` 由 modes 层注入，而 `trace.compose` 明文「不吞异常：渲染器炸了
+    就该炸」——所以「回填途中有人抛」不是假想。此前 `ToolEnd` 事件发在 append
+    **之前**，渲染器炸一次，这一批 tool 结果就零回填。
+
+    后果不是「少一条结果」：REPL 的兜底会把 messages 原样留着（那正是它的价值），
+    而留下来的是一份 **assistant 声明了 tool_calls 却没有结果**的对话——
+    之后每一轮都撞 400（`insufficient tool messages following tool_calls message`，
+    R#11 有真实复现），不 `/clear` 会话就永久报废。**「对话留着」反而把失败固化了。**
+    """
+    from pai.core.events import ToolEnd
+
+    script = [
+        {"tool_calls": [("bash", json.dumps({"command": "echo hi"}))]},
+        {"content": "干完了"},
+    ]
+    messages: list = []
+
+    def exploding(event):
+        if isinstance(event, ToolEnd):
+            raise RuntimeError("渲染器炸了")
+
+    with pytest.raises(RuntimeError):
+        run_agent("跑一下", client=FakeClient(script), model="fake",
+                  tools=get_tools(), on_event=exploding, messages=messages)
+
+    declared = [tc["id"] for m in messages
+                if m.get("role") == "assistant" and m.get("tool_calls")
+                for tc in m["tool_calls"]]
+    filled = [m["tool_call_id"] for m in messages if m.get("role") == "tool"]
+
+    assert declared, "夹具没跑到发起 tool_call 那一步，测试本身失效了"
+    assert filled == declared, "逃逸前必须给每个已声明的 tool_call 补一条结果"
+
+    # **并且留下的是真实结果，不是占位符**：工具已经跑完了，结果就在手上，
+    # 拿占位符顶替等于把跑过的活丢掉。这条断言钉的是「先 append 再发事件」
+    # 那个顺序——只断言配对的话，兜底网会让旧顺序也绿（交付前的注入反证抓到的）。
+    contents = [m["content"] for m in messages if m.get("role") == "tool"]
+    assert contents == ["hi\n"]
+
+
+def test_the_backfilled_result_says_why_it_is_there(tmp_path):
+    """炸在**工具跑起来之前**时，补上的那条要让人和模型都看得出是补的。
+
+    这一条走的是权限层：`before_tool_call` 经 gate 调 asker，而 TUI 的对话框
+    通道抛出的异常（tty 错误、EOF）会直接穿透——此时工具根本没跑，
+    没有任何真实结果可留，只能补占位。
+
+    与上一条测试的分工是硬的：上一条炸在**回填之后**，那里真实结果已经进了
+    messages（所以断言的是「结果还在」）；这一条炸在**回填之前**，
+    断言的是「占位符顶上了，且不伪装成工具真跑过」。
+    """
+    script = [{"tool_calls": [("bash", json.dumps({"command": "echo hi"}))]}]
+    messages: list = []
+
+    def exploding_gate(name, args):
+        raise RuntimeError("对话框通道炸了")
+
+    with pytest.raises(RuntimeError):
+        run_agent("跑一下", client=FakeClient(script), model="fake",
+                  tools=get_tools(), on_event=lambda _: None, messages=messages,
+                  before_tool_call=exploding_gate)
+
+    filled = [m["content"] for m in messages if m.get("role") == "tool"]
+    assert len(filled) == 1
+    assert "内部错误" in filled[0]
+    assert "hi" not in filled[0]          # 别伪装成工具真跑过
+
+
+def test_a_self_argument_does_not_break_the_conversation(tmp_path):
+    """R4#4 与 R4#5 合在一起看：门口挡住之后，会话仍然是配对完整的。"""
+    script = [
+        {"tool_calls": [("bash", json.dumps({"self": "x"}))]},
+        {"content": "换个方式"},
+    ]
+    messages: list = []
+    answer = run_agent("跑一下", client=FakeClient(script), model="fake",
+                       tools=get_tools(), on_event=lambda _: None, messages=messages)
+
+    assert answer == "换个方式"
+    filled = [m["tool_call_id"] for m in messages if m.get("role") == "tool"]
+    assert len(filled) == 1

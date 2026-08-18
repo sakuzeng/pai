@@ -52,10 +52,10 @@ feature 12 被用户打回的三条 bug 各钉了一条 e2e。
 | `core/compaction.py` | 可用 | 见下——阶段 1 主线（触发→切→摘→重建→熔断）全部接进 loop |
 | `modes/once.py` | 可用 | 单次任务，跑完即退出（对应 pi 的 print-mode）。client/model 可注入故可离线测；`context_window()` + `CompactionSettings()` 默认透传 |
 | `viz/` | 可用 | `pai-viz` 本地网页：**运行时流转可视化**（feature 17）——结构图（工具自省上图、阶段状态解析本表、每处标代码位置可点击跳编辑器）+ **回合时间线**（读会话 JSONL 与并排的 `.events.jsonl`，分组配对成回合，2s 游标轮询实时点亮）。页面纯观察，无对话输入 |
-| `core/trace.py` | 可用 | 观测流落盘：`EventTrace` 当 `on_event` 用，14 种事件追加进 `<会话同名>.events.jsonl`（`MessageDelta` 刻意不落）；写失败吞掉且只告警一次——观测流挂了不连累正事。`compose()` 扇出渲染器与落盘器 |
+| `core/trace.py` | 可用 | 观测流落盘：`EventTrace` 当 `on_event` 用，事件（**类型数以 `core/events.py` 的 `AgentEvent` Union 为准，勿在文档里抄数**）追加进 `<会话同名>.events.jsonl`（`MessageDelta` 刻意不落）；写失败吞掉且只告警一次——观测流挂了不连累正事。`compose()` 扇出渲染器与落盘器 |
 | `cli.py` / `config.py` | 可用 | cli 只做参数解析与分发；OpenAI 兼容协议打 DeepSeek；`context_window()` 读 `PAI_CONTEXT_WINDOW`，默认 1_000_000（v4-flash） |
 | `modes/interactive.py` | 可用 | REPL：跨轮持有 messages/锚点簿/熔断状态；历史（按 cwd 分文件、连续重复只记一条）、`\` 续行、`!` shell 模式、`/help /status /compact /clear /exit`、两级 Ctrl+C；API 出错不炸会话 |
-| `core/events.py` | 可用 | 12 个 frozen dataclass 扁平联合 + `render_text` 默认渲染器（D#39）。`on_event` 现在收事件对象，渲染下放 modes 层；`MessageDelta`（流式增量）与 `Interrupted(where="stream")` 于阶段 5 补上 |
+| `core/events.py` | 可用 | frozen dataclass 扁平联合 + `render_text` 默认渲染器（D#39）。**成员数不在文档里抄**——已漂过三次（12→14→17），以本文件的 `AgentEvent` Union 为准。`on_event` 现在收事件对象，渲染下放 modes 层；`MessageDelta`（流式增量）与 `Interrupted(where="stream")` 于阶段 5 补上 |
 | `core/queue.py` | 可用 | `PendingMessageQueue`（all/single 两种 drain + 可选谓词）。**已通电**（feature 18）：TUI 干活期间打的字进队列，loop 有**两个注入出口**（工具结果回填后 / 模型不调工具时）。队列混装消息与 `/`、`!` 命令，谓词把命令滤出注入之外、留到轮末执行。**单队列取自 CC、第二出口取自 pi**（D#68） |
 | `core/interrupt.py` | 可用 | 进程级中断标志（D#40）。loop 在步边界与每个 tool_call 前查，bash 在轮询里查 |
 | `modes/statusline.py` | 可用 | `render_tool_line(events, width)` 纯函数（按终端列宽算中文宽度）+ `\r` 原地刷新；真 tty 才启用，非 tty 退回滚动行 |
@@ -125,7 +125,7 @@ feature 12 被用户打回的三条 bug 各钉了一条 e2e。
 + **feature 13 alt-screen task 1-7** + **feature 16 鼠标与选区 task 1-9**
 + **feature 17 viz-flow task 1-3.5**（事件落盘 + RecallInjected/ConversationCleared + 装配））：
 
-- `./test.sh` → **1135 passed, 3 deselected**，全部离线，约 106s。**这是默认路径。**
+- `./test.sh` → **1139 passed, 3 deselected**，全部离线，约 106s。**这是默认路径。**
   两套假 provider 分工是硬的：`tests/fake_llm.py` **注入**的假客户端测装配与逻辑；
   `tests/fake_provider.py` **起一个真 HTTP 服务**，让真 pai 进程经 `PAI_BASE_URL` 打进来——
   于是 `tests/test_e2e_tui.py` 能在真 pty 里跑完整回合（真 SSE、真 gate、真 TUI），
