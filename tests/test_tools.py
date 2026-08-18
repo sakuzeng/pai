@@ -103,6 +103,59 @@ def test_bash_timeout_returns_partial_output(monkeypatch):
     assert "超时" in result
 
 
+def test_the_default_timeout_matches_the_two_reference_implementations():
+    """守的不是数字本身，是「改它之前先读一遍理由」。
+
+    60s 是立项时拍脑袋定的，扛不住一次完整测试跑（本仓库自己就要 106s）
+    或 `npm install`。CC 与 dsh **各自独立**收敛到同一对数字 120s/600s——
+    三家参照里两家一致是难得的强信号，pai 取默认值那一档。
+    （TODO「给照抄来的常数建一条检查习惯」：抄来的数字要带着它的前提一起被看见。）
+    """
+    from pai.core.tools import shell
+
+    assert shell.TIMEOUT_SECONDS == 120
+
+
+def test_timeout_message_tells_the_model_what_to_do_next(monkeypatch):
+    """只说「杀了」的文案会让模型原样重试，再撞一次同样的墙。
+
+    三家都在这个语境里给出路（dsh 把 `run_in_background` 写进工具描述、
+    CC 的 ripgrep 超时说「换更具体的路径或 pattern」）。pai 没有后台任务机制，
+    给的是穷人版出路：起到后台 + 分次读日志。
+    """
+    from pai.core.tools import shell
+
+    monkeypatch.setattr(shell, "TIMEOUT_SECONDS", 1, raising=False)
+    result = shell.bash(command="sleep 5")
+
+    assert "超时" in result
+    assert "nohup" in result          # 具体到可以照着敲的一条命令
+    assert "read_file" in result      # 以及之后怎么把输出取回来
+
+
+def test_interrupt_message_does_not_offer_the_timeout_way_out(monkeypatch):
+    """中断是**用户主动喊停**，不是「跑太久」——给它出路等于劝模型绕过用户。
+
+    两条路径共用同一个 `_kill_and_collect`，很容易顺手把话写到一块去。
+
+    **必须中途中断，不能开跑前就置标志**——后者走的是 `bash()` 开头那条
+    「已中断，命令未执行」的提前返回，根本进不了 `_kill_and_collect`，
+    于是这条测试在两种实现下都绿（第一版就是这么写的，交付前的注入反证抓到了它）。
+    """
+    from pai.core.tools import shell
+
+    with _injected_flag() as flag:
+        timer = threading.Timer(0.5, flag.set)
+        timer.start()
+        try:
+            result = shell.bash(command="sleep 30")
+        finally:
+            timer.cancel()
+
+    assert "已中断" in result
+    assert "nohup" not in result
+
+
 # ---- feature 05 task 4：bash 可中断（进程组级） ----
 
 @contextlib.contextmanager

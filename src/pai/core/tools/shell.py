@@ -18,7 +18,12 @@ from pai.core import interrupt
 from pai.core.tools import matcher_for, tool
 
 MAX_OUTPUT_CHARS = 4000
-TIMEOUT_SECONDS = 60
+# 默认 120s：**不是拍脑袋，是两家独立收敛的结果**——CC（`timeouts.ts` 的
+# DEFAULT_TIMEOUT_MS）与 dsh（`bash-local` 的 timeoutMs）各自定在 120s，
+# 上限各自定在 600s。原先的 60s 扛不住一次完整测试跑（本仓库自己就要 106s）
+# 或 `npm install`，撞墙时模型只能干等一分钟再失败一次。
+# 上限与「模型自己传 timeout」尚未做，见 TODO「工具调用超时」。
+TIMEOUT_SECONDS = 120
 POLL_SECONDS = 0.1          # 中断响应粒度；再小只是空转，再大用户会觉得 Ctrl+C 没反应
 
 # 我们起过的进程组，退出时统一收割。
@@ -72,8 +77,18 @@ def _wait(proc: subprocess.Popen) -> Tuple[Optional[str], Optional[str]]:
         if flag.is_set():
             raise _Killed(_kill_and_collect(proc, "(已中断，命令与其整个进程组已被终止)"))
         if time.monotonic() >= deadline:
+            # **给模型一条出路**：只说「杀了」的文案会让它原样重试、再撞一次同样的墙。
+            # 三家都在这个语境里给下一步（dsh 把 run_in_background 写进工具描述、
+            # CC 的 ripgrep 超时说「换更具体的路径或 pattern」）。pai 没有后台任务
+            # 机制，所以给的是穷人版：起到后台 + 分次读日志。
+            # 这段话只挂在超时上，**不挂在中断上**——中断是用户主动喊停，
+            # 给它出路等于劝模型绕过用户（test_interrupt_message_does_not_offer_the_timeout_way_out）。
             raise _Killed(_kill_and_collect(
-                proc, f"(命令超时 {TIMEOUT_SECONDS}s，命令与其整个进程组已被终止)"))
+                proc,
+                f"(命令超时 {TIMEOUT_SECONDS}s，命令与其整个进程组已被终止。"
+                f"若这条命令本来就需要跑更久：拆成几段分别执行，"
+                f"或改写成 `nohup 原命令 > /tmp/out.log 2>&1 &` 起到后台，"
+                f"再用 read_file 分次查看 /tmp/out.log)"))
 
 
 class _Killed(Exception):
