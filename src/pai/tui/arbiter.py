@@ -56,9 +56,22 @@ class InputArbiter:
         """排一个要真人处理的东西。`user_invoked` 的不受抑制（是他自己唤出来的）。"""
         self._queue.append(_Pending(payload, user_invoked))
 
-    def resolve(self) -> None:
-        if self._queue:
-            self._queue.pop(0)
+    def resolve(self, payload: Any = None) -> None:
+        """处理掉一个。给了 `payload` 就**按身份移除**，不盲弹队首。
+
+        现实里权限是按批串行判的，队列同时只会有一个，盲弹 `pop(0)` 碰巧不出错——
+        但「结构上不可能出错」与「碰巧不出错」是两回事，而中断路径要撤的那一框
+        未必是队首（R4#3）。撤一个已经不在队列里的，是 no-op：中断与作答
+        可能前后脚到，误伤下一个框比什么都不做更糟。
+        """
+        if payload is None:
+            if self._queue:
+                self._queue.pop(0)
+            return
+        for i, pending in enumerate(self._queue):
+            if pending.payload is payload:
+                self._queue.pop(i)
+                return
 
     # --- 判定 ---------------------------------------------------------
 

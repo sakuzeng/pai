@@ -20,6 +20,10 @@ from pai.tui.keys import Key
 # 「用户取消了」。用哨兵而不是 None——None 是「还没答」，两者必须分得开。
 CANCELLED = object()
 
+# 「还没有结论」。与 CANCELLED 同一条纪律的第二半：`_result` 上也要分得开
+# 「没人答过」与「答了但结论是取消」——混起来就是 R4#2（没显示过的框被当成答完了）。
+_UNSET = object()
+
 _HANDOFF_PREFIXES = ("!", "/")
 
 
@@ -34,6 +38,27 @@ class Dialog(Component):
         self.kind = kind                      # "question" | "permission"
         self.selected = 0
         self.typed = ""
+        self._result = _UNSET
+
+    # --- 结论（R4#2/R4#3：答案跟着框走，不进共享 FIFO）-------------------
+
+    @property
+    def resolved(self) -> bool:
+        """这一框有没有结论。**等待方唯一该看的东西**——
+        `arbiter.current() is None` 在「答完了」与「被打字压住」两种情形下
+        都为真，拿它当判据就是用户没见过框却被判未作答。"""
+        return self._result is not _UNSET
+
+    @property
+    def answer(self) -> Optional[str]:
+        """结论里的答案；取消与未作答都是 None（由 `resolved` 区分「答没答过」）。"""
+        if self._result is _UNSET or self._result is CANCELLED:
+            return None
+        return self._result
+
+    def settle(self, result) -> None:
+        """记下结论。`result` 可以是 `CANCELLED`——取消是**有结论**，不是还在等。"""
+        self._result = result
 
     # --- 输入 ---------------------------------------------------------
 

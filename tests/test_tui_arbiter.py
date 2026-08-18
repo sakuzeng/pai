@@ -123,3 +123,45 @@ def test_time_is_injected_so_tests_never_sleep():
     assert a.owner() is EDITOR
     clock.advance(11)
     assert a.owner() == "框"
+
+
+def test_resolve_removes_the_named_item_not_whichever_is_first():
+    """按身份移除，不盲弹队首。
+
+    现实里权限是按批**串行**判的，队列同时只会有一个，所以盲弹 `pop(0)`
+    碰巧不出错——但「结构上不可能出错」与「碰巧不出错」是两回事，
+    而中断路径要撤的恰恰可能不是队首（R4#3）。
+    """
+    arbiter = InputArbiter()
+    first, second = object(), object()
+    arbiter.enqueue(first)
+    arbiter.enqueue(second)
+
+    arbiter.resolve(second)
+
+    assert arbiter.pending_count() == 1
+    assert arbiter.owner() is first
+
+
+def test_resolve_without_an_argument_still_pops_the_head():
+    """既有调用方（`_dialog_key`）不传参数，语义不变。"""
+    arbiter = InputArbiter()
+    first, second = object(), object()
+    arbiter.enqueue(first)
+    arbiter.enqueue(second)
+
+    arbiter.resolve()
+
+    assert arbiter.owner() is second
+
+
+def test_resolving_something_already_gone_is_a_no_op():
+    """撤一个已经被答掉的框不该误伤下一个——中断与作答可能前后脚到。"""
+    arbiter = InputArbiter()
+    only = object()
+    arbiter.enqueue(only)
+    arbiter.resolve(only)
+
+    arbiter.resolve(only)
+
+    assert arbiter.pending_count() == 0

@@ -268,6 +268,31 @@ def make_event_handler(stream=None, *, enabled: Optional[bool] = None
     return handle
 
 
+NO_ANSWER = "用户没有作答（跳过或取消），请自行判断或换个方式推进。"
+
+
+def await_dialog_answer(driver, app, dialog, on_action) -> str:
+    """等**这一框**被答掉，然后把结论取出来。
+
+    判据落在框上，不在 `arbiter.current()` 上：后者在「队列空（答完了）」与
+    「非空但被打字压住（还没轮到显示）」两种语义完全不同的状态下都是 None。
+    拿它当完成判据就是 R4#2——用户正打字时弹的权限框一次都没显示就被判
+    「未作答」（对 gate 而言即拒绝）。抑制期本函数照常读键盘：键进编辑器
+    （正确），停手 1.5s 后框自然显示，不需要为抑制写任何特判。
+
+    中断 / EOF 要**连框一起撤**（R4#3）：只置一个「不等了」的标志会把框留在
+    队列里接管全部按键，用户事后答掉它，结论就流向了下一个问题。
+    """
+    def handle(kind, payload) -> None:
+        on_action(kind, payload)
+        if kind in (INTERRUPT, EOF):
+            app.cancel_dialog(dialog)
+
+    driver.pump_until(lambda: dialog.resolved, handle)
+    answer = dialog.answer
+    return NO_ANSWER if answer is None else answer
+
+
 def run_interactive(
     *,
     client=None,
@@ -725,9 +750,8 @@ def _run_tui(*, out, client, model, tools, messages, anchors, state, steering, f
         # 权限框与提问框长得不一样（记号与配色都不同）。判据是选项——
         # `gate._ask_the_human` 固定传「允许这次 / 拒绝」。
         kind = "permission" if options and options[0].startswith("允许") else "question"
-        app.enqueue_dialog(Dialog(question=question, options=options,
-                                  kind=kind, color=color))
-        answered = {"value": None, "done": False}
+        dialog = Dialog(question=question, options=options, kind=kind, color=color)
+        app.enqueue_dialog(dialog)
 
         def on_action(kind, payload):
             if kind == COMMAND:
@@ -739,20 +763,11 @@ def _run_tui(*, out, client, model, tools, messages, anchors, state, steering, f
                                   flag=flag, app=app, on_event=on_event)
             elif kind == INTERRUPT:
                 flag.set()
-                answered["done"] = True
             elif kind == EOF:
                 asker_state["exit"] = True
-                answered["done"] = True
 
-        while not answered["done"]:
-            driver.pump_until(lambda: app.arbiter.current() is None
-                              or answered["done"], on_action)
-            if app.arbiter.current() is None:
-                answered["value"] = app.take_answer()
-                answered["done"] = True
-        if answered["value"] is None:
-            return "用户没有作答（跳过或取消），请自行判断或换个方式推进。"
-        return answered["value"]
+        # 撤框与「等到有结论为止」都在 await_dialog_answer 里（那里可离线测）
+        return await_dialog_answer(driver, app, dialog, on_action)
 
     # **一处换、两处生效**：`ask_user_question` 与权限 gate 用的是同一个持有者。
     # 只换其中一个正是 2026-08-11 那次卡死的根因。
