@@ -29,6 +29,37 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 COLS, ROWS = 96, 30
 
 
+def reap_pty_child(pid: int, fd: int, timeout: float = 5.0) -> None:
+    """杀掉 pty 子进程并收割它——**边收边等**，不许裸 `waitpid` 死等。
+
+    **这是防御性硬化，不是那条挂死的修复——根因至今未确诊。**
+    曾推断「子进程卡在往 pty 写、父进程卡在 `waitpid`，两边互等」，
+    但实测推翻了：`SIGKILL` 本来就能杀掉阻塞在 pty 写上的进程
+    （`tests/test_pty_reaping.py` 头部记了完整经过）。
+
+    留下有界等待的理由与那个推断无关：这个测试基建的失败模式就是「挂住」
+    （2026-08-13、2026-08-18 各一次，都靠人工 kill），无界等待在这里没有存在价值。
+    收割期间顺手把子进程写出来的东西读掉，也是同一个意思——少一个可能堵住的地方。
+    """
+    try:
+        os.kill(pid, 9)
+    except ProcessLookupError:
+        pass                                     # 已经没了，照样要往下收
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            if os.waitpid(pid, os.WNOHANG)[0]:
+                return
+        except ChildProcessError:
+            return                               # 已经被收走了
+        try:
+            ready, _, _ = select.select([fd], [], [], 0.05)
+            if ready:
+                os.read(fd, 65536)               # 读掉就是为了让它写得下去
+        except OSError:
+            return                               # fd 已关/对端没了，没什么可读的了
+
+
 class Session:
     """在真 pty 里跑一个 pai 进程，并把它写出来的东西录下来。"""
 
@@ -97,11 +128,7 @@ class Session:
         return to_text(replay(load(self.record)))
 
     def close(self):
-        try:
-            os.kill(self.pid, 9)
-            os.waitpid(self.pid, 0)
-        except (ProcessLookupError, ChildProcessError):
-            pass
+        reap_pty_child(self.pid, self.fd)
         os.close(self.fd)
 
 
