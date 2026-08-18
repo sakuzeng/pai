@@ -184,3 +184,19 @@ def test_display_width_of_plain_text_is_unchanged_by_escape_stripping():
         assert display_width(text) == sum(
             2 if __import__("unicodedata").east_asian_width(c) in ("W", "F") else 1
             for c in text)
+
+
+def test_preview_shows_the_command_even_when_another_argument_comes_first():
+    """**bash 加上 timeout 参数当场引爆的那条**（R4#1 同款，这次在显示层）。
+
+    模型序列化 `arguments` 的键序不受任何约束。取「第一个值」时，
+    `{"timeout": 300, "command": "pytest -q"}` 会让状态行显示一个光秃秃的
+    `300`——用户看到的是「pai 在跑 300」。加参数之前这条测不出来，
+    因为 bash 当时只有一个参数。
+    """
+    from pai.modes.statusline import _preview
+
+    assert _preview({"timeout": 300, "command": "pytest -q"}) == "pytest -q"
+    assert _preview({"command": "pytest -q", "timeout": 300}) == "pytest -q"
+    assert _preview({"content": "x", "path": "a.py"}) == "a.py"
+    assert _preview({"没有已知的主参数": "兜底"}) == "兜底"

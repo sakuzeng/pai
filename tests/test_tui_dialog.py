@@ -137,3 +137,52 @@ def test_permission_dialog_uses_a_different_mark_than_a_question():
     perm = Dialog(question="允许吗", options=["允许这次", "拒绝"], kind="permission")
     ask = Dialog(question="选哪个", options=["A", "B"])
     assert perm.render(40)[0][0] != ask.render(40)[0][0]
+
+
+# ---- R4#2 / R4#3：结论跟着框走（2026-08-18 评审，方案 A）----
+
+
+def test_a_fresh_dialog_is_not_resolved():
+    """`resolved` 与 `answer is None` 是两件事：前者「有没有结论」，
+    后者「结论是不是『没作答』」。混起来就是 R4#2——用户没见过框，
+    却被当成已经答过了。"""
+    dialog = Dialog(question="用哪个？", options=["A", "B"])
+
+    assert dialog.resolved is False
+    assert dialog.answer is None
+
+
+def test_settling_records_the_answer_on_the_dialog():
+    dialog = Dialog(question="用哪个？", options=["A", "B"])
+
+    dialog.settle("B")
+
+    assert dialog.resolved is True
+    assert dialog.answer == "B"
+
+
+def test_cancelling_is_a_conclusion_not_a_pending_state():
+    """Esc 取消是**有结论**（提问=没作答、权限=拒绝）。
+    若它不算 resolved，等待方会永远等下去。"""
+    dialog = Dialog(question="用哪个？", options=["A", "B"])
+
+    dialog.settle(CANCELLED)
+
+    assert dialog.resolved is True
+    assert dialog.answer is None
+
+
+def test_suppression_does_not_make_a_dialog_look_answered():
+    """**抑制 ≠ 答完**。`arbiter.current()` 在「队列空」与「被打字压住」
+    两种情形下都返回 None——旧判据拿它当「这一框答完了」，于是用户
+    正打字时弹的权限框没显示就被判未作答（权限即拒绝）。"""
+    from pai.tui.arbiter import InputArbiter
+
+    arbiter = InputArbiter()
+    dialog = Dialog(question="允许执行 rm -rf ./build 吗？",
+                    options=["允许这次", "拒绝"], kind="permission")
+    arbiter.enqueue(dialog)
+    arbiter.note_typing("我正在打一条 steering 消息")
+
+    assert arbiter.current() is None      # 旧判据在这里为真——那正是 bug
+    assert dialog.resolved is False       # 新判据：这一框还没结论，该继续等

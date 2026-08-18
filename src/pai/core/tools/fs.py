@@ -141,8 +141,15 @@ def expand_pattern(specifier: str, ctx: MatchContext) -> str:
 
 
 def target_path(args: dict, ctx: MatchContext) -> str:
-    """取工具参数里的路径并绝对化（**不** realpath——展开成双路径是调用方的事）。"""
-    value = str(next(iter(args.values()), ""))
+    """取工具参数里的路径并绝对化（**不** realpath——展开成双路径是调用方的事）。
+
+    取的是**声明的那个参数名**，不是「参数字典的第一个值」：模型序列化
+    `arguments` 时的键序不受任何约束，`{"content": …, "path": …}` 完全合法，
+    取第一个值就会拿正文去比对路径 pattern，规则静默不命中
+    （deny 落空 → bypass 模式下直接放行）。下面 `path_access_for` 那侧
+    早就是按名取的，本函数是 2026-08-18 评审补上的同一条硬化。
+    """
+    value = str(args.get("path") or "")
     if not value:
         return ""
     if not os.path.isabs(value):

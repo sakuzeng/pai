@@ -98,24 +98,28 @@ def test_dialog_takes_over_the_input_position():
 def test_bang_command_during_a_question_is_executed_not_answered():
     """铁证反例：2026-08-10 演示时 `!echo 我是命令` 被静默当成了对问题的回答。"""
     app, _ = make()
-    app.enqueue_dialog(Dialog(question="用哪个？", options=["A", "B"]))
+    dialog = Dialog(question="用哪个？", options=["A", "B"])
+    app.enqueue_dialog(dialog)
     assert feed(app, "!echo 我是命令\r") == [(COMMAND, "!echo 我是命令")]
-    assert app.take_answer() is None            # 没有被当成答案
+    assert dialog.resolved is False             # 没有被当成答案
     assert app.arbiter.current() is not None    # 问题还在，等真人答
 
 
 def test_slash_command_during_a_question_is_executed_not_answered():
     app, _ = make()
-    app.enqueue_dialog(Dialog(question="用哪个？", options=["A", "B"]))
+    dialog = Dialog(question="用哪个？", options=["A", "B"])
+    app.enqueue_dialog(dialog)
     assert feed(app, "/status\r") == [(COMMAND, "/status")]
-    assert app.take_answer() is None
+    assert dialog.resolved is False
 
 
 def test_answering_a_question_resolves_it():
     app, _ = make()
-    app.enqueue_dialog(Dialog(question="用哪个？", options=["A", "B"]))
+    dialog = Dialog(question="用哪个？", options=["A", "B"])
+    app.enqueue_dialog(dialog)
     feed(app, b"2")
-    assert app.take_answer() == "B"
+    assert dialog.resolved is True
+    assert dialog.answer == "B"
     assert app.arbiter.current() is None
 
 

@@ -82,6 +82,78 @@
 
 ## P2 · 值得改
 
+### R4 评审（2026-08-18 功能测试与分析）—— 新缺陷登记
+
+出处统一是 [reviews/2026-08-17-功能测试与分析评审.md](reviews/2026-08-17-功能测试与分析评审.md)，
+条目编号 `R4#n` 与该文件一致。**逐条登记见评审文件本身**（那边带 file:line、
+触发路径与修法），本节只登记「已修」与「下一批要修的」，避免同一份清单抄两遍。
+
+- [x] ~~**R4#1 权限匹配器取错参数，deny 可被 JSON 键序绕过**~~ **已修 2026-08-18**
+      （`fix/target-path-key-order`，小修通道）：`target_path` 改为按声明的参数名取，
+      与同文件 `path_access_for` 对齐；两条反证测试钉死（content-first / path-last），
+      1114 passed。
+- [x] ~~**R4#2 + R4#3 打字抑制期权限框被自动弃答 + 僵尸对话框错配答案**（高，同根）：
+      `ask_human` 的完成判据 `arbiter.current() is None` 分不清「答完了」与
+      「被抑制暂藏」；INTERRUPT/EOF 退出不 `resolve()`，僵尸框接管键盘且答案
+      进共享 FIFO 被下一个问题错配消费。feature 18 之后属**交付即坏**。~~
+      **已修 2026-08-18**（`fix/dialog-suppression-abandon`，小修通道，方案 A）：
+      结论跟着框走不进共享 FIFO（`Dialog.resolved`/`settle`、`arbiter.resolve`
+      按身份移除、`app.cancel_dialog`）；等待逻辑抽成模块级
+      `await_dialog_answer()` **才测得了**；11 条测试 + 两轮精准注入反证，1122 passed。
+- [ ] **R4#4 + R4#5 配对不变量在异常路径上无保障**（高，建议按专项一次补齐）：
+      `{"self": …}` 参数击穿 `Tool.run` 的异常吸收边界（`t.run(**args)` 调用点本身
+      能抛）；更一般地，assistant 落盘与 tool 回填之间任何异常都会留下**结构非法
+      的对话**，而 REPL「对话留着」的兜底恰好把它固化成永久 400。
+- [ ] **R4#6 工具输出未消毒直写终端 + `\t` 全链按 1 列（含 screen.py 模拟器）**（高）：
+      `grep --color`/`cat Makefile` 即触发；**模拟器与真终端在此系统性分叉**，
+      是下一批「测试绿真机坏」的总闸。
+- [ ] **R4#T6 e2e 至今无任何测试级超时**（性价比最高的一条）：本次实修期间
+      **又复现一次挂死**（pytest 跑满 7 分钟无输出无子进程，`pkill` 后重跑正常），
+      与 2026-08-13 那条是同一个。挂死必须变红。
+- [ ] **R4#26 Pillow 缺失时 `test_tui_record.py:87` 静默 skip**：回放出图是所有
+      e2e 的测量仪器，仪器缺席不该只是一条 skip。**注意**：原报告说「STATUS 数字
+      漂了」是错的——对账口径是 `testscollected`（含 skip），1112 本就正确。
+- [ ] **R4#7 `expand_imports` 把正文任意 `@词` 当导入**（中）：`@tool`、`@dataclass`、
+      邮箱被替换成「(@xxx 未找到)」，每轮注入的指令消息被静默改写。
+- [ ] **R4#8 自动压缩的摘要请求是全链路唯一不设防的网络调用**（中）：注释自认
+      「全系统最贵的单次请求」却无 try，once 下整个进程崩；且失败不计入熔断，
+      API 抖动时每轮重发最贵请求、熔断器永不跳。
+- [ ] **R4#9 全链路假设 tool_call id 非空唯一，无守卫**（中）：id 空串时同批调用
+      共享 `decisions[""]` 键互相覆盖，**后判的权限决定套在所有调用头上**。
+      pai 经 `PAI_BASE_URL` 明确支持任意 OpenAI 兼容端点，而漏发流式 id 的实现真实存在。
+- [ ] **R4#10 幻觉工具名走进权限链**（中）：`before_tool_call` 排在存在性检查之前，
+      调不存在的工具收到的是权限拒绝理由而非「未知工具」；交互模式下会**弹框
+      让真人给不存在的工具授权**。动态探针实测。
+- [ ] **R4#11 `/compact` 不在任何兜底之内**（中）：已登记的「两条主循环都兜了」
+      只包住 `_run_turn`，而 `_manual_compact` 是唯一碰网络的命令路径。
+- [ ] **R4#12/13/14 TUI 输入与信号三条**（中）：DockRenderer 无 `_drawing` 重入门
+      且信号处理器里写 stdout 可能抛 `RuntimeError: reentrant call`；
+      busy 期 `poll(timeout=0)` 让 `flush()` 提前把拆包的方向键裁决成 Esc；
+      KeyDecoder 的 pasting 态无出口（`PASTE_END` 丢失即键盘全死）。
+- [ ] **R4#T1/T2/T3 假绿与弱断言**：4 处字面永真断言（两处 `assert … or True`、
+      两处裸 `assert True`）、e2e 阶梯断言的析取项形同虚设、8 处
+      `inspect.getsource` 断言只防误删不防改坏。
+- [ ] **R4#T5 `@tool` REGISTRY 泄漏的具体机制**（补已登记条目）：
+      `test_tools.py:617/636/652` 三个探针注册后不清理，目前靠**字母序**苟活。
+- [ ] **R4#15~R4#28 其余 14 条**（低，含 dialog 里 `/exit` 静默失效、TUI/REPL 的
+      数字直选与历史记录语义漂移、`display_width` 对组合字符按 1 列、
+      transcript 选区「免疫 resize」的声明不成立、`Interrupted(where="stream")`
+      文案与事实相反等）：逐条见评审文件第一节。
+- [ ] **R4#E1~E5 可扩展性改造**（对照 dsh，用户 2026-08-17 提出「想像 dsh 一样可扩展」）：
+      E1「要加 X 去哪里」映射表（纯文档零风险，可立即做）→ E2 system prompt
+      从常量变装配（skills 阶段硬前置）→ E3「模型可见即已记录」升格为可测不变量
+      （evals 地基，顺手钉住 R4#5）→ E4 ToolSource seam（MCP 立项时一并做，
+      须配一条 decisions 把「schema 与代码同源」改述）→ E5 after_tool_call
+      对称缝（等 microcompact 这类真实需求出现再开）。
+      **点名不抄**：Cordis 全插件化 / profile 分层 / waterfall 事件总线。
+- [ ] **R4#A1~A10 跨项目吸收 10 条**：会话格式一次到位改造 → 线性 `--resume`（高）、
+      成本核算（pi 费率结构 + waku「台账只存 token、金额读时算」，高）、
+      记忆双时间轴 `valid_at`/`invalid_at`（graphiti，成本近零，高）、
+      skills 照 pi 最小形态（高，阶段 6）等，完整表见评审文件第四节。
+      **注**：hermes/waku/graphiti/zep 不在 D#69 参照制度内，第一次被 feature
+      引用时须在 decisions 补一条「参照源定级」。
+
+
 ### 第三参照源 deepseek-harness 接进流程 —— 2026-08-13（D#69 衍生）
 
 - [ ] **roadmap 剩余阶段的「参照」栏与「前置精读」清单补 dsh 条目**（出处：D#69）。
@@ -113,6 +185,59 @@
       pai 有两条与文档不符的实测结论（D#33 `reasoning_content`、D#58 `include_usage` 空操作），
       dsh 作为同厂第一方实现**必然也要处理**——去它源码里检索这两个符号，
       看它怎么处理的。**这是三家里唯一能做这种交叉验证的一家**，别浪费。
+
+### 工具调用超时 —— 2026-08-18（用户提问引出，三家参照对照）
+
+pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传、不可配；
+`_wait` 轮询同时看中断标志与 deadline（**与 dsh 的 `AbortSignal.any` 同构，
+这一点 pai 做对了，CC 反而是两套通道**）；超时回填部分输出（R3#3 已钉）；
+杀整个进程组。**loop / scheduler 层无任何 deadline，除 bash 外的工具无超时**。
+
+- [x] ~~**超时文案要给模型出路**（P0，纯 prompt 改动零风险）。现在只说
+      「(命令超时 60s，命令与其整个进程组已被终止)」，没告诉模型下一步该干什么，
+      模型大概率原样重试再撞一次。三家都在这个语境里给出路（dsh 写进工具描述、
+      CC ripgrep 超时说「换更具体的路径或 pattern」）。pai 没有后台机制，
+      可教穷人版：加长超时 / 拆分段 / `nohup … &> /tmp/x.log &` 后分次读。~~
+      **已做 2026-08-18**（`fix/bash-timeout`）：文案给出可照着敲的一条 nohup 命令 +
+      read_file 分次看日志。**只挂在超时上，不挂在中断上**——中断是用户主动喊停，
+      给它出路等于劝模型绕过用户，有守卫测试钉死。
+- [x] ~~**60s 没有依据且明显偏短**（P0）。CC 与 dsh **独立收敛到同一对数字
+      120s / 600s**——难得的强信号。60s 连一次完整 `pytest`（本仓库自己就要 106s）
+      或 `npm install` 都扛不住。建议默认改 120s。这条是「给照抄来的常数建一条
+      检查习惯」的又一个实例：60 是拍脑袋定的，从没被质疑过。~~
+      **已做 2026-08-18**：默认改 120s，理由（两家独立收敛）写在常量旁边，
+      并有一条测试守着「改它之前先读一遍理由」。
+- [x] ~~**让模型能传 `timeout`，并且真钳制**（P1）。抄 dsh 的
+      `clampTimeout(requested, default, max) = min(requested ?? def, max)`。
+      **明确不要抄 CC**：它 schema 里写了 `max 600000` 却**没有运行期钳制**
+      （`BashTool.tsx:860` 只有 `timeout || default`），而同仓库的 PowerShellTool
+      有 `Math.min`——是疏漏不是设计，是个货真价实的洞。~~ **已做 2026-08-18**
+      （`fix/bash-timeout`）：`clamp_timeout` + `MAX_TIMEOUT_SECONDS=600`，负数显式报错
+      不静默退默认值。用 `int` + `0` 哨兵而非 `Optional[int]`——`@tool` 的 schema
+      生成器只认 str/int/float/bool，改它是动「schema 与代码同源」那块基石。
+      **连带修掉 R4#1 的两个潜伏点**：加这个参数当场引爆 `statusline._preview` /
+      `dock._preview` 的「取第一个值」（模型把 timeout 排前面时状态行显示光秃秃的
+      `300` 而非命令）；改成按主参数名取，两份重复也顺手收成一处。
+- [ ] **超时可配置**（P1）：CC 走 env var，dsh 走 settings section。
+      pai 已有 `core/settings.py`，走 settings 与现有架构更一致。
+- [ ] **★ MCP 阶段必须回来处理统一超时**（P2，阶段 7 前置）。
+      「只有 bash 有超时」目前**不是硬伤**（CC 与 pi 也这样，2:1），
+      但**网络调用会让它变成硬伤**：接了 MCP 的两家都给 MCP 单独设了超时
+      （CC `MCP_TOOL_TIMEOUT`、dsh `toolCallTimeoutMs=60_000`）。
+      pai 的 loop 一旦挂住就回不来——**已实测**：`read_file` 读一个无写端的 FIFO
+      永久阻塞，置中断标志也没用（工具内部没人查它），只能 kill 进程。
+      真要做统一层就抄 dsh 的形状，两条必须一起抄：① **声明式 + 协作式**
+      （工具声明预算、执行器只置位取消信号、`await` 到底不 race，
+      避免「结果返回了但活还在跑」）；② **超时元数据绝不给模型看**
+      （dsh 在 `ToolDefinition.timeoutMs` 注释里钉死 `NEVER sent to the model`）。
+- [ ] **哪些工具不该加超时，判据是「这个超时能不能真的终止工作」**（记录，非待办）。
+      dsh 明确**不给 read/write/edit 设超时**（`docs/subsystems/filesystem.zh.md:274`）：
+      本地系统调用至多尽力中止，超时无法迫使进行中的 `fsync`/`rename` 停下，
+      加了就是「一条强制不了的截止时间」。这条判据直接适用于 pai。
+- [ ] **超时路径丢了 exit code**（小，dsh「正交事实独立上报」只踩到一半）：
+      一个命令可能 trap 了 SIGTERM 后以 0 退出、同时确实超了时。
+      dsh 为此把 `timedOut`/`aborted`/`signal`/`exitCode` 做成四个独立字段。
+      pai 的改动很小：超时文案里带上 `proc.returncode`。
 
 ### pty e2e 偶发挂死（不报错、不超时、就是不回来）—— 2026-08-13
 

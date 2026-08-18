@@ -109,7 +109,6 @@ class TuiApp:
         self.arbiter = arbiter if arbiter is not None else InputArbiter()
         self.root = _Root(self)
         self.busy = False                  # agent 是否正在干活
-        self._answers: List = []
         self._streaming = ""               # 本条 assistant 消息已收到的增量
         self._intro = 0                    # >0 = 开场动画还剩几帧
         # 被折叠的工具结果。**有界**——长会话里全留着是白涨内存，
@@ -384,8 +383,10 @@ class TuiApp:
                 return [(COMMAND, command)]
         if result is None:
             return []
-        self._answers.append(None if result is CANCELLED else result)
-        self.arbiter.resolve()
+        # 结论跟着**这一框**走，不进共享 FIFO：FIFO 是 R4#3 那条错配的载体
+        # （被中断的框事后被答掉，答案会被下一个问题取走）。
+        dialog.settle(result)
+        self.arbiter.resolve(dialog)
         return []
 
     def _submitted(self, line: str) -> List[Tuple[str, object]]:
@@ -432,8 +433,16 @@ class TuiApp:
         body = (event.result or "").split("\n")
         self.commit([theme.paint(head, theme.CYAN, color=self.color)] + body)
 
-    def take_answer(self):
-        return self._answers.pop(0) if self._answers else None
+    def cancel_dialog(self, dialog: Dialog) -> None:
+        """撤掉一个还没答的框（中断 / EOF 退出等待时走这里）。
+
+        **必须连队列一起摘**：只在调用方置个「不等了」的标志，框会留在队列里
+        接管全部按键（`_key` 里 `arbiter.current()` 非 None 就一律走对话框分支），
+        用户再把它答掉时结论就流向了下一个问题——R4#3。
+        """
+        dialog.settle(CANCELLED)
+        self.arbiter.resolve(dialog)
+        self.refresh()
 
     # --- 事件 ---------------------------------------------------------
 

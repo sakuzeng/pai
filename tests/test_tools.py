@@ -103,6 +103,121 @@ def test_bash_timeout_returns_partial_output(monkeypatch):
     assert "超时" in result
 
 
+def test_the_default_timeout_matches_the_two_reference_implementations():
+    """守的不是数字本身，是「改它之前先读一遍理由」。
+
+    60s 是立项时拍脑袋定的，扛不住一次完整测试跑（本仓库自己就要 106s）
+    或 `npm install`。CC 与 dsh **各自独立**收敛到同一对数字 120s/600s——
+    三家参照里两家一致是难得的强信号，pai 取默认值那一档。
+    （TODO「给照抄来的常数建一条检查习惯」：抄来的数字要带着它的前提一起被看见。）
+    """
+    from pai.core.tools import shell
+
+    assert shell.TIMEOUT_SECONDS == 120
+
+
+def test_timeout_message_tells_the_model_what_to_do_next(monkeypatch):
+    """只说「杀了」的文案会让模型原样重试，再撞一次同样的墙。
+
+    三家都在这个语境里给出路（dsh 把 `run_in_background` 写进工具描述、
+    CC 的 ripgrep 超时说「换更具体的路径或 pattern」）。pai 没有后台任务机制，
+    给的是穷人版出路：起到后台 + 分次读日志。
+    """
+    from pai.core.tools import shell
+
+    monkeypatch.setattr(shell, "TIMEOUT_SECONDS", 1, raising=False)
+    result = shell.bash(command="sleep 5")
+
+    assert "超时" in result
+    assert "nohup" in result          # 具体到可以照着敲的一条命令
+    assert "read_file" in result      # 以及之后怎么把输出取回来
+
+
+def test_interrupt_message_does_not_offer_the_timeout_way_out(monkeypatch):
+    """中断是**用户主动喊停**，不是「跑太久」——给它出路等于劝模型绕过用户。
+
+    两条路径共用同一个 `_kill_and_collect`，很容易顺手把话写到一块去。
+
+    **必须中途中断，不能开跑前就置标志**——后者走的是 `bash()` 开头那条
+    「已中断，命令未执行」的提前返回，根本进不了 `_kill_and_collect`，
+    于是这条测试在两种实现下都绿（第一版就是这么写的，交付前的注入反证抓到了它）。
+    """
+    from pai.core.tools import shell
+
+    with _injected_flag() as flag:
+        timer = threading.Timer(0.5, flag.set)
+        timer.start()
+        try:
+            result = shell.bash(command="sleep 30")
+        finally:
+            timer.cancel()
+
+    assert "已中断" in result
+    assert "nohup" not in result
+
+
+# ---- 超时 P1：模型可传 timeout，且**真钳制**（2026-08-18）----
+
+
+def test_omitted_timeout_falls_back_to_the_default():
+    """0 是「没传」的哨兵——`@tool` 的 schema 生成器不吃 `Optional[int]`
+    （`PY_TO_JSON` 只认 str/int/float/bool），所以用哨兵而不是 None。"""
+    from pai.core.tools import shell
+
+    assert shell.clamp_timeout(0) == shell.TIMEOUT_SECONDS
+
+
+def test_a_model_supplied_timeout_is_clamped_to_the_cap():
+    """**这条是抄 dsh 而不是抄 CC 的理由**。
+
+    CC 的 BashTool 在 schema 描述里写着 `max 600000`，运行期却只有
+    `timeout || default`——一个 `Math.min` 都没有，上限纯属君子协定
+    （同仓库的 PowerShellTool 反而有，是疏漏不是设计）。
+    dsh 的 `clampTimeout(requested, def, max) = min(requested ?? def, max)` 才是对的。
+    """
+    from pai.core.tools import shell
+
+    assert shell.clamp_timeout(9_999_999) == shell.MAX_TIMEOUT_SECONDS
+    assert shell.clamp_timeout(300) == 300
+
+
+def test_the_cap_matches_the_two_reference_implementations():
+    """与默认值同源：CC 与 dsh 各自独立把上限定在 600s。"""
+    from pai.core.tools import shell
+
+    assert shell.MAX_TIMEOUT_SECONDS == 600
+
+
+def test_a_negative_timeout_is_reported_not_silently_ignored():
+    """静默吞掉非法值 = 模型永远不知道自己传错了（本仓库「静默失败是 bug」）。"""
+    from pai.core.tools import shell
+
+    result = shell.bash(command="echo hi", timeout=-5)
+
+    assert "timeout" in result
+    assert "hi" not in result          # 没跑，而不是「跑了但用了默认值」
+
+
+def test_a_model_supplied_timeout_actually_takes_effect():
+    """光有钳制不够——传进来的值得真的用上，且超时文案要报**生效后**的秒数。"""
+    from pai.core.tools import shell
+
+    result = shell.bash(command="sleep 5", timeout=1)
+
+    assert "超时 1s" in result
+
+
+def test_bash_schema_exposes_timeout_as_an_optional_integer():
+    """schema 与代码同源：参数一加，模型那边就该看得见，且不是必填。"""
+    from pai.core.tools import get_tools
+
+    params = get_tools()["bash"].schema()["function"]["parameters"]
+
+    assert params["required"] == ["command"]
+    assert params["properties"]["timeout"]["type"] == "integer"
+    assert "600" in params["properties"]["timeout"]["description"]   # 上限要写给模型看
+
+
 # ---- feature 05 task 4：bash 可中断（进程组级） ----
 
 @contextlib.contextmanager
