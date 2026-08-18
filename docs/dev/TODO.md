@@ -186,6 +186,48 @@
       dsh 作为同厂第一方实现**必然也要处理**——去它源码里检索这两个符号，
       看它怎么处理的。**这是三家里唯一能做这种交叉验证的一家**，别浪费。
 
+### 工具调用超时 —— 2026-08-18（用户提问引出，三家参照对照）
+
+pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传、不可配；
+`_wait` 轮询同时看中断标志与 deadline（**与 dsh 的 `AbortSignal.any` 同构，
+这一点 pai 做对了，CC 反而是两套通道**）；超时回填部分输出（R3#3 已钉）；
+杀整个进程组。**loop / scheduler 层无任何 deadline，除 bash 外的工具无超时**。
+
+- [ ] **超时文案要给模型出路**（P0，纯 prompt 改动零风险）。现在只说
+      「(命令超时 60s，命令与其整个进程组已被终止)」，没告诉模型下一步该干什么，
+      模型大概率原样重试再撞一次。三家都在这个语境里给出路（dsh 写进工具描述、
+      CC ripgrep 超时说「换更具体的路径或 pattern」）。pai 没有后台机制，
+      可教穷人版：加长超时 / 拆分段 / `nohup … &> /tmp/x.log &` 后分次读。
+- [ ] **60s 没有依据且明显偏短**（P0）。CC 与 dsh **独立收敛到同一对数字
+      120s / 600s**——难得的强信号。60s 连一次完整 `pytest`（本仓库自己就要 106s）
+      或 `npm install` 都扛不住。建议默认改 120s。这条是「给照抄来的常数建一条
+      检查习惯」的又一个实例：60 是拍脑袋定的，从没被质疑过。
+- [ ] **让模型能传 `timeout`，并且真钳制**（P1）。抄 dsh 的
+      `clampTimeout(requested, default, max) = min(requested ?? def, max)`。
+      **明确不要抄 CC**：它 schema 里写了 `max 600000` 却**没有运行期钳制**
+      （`BashTool.tsx:860` 只有 `timeout || default`），而同仓库的 PowerShellTool
+      有 `Math.min`——是疏漏不是设计，是个货真价实的洞。
+- [ ] **超时可配置**（P1）：CC 走 env var，dsh 走 settings section。
+      pai 已有 `core/settings.py`，走 settings 与现有架构更一致。
+- [ ] **★ MCP 阶段必须回来处理统一超时**（P2，阶段 7 前置）。
+      「只有 bash 有超时」目前**不是硬伤**（CC 与 pi 也这样，2:1），
+      但**网络调用会让它变成硬伤**：接了 MCP 的两家都给 MCP 单独设了超时
+      （CC `MCP_TOOL_TIMEOUT`、dsh `toolCallTimeoutMs=60_000`）。
+      pai 的 loop 一旦挂住就回不来——**已实测**：`read_file` 读一个无写端的 FIFO
+      永久阻塞，置中断标志也没用（工具内部没人查它），只能 kill 进程。
+      真要做统一层就抄 dsh 的形状，两条必须一起抄：① **声明式 + 协作式**
+      （工具声明预算、执行器只置位取消信号、`await` 到底不 race，
+      避免「结果返回了但活还在跑」）；② **超时元数据绝不给模型看**
+      （dsh 在 `ToolDefinition.timeoutMs` 注释里钉死 `NEVER sent to the model`）。
+- [ ] **哪些工具不该加超时，判据是「这个超时能不能真的终止工作」**（记录，非待办）。
+      dsh 明确**不给 read/write/edit 设超时**（`docs/subsystems/filesystem.zh.md:274`）：
+      本地系统调用至多尽力中止，超时无法迫使进行中的 `fsync`/`rename` 停下，
+      加了就是「一条强制不了的截止时间」。这条判据直接适用于 pai。
+- [ ] **超时路径丢了 exit code**（小，dsh「正交事实独立上报」只踩到一半）：
+      一个命令可能 trap 了 SIGTERM 后以 0 退出、同时确实超了时。
+      dsh 为此把 `timedOut`/`aborted`/`signal`/`exitCode` 做成四个独立字段。
+      pai 的改动很小：超时文案里带上 `proc.returncode`。
+
 ### pty e2e 偶发挂死（不报错、不超时、就是不回来）—— 2026-08-13
 
 - [ ] **`./test.sh` 偶发永久挂起，进程留在那儿不退**（出处：2026-08-13 写 dsh 笔记时连撞两次）。
