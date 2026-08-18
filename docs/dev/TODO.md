@@ -92,10 +92,14 @@
       （`fix/target-path-key-order`，小修通道）：`target_path` 改为按声明的参数名取，
       与同文件 `path_access_for` 对齐；两条反证测试钉死（content-first / path-last），
       1114 passed。
-- [ ] **R4#2 + R4#3 打字抑制期权限框被自动弃答 + 僵尸对话框错配答案**（高，同根）：
+- [x] ~~**R4#2 + R4#3 打字抑制期权限框被自动弃答 + 僵尸对话框错配答案**（高，同根）：
       `ask_human` 的完成判据 `arbiter.current() is None` 分不清「答完了」与
       「被抑制暂藏」；INTERRUPT/EOF 退出不 `resolve()`，僵尸框接管键盘且答案
-      进共享 FIFO 被下一个问题错配消费。feature 18 之后属**交付即坏**。
+      进共享 FIFO 被下一个问题错配消费。feature 18 之后属**交付即坏**。~~
+      **已修 2026-08-18**（`fix/dialog-suppression-abandon`，小修通道，方案 A）：
+      结论跟着框走不进共享 FIFO（`Dialog.resolved`/`settle`、`arbiter.resolve`
+      按身份移除、`app.cancel_dialog`）；等待逻辑抽成模块级
+      `await_dialog_answer()` **才测得了**；11 条测试 + 两轮精准注入反证，1122 passed。
 - [ ] **R4#4 + R4#5 配对不变量在异常路径上无保障**（高，建议按专项一次补齐）：
       `{"self": …}` 参数击穿 `Tool.run` 的异常吸收边界（`t.run(**args)` 调用点本身
       能抛）；更一般地，assistant 落盘与 tool 回填之间任何异常都会留下**结构非法
