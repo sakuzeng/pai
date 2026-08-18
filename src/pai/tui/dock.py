@@ -17,7 +17,7 @@ import time
 from typing import Callable, Dict, List, Optional
 
 from pai.core.events import AgentEnd, AgentEvent, AgentStart, ToolEnd, ToolStart
-from pai.modes.statusline import _truncate, display_width
+from pai.modes.statusline import _preview, _truncate, display_width
 from pai.tui import theme
 from pai.tui.component import Component
 
@@ -54,12 +54,6 @@ class _Running:
 
 def _action(name: str) -> str:
     return _ACTIONS.get(name, name)
-
-
-def _preview(args: dict) -> str:
-    if not args:
-        return ""
-    return str(next(iter(args.values())))
 
 
 def _human_duration(seconds: float) -> str:

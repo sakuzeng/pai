@@ -66,11 +66,20 @@ def _truncate(text: str, width: int) -> str:
     return "".join(kept) + ELLIPSIS
 
 
+# 参数里哪个值最能说明「此刻在干什么」。**不能取「第一个值」**：模型序列化
+# `arguments` 的键序不受任何约束，bash 加上 timeout 之后，取第一个会把状态行
+# 显示成光秃秃的「300」而不是命令。这与 R4#1 修的 `target_path` 是同一条教训，
+# 那次在权限匹配器（有安全后果），这次在显示层。
+_PREVIEW_KEYS = ("command", "path", "name")
+
+
 def _preview(args: dict) -> str:
     if not args:
         return ""
-    first = next(iter(args.values()))
-    return str(first)
+    for key in _PREVIEW_KEYS:
+        if key in args:
+            return str(args[key])
+    return str(next(iter(args.values())))     # 认不出主参数时的兜底
 
 
 def render_tool_line(events: Iterable[AgentEvent], width: int, *, color: bool = False) -> str:

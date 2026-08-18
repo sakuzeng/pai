@@ -24,6 +24,10 @@ MAX_OUTPUT_CHARS = 4000
 # 或 `npm install`，撞墙时模型只能干等一分钟再失败一次。
 # 上限与「模型自己传 timeout」尚未做，见 TODO「工具调用超时」。
 TIMEOUT_SECONDS = 120
+# 上限与默认值同源：CC 与 dsh 各自把上限定在 600s。模型可以传更大的数，
+# 但**运行期真钳制**——CC 恰恰是反面教材：它 schema 描述里写了 max 却只有
+# `timeout || default`，一个 Math.min 都没有，上限纯属君子协定。
+MAX_TIMEOUT_SECONDS = 600
 POLL_SECONDS = 0.1          # 中断响应粒度；再小只是空转，再大用户会觉得 Ctrl+C 没反应
 
 # 我们起过的进程组，退出时统一收割。
@@ -34,6 +38,18 @@ POLL_SECONDS = 0.1          # 中断响应粒度；再小只是空转，再大�
 # ② 登记的是 pgid，理论上存在「组早已结束、pgid 被系统重用」后误杀的窗口——
 # 真实风险低（macOS pid 空间大、回绕慢）但不为零，记 TODO 而不是假装没有。
 _SPAWNED_GROUPS: set = set()
+
+
+def clamp_timeout(requested: int) -> int:
+    """把模型传来的秒数收进 [1, MAX]；`0` 是「没传」的哨兵，退回默认值。
+
+    用哨兵而不是 `None`：`@tool` 的 schema 生成器只认 str/int/float/bool
+    （`PY_TO_JSON`），`Optional[int]` 会被它当场拒掉。改装饰器是动
+    「schema 与代码同源」那块基石，为一个参数不值当。
+    """
+    if not requested:
+        return TIMEOUT_SECONDS
+    return min(int(requested), MAX_TIMEOUT_SECONDS)
 
 
 def _text(x) -> str:
@@ -65,10 +81,14 @@ def _kill_and_collect(proc: subprocess.Popen, note: str) -> str:
     return f"{partial}\n{note}" if partial.strip() else note
 
 
-def _wait(proc: subprocess.Popen) -> Tuple[Optional[str], Optional[str]]:
-    """轮询等待，期间响应中断与超时；命中则抛 _Killed 带上要回给模型的话。"""
+def _wait(proc: subprocess.Popen, seconds: int) -> Tuple[Optional[str], Optional[str]]:
+    """轮询等待，期间响应中断与超时；命中则抛 _Killed 带上要回给模型的话。
+
+    秒数由调用方算好传进来（而不是在这里读模块全局）——模型可以传 timeout，
+    「生效的那个值」必须只有一个来源，否则文案报的与实际用的会各说各话。
+    """
     flag = interrupt.current()
-    deadline = time.monotonic() + TIMEOUT_SECONDS
+    deadline = time.monotonic() + seconds
     while True:
         try:
             return proc.communicate(timeout=POLL_SECONDS)
@@ -85,7 +105,7 @@ def _wait(proc: subprocess.Popen) -> Tuple[Optional[str], Optional[str]]:
             # 给它出路等于劝模型绕过用户（test_interrupt_message_does_not_offer_the_timeout_way_out）。
             raise _Killed(_kill_and_collect(
                 proc,
-                f"(命令超时 {TIMEOUT_SECONDS}s，命令与其整个进程组已被终止。"
+                f"(命令超时 {seconds}s，命令与其整个进程组已被终止。"
                 f"若这条命令本来就需要跑更久：拆成几段分别执行，"
                 f"或改写成 `nohup 原命令 > /tmp/out.log 2>&1 &` 起到后台，"
                 f"再用 read_file 分次查看 /tmp/out.log)"))
@@ -100,8 +120,19 @@ class _Killed(Exception):
 
 
 @tool
-def bash(command: Annotated[str, "要执行的 shell 命令"]) -> str:
+def bash(
+    command: Annotated[str, "要执行的 shell 命令"],
+    timeout: Annotated[
+        int,
+        f"可选：超时秒数。不传用默认 {TIMEOUT_SECONDS}s；超过上限 {MAX_TIMEOUT_SECONDS}s "
+        f"会被截到上限。命令确实要跑更久就起到后台，别指望调大这个数。",
+    ] = 0,
+) -> str:
     """在 shell 里执行一条命令并返回它的输出（stdout+stderr）。"""
+    if timeout < 0:
+        # 静默改用默认值 = 模型永远不知道自己传错了（「静默失败是 bug」）
+        return f"错误：timeout 不能是负数（收到 {timeout}），命令未执行。"
+    seconds = clamp_timeout(timeout)
     if interrupt.current().is_set():
         # 已经中断了还去起进程纯属浪费——正常路径下 loop 根本不会走到这里（它会
         # 直接回填「已取消」），这是防御性的第二道
@@ -116,7 +147,7 @@ def bash(command: Annotated[str, "要执行的 shell 命令"]) -> str:
     except ProcessLookupError:
         pass                    # 秒退的命令，组已经没了，本来也不用收割
     try:
-        out, err = _wait(proc)
+        out, err = _wait(proc, seconds)
     except _Killed as killed:
         return killed.message
 

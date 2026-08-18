@@ -207,11 +207,17 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
       检查习惯」的又一个实例：60 是拍脑袋定的，从没被质疑过。~~
       **已做 2026-08-18**：默认改 120s，理由（两家独立收敛）写在常量旁边，
       并有一条测试守着「改它之前先读一遍理由」。
-- [ ] **让模型能传 `timeout`，并且真钳制**（P1）。抄 dsh 的
+- [x] ~~**让模型能传 `timeout`，并且真钳制**（P1）。抄 dsh 的
       `clampTimeout(requested, default, max) = min(requested ?? def, max)`。
       **明确不要抄 CC**：它 schema 里写了 `max 600000` 却**没有运行期钳制**
       （`BashTool.tsx:860` 只有 `timeout || default`），而同仓库的 PowerShellTool
-      有 `Math.min`——是疏漏不是设计，是个货真价实的洞。
+      有 `Math.min`——是疏漏不是设计，是个货真价实的洞。~~ **已做 2026-08-18**
+      （`fix/bash-timeout`）：`clamp_timeout` + `MAX_TIMEOUT_SECONDS=600`，负数显式报错
+      不静默退默认值。用 `int` + `0` 哨兵而非 `Optional[int]`——`@tool` 的 schema
+      生成器只认 str/int/float/bool，改它是动「schema 与代码同源」那块基石。
+      **连带修掉 R4#1 的两个潜伏点**：加这个参数当场引爆 `statusline._preview` /
+      `dock._preview` 的「取第一个值」（模型把 timeout 排前面时状态行显示光秃秃的
+      `300` 而非命令）；改成按主参数名取，两份重复也顺手收成一处。
 - [ ] **超时可配置**（P1）：CC 走 env var，dsh 走 settings section。
       pai 已有 `core/settings.py`，走 settings 与现有架构更一致。
 - [ ] **★ MCP 阶段必须回来处理统一超时**（P2，阶段 7 前置）。

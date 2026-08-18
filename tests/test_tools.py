@@ -156,6 +156,68 @@ def test_interrupt_message_does_not_offer_the_timeout_way_out(monkeypatch):
     assert "nohup" not in result
 
 
+# ---- 超时 P1：模型可传 timeout，且**真钳制**（2026-08-18）----
+
+
+def test_omitted_timeout_falls_back_to_the_default():
+    """0 是「没传」的哨兵——`@tool` 的 schema 生成器不吃 `Optional[int]`
+    （`PY_TO_JSON` 只认 str/int/float/bool），所以用哨兵而不是 None。"""
+    from pai.core.tools import shell
+
+    assert shell.clamp_timeout(0) == shell.TIMEOUT_SECONDS
+
+
+def test_a_model_supplied_timeout_is_clamped_to_the_cap():
+    """**这条是抄 dsh 而不是抄 CC 的理由**。
+
+    CC 的 BashTool 在 schema 描述里写着 `max 600000`，运行期却只有
+    `timeout || default`——一个 `Math.min` 都没有，上限纯属君子协定
+    （同仓库的 PowerShellTool 反而有，是疏漏不是设计）。
+    dsh 的 `clampTimeout(requested, def, max) = min(requested ?? def, max)` 才是对的。
+    """
+    from pai.core.tools import shell
+
+    assert shell.clamp_timeout(9_999_999) == shell.MAX_TIMEOUT_SECONDS
+    assert shell.clamp_timeout(300) == 300
+
+
+def test_the_cap_matches_the_two_reference_implementations():
+    """与默认值同源：CC 与 dsh 各自独立把上限定在 600s。"""
+    from pai.core.tools import shell
+
+    assert shell.MAX_TIMEOUT_SECONDS == 600
+
+
+def test_a_negative_timeout_is_reported_not_silently_ignored():
+    """静默吞掉非法值 = 模型永远不知道自己传错了（本仓库「静默失败是 bug」）。"""
+    from pai.core.tools import shell
+
+    result = shell.bash(command="echo hi", timeout=-5)
+
+    assert "timeout" in result
+    assert "hi" not in result          # 没跑，而不是「跑了但用了默认值」
+
+
+def test_a_model_supplied_timeout_actually_takes_effect():
+    """光有钳制不够——传进来的值得真的用上，且超时文案要报**生效后**的秒数。"""
+    from pai.core.tools import shell
+
+    result = shell.bash(command="sleep 5", timeout=1)
+
+    assert "超时 1s" in result
+
+
+def test_bash_schema_exposes_timeout_as_an_optional_integer():
+    """schema 与代码同源：参数一加，模型那边就该看得见，且不是必填。"""
+    from pai.core.tools import get_tools
+
+    params = get_tools()["bash"].schema()["function"]["parameters"]
+
+    assert params["required"] == ["command"]
+    assert params["properties"]["timeout"]["type"] == "integer"
+    assert "600" in params["properties"]["timeout"]["description"]   # 上限要写给模型看
+
+
 # ---- feature 05 task 4：bash 可中断（进程组级） ----
 
 @contextlib.contextmanager
