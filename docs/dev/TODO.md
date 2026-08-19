@@ -179,8 +179,12 @@
 - [ ] R4#T1/T2/T3 假绿与弱断言：4 处字面永真断言（两处 `assert … or True`、
       两处裸 `assert True`）、e2e 阶梯断言的析取项形同虚设、8 处
       `inspect.getsource` 断言只防误删不防改坏。
-- [ ] R4#T5 `@tool` REGISTRY 泄漏的具体机制（补已登记条目）：
-      `test_tools.py:617/636/652` 三个探针注册后不清理，目前靠字母序苟活。
+- [x] ~~R4#T5 `@tool` REGISTRY 泄漏的具体机制（补已登记条目）：
+      `test_tools.py:617/636/652` 三个探针注册后不清理，目前靠字母序苟活。~~
+      已修 2026-08-19（`test/kill-vacuous-assertions`）：conftest 加 autouse 的
+      快照/复原 fixture，配一对测试钉住（前一条故意注册不清理、后一条断言
+      看不见它）。第一版把快照拍在内置工具惰性注册之前，teardown 连内置一起
+      清掉（症状是后续 `KeyError: 'bash'`），改成先 `get_tools()` 再拍快照。
 - [ ] R4#15~R4#28 其余 14 条（低，含 dialog 里 `/exit` 静默失效、TUI/REPL 的
       数字直选与历史记录语义漂移、`display_width` 对组合字符按 1 列、
       transcript 选区「免疫 resize」的声明不成立、`Interrupted(where="stream")`
