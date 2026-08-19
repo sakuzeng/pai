@@ -11,13 +11,23 @@
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 from pai.tui.mouse import MouseEvent, parse as _parse_mouse
 
 PASTE_START = b"\x1b[200~"
 PASTE_END = b"\x1b[201~"
+
+# 悬着的单个 ESC 要静默多久才判成「用户按了 Esc」。依据不是拍脑袋：真人按键
+# 与终端发转义序列的时间差是一个数量级（人 >100ms，序列 <1ms），50ms 落在中间。
+ESC_SETTLE_SECONDS = 0.05
+
+# 粘贴态等 `201~` 等多久算「它不会来了」。比 ESC 那条大一个量级是刻意的：
+# 粘贴分片间隔在网络终端上可达数百毫秒，而真实的「201~ 永远不来」是分钟级的
+# 干等。切早了会把一次粘贴劈成两段，切晚一点只是多等一秒。
+PASTE_SETTLE_SECONDS = 1.0
 
 # SGR 1006：`CSI < 按钮 ; 列 ; 行 M|m`。**只认这一种编码**——
 # 1015/1016 那些扩展 pai 不发也不解析（认不出的一律丢弃，不猜）。
@@ -60,12 +70,16 @@ _SS3 = {"H": "home", "F": "end", "A": "up", "B": "down", "C": "right", "D": "lef
 class KeyDecoder:
     """`feed(bytes) -> list[Key]`；`flush()` 收尾（把悬着的单个 ESC 判成 esc 键）。"""
 
-    def __init__(self) -> None:
+    def __init__(self, *, now: Callable[[], float] = time.monotonic) -> None:
         self._buf = b""
         self._pasting = False
         self._paste = b""
+        self._now = now
+        self._last_byte_at = now()
 
     def feed(self, data: bytes) -> List[Key]:
+        if data:
+            self._last_byte_at = self._now()
         self._buf += data
         out: List[Key] = []
         while self._buf:
@@ -79,11 +93,34 @@ class KeyDecoder:
 
     def flush(self) -> List[Key]:
         """读超时/流结束时调用：单独一个 ESC 与「转义序列的开头」在字节上分不开，
-        只能靠「后面没有了」来判。"""
-        if self._buf == b"\x1b":
+        只能靠「后面没有了」来判。
+
+        「后面没有了」必须**带上时间**，不能只看「此刻缓冲区里没别的」：
+        TUI 干活期间每个事件都顺手 `driver.poll(timeout=0)`，而转义序列会被
+        `os.read` 拆成两包送达（feature 12 的 pty 实测），于是第一包 `\x1b`
+        刚进来就撞上一次 `flush()`——判成 Esc，随后到达的 `[`、`A` 变成两个
+        普通字符插进输入框。用户按 ↑，得到的是 `[A`。
+
+        判据的物理依据：真人按 Esc 与终端发转义序列，时间差是一个数量级
+        （人 >100ms，序列 <1ms），50ms 落在中间且离两边都远。
+        """
+        if self._buf == b"\x1b" and self._quiet_for(ESC_SETTLE_SECONDS):
             self._buf = b""
             return [Key("esc")]
+        if self._pasting and self._quiet_for(PASTE_SETTLE_SECONDS):
+            # `201~` 丢了（终端异常、断连、粘贴流被截）之后，所有字节都会进
+            # `_paste`——而 raw mode 下 ISIG 已关，Ctrl+C 只是普通字节，
+            # 于是连退出都做不到，只能 kill 进程。这里把已攒的按 paste 吐出来
+            # 并复位；用户视角是「粘贴的东西照常进来了，只是晚了一点」。
+            payload, self._paste = self._paste, b""
+            self._pasting = False
+            if not payload:
+                return []                  # 一个字节都没到，别吐空事件
+            return [Key("paste", payload.decode("utf-8", errors="replace"))]
         return []
+
+    def _quiet_for(self, seconds: float) -> bool:
+        return self._now() - self._last_byte_at >= seconds
 
     # --- 内部 ---------------------------------------------------------
 
@@ -148,6 +185,11 @@ class KeyDecoder:
             return Key("word_left"), 2
         if second == b"f":
             return Key("word_right"), 2
+        if second == b"\x1b":
+            # 连按两次 Esc 时两个字节常同批到达。此前整包被吞成一个 `unknown`，
+            # **一个 esc 都不产生**——于是对话框的 Esc 取消在快速操作下不可靠。
+            # 只消费前一个，剩下的留给下一轮（它可能是独立 Esc，也可能是序列开头）。
+            return Key("esc"), 1
         return Key("unknown", buf[:2].decode("latin-1")), 2
 
     def _step_csi(self):

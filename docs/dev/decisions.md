@@ -962,3 +962,24 @@
     所以每处引用带 commit hash；③ 它有中文第一方文档这件事最危险——
     读起来太顺，会诱人跳过「反向对照」那条固定项。feature 09 的教训是
     「精读覆盖了文档每一节，却漏掉一整层机制」，文档更好不等于可以不跑。
+
+## 70. SIGWINCH 处理器只置标志，重画交给主循环（复议 feature 12 的「同步处理」）
+
+feature 12 拍的是「resize 同步处理、同尺寸事件丢弃」，对齐 CC 的 `handleResize`
+刻意不去抖。本轮（feature 19 拍板问 3）改掉其中「同步」那一半，**去抖那一半不动**——
+两者是两件事，当时被写在同一条里。
+
+改的理由不是风格：`handle_resize` 跑在信号处理器里，而信号会打在主线程任意
+一条指令之间。`DockRenderer` 没有 `AltScreenRenderer` 那样的重入门，一帧写到
+一半被插入另一帧会让字节交错、`_height`/`_cursor_offset` 被重入改写，dock 永久漂移。
+更硬的一刀是主线程正处于 `sys.stdout.write` 内部时处理器再写同一 stream，
+Python 的 buffered IO 会抛 `RuntimeError: reentrant call`——**它在我们自己加的
+任何重入门之外**，所以「只补 DockRenderer 一个 `_drawing` 标志」这个方案结构上
+只能治一半。pi 与 CC 的信号处理器同样不直接画。
+
+代价：重画晚一个 poll 周期（≤100ms）。换掉的是一整类不可复现的崩溃。
+
+诚实边界：`RuntimeError: reentrant call` 这条是**按源码结构推出来的，本轮没有
+真的触发过它**，修完也没有真跑验证。按 pai 的证据等级，它属「推」不属「实测」。
+
+出处：[features/19](features/19-20260819-tui-input-and-signals/README.md) 拍板问 3。
