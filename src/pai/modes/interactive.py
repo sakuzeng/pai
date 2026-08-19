@@ -86,6 +86,7 @@ from pai.tui.app import (
 from pai.tui.dialog import CANCELLED, Dialog
 from pai.tui.keys import KeyDecoder
 from pai.tui.driver import TuiDriver
+from pai.tui.sanitize import sanitize_terminal_text
 from pai.tui.record import Recorder, RecordedStream, record_path
 from pai.tui.altscreen import AltScreenRenderer
 from pai.tui.renderer import DockRenderer
@@ -523,7 +524,9 @@ def _run_shell(command: str, *, messages: List[dict], session, out) -> None:
         return
     bash: Tool = get_tools(["bash"])["bash"]
     output = bash.run(command=command)
-    out(output)
+    # 给终端看的那一份要消毒（外来字节会打乱 dock 的相对定位、`\t` 全链算 1 列）；
+    # **下面进 messages 的仍是原文**——命令真打印了什么，模型就该看见什么。
+    out(sanitize_terminal_text(output))
     entry = {"role": "user", "content": f"我执行了命令 `{command}`，输出：\n{output}"}
     if not messages:
         messages.append({"role": "system", "content": _system_prompt()})
