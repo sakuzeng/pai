@@ -143,8 +143,11 @@ def test_status_reports_the_current_test_count(request):
         pytest.skip("只在标准入口 ./test.sh 的口径下对账")
 
     text = (ROOT / "docs" / "dev" / "STATUS.md").read_text(encoding="utf-8")
-    m = re.search(r"\*\*(\d+) passed", text)
-    assert m, "STATUS 里应有「**N passed」这样的测试数字"
+    # 不认加粗：AGENTS.md 的 Markdown 规约禁掉了 `**…**`，而这条对账原先
+    # 硬要求 `**N passed`——规约一改，机器校验当场失灵且报的是「找不到数字」，
+    # 与真正的漂移长得一样。校验点是那个数字，不是它的字重。
+    m = re.search(r"(\d+) passed", text)
+    assert m, "STATUS 里应有「N passed」这样的测试数字"
     assert int(m.group(1)) == request.session.testscollected, (
         f"STATUS 写着 {m.group(1)} passed，实际选中 {request.session.testscollected} 条——"
         "补完漏别忘了回头改 STATUS"
