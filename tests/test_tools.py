@@ -8,7 +8,7 @@ import time
 import pytest
 
 from pai.core import interrupt
-from pai.core.tools import get_tools
+from pai.core.tools import get_tools, tool
 
 
 def test_schema_generated_from_signature():
@@ -811,3 +811,35 @@ def test_builtin_tool_capabilities():
     # bash 是「不声明」而不是「声明为 False」——两者行为相同但意图不同，钉死意图
     assert tools["bash"].is_read_only is None
     assert tools["bash"].is_concurrency_safe is None
+
+
+# ---- R4#T5：注册表必须测试级隔离（2026-08-19 评审）----
+
+
+def test_the_registry_is_restored_between_tests():
+    """`@tool` 是**进程级**注册表：测试里注册的探针工具会漏进后续所有测试。
+
+    实测（本文件跑完之后）：`get_tools()` 里多出
+    `_cap_bool_probe` / `_cap_callable_probe` / `_cap_boom_probe` 三个，
+    连同它们的 schema 一起被发给假 client。此前靠**字母序**苟活
+    （`test_tools` 排在多数文件之后，且后续断言恰好用 `<=` 或按名索引），
+    换个随机序插件、或新增一条「精确断言工具集」的测试就当场爆。
+
+    本测试自己注册一个探针**且不清理**——隔离由 conftest 的 autouse fixture
+    负责。它下一条测试若还看得见这个探针，说明隔离没生效。
+    """
+    from typing import Annotated
+
+    @tool
+    def _leak_probe(a: Annotated[str, "x"]) -> str:
+        """探针：故意不清理。"""
+        return a
+
+    assert "_leak_probe" in get_tools()
+
+
+def test_the_previous_probe_did_not_leak_into_this_test():
+    """上一条留下的探针不该出现在这里——这条与它是一对，拆开看都没意义。"""
+    assert "_leak_probe" not in get_tools()
+    assert set(get_tools()) == {"bash", "read_file", "write_file", "edit_file",
+                                "remember"}, "内置工具集之外不该有别的"

@@ -158,11 +158,21 @@ def test_dragging_selects_instead_of_expanding():
 
 
 def test_clicking_blank_space_does_nothing():
-    app, doc, _ = _app()
-    doc.append(text_entry(["only"]))
+    """「不炸」不是断言。
+
+    原来这里是一句 `assert True`——点空白若误触发了展开、误建了选区、
+    或误弹了提示，它照样绿。要断言的是「什么都没变」，不是「没抛异常」。
+    """
+    app, doc, selection = _app()
+    entry = _tool_entry()                       # 用可展开的：误展开才看得出来
+    doc.append(entry)
     app.refresh()
-    _feed(app, _press(4) + _release(4))        # 视口里的空行
-    assert True                                 # 不炸即通过
+
+    _feed(app, _press(4) + _release(4))         # 视口里的空行
+
+    assert not entry.expanded
+    assert not selection.has_selection
+    assert not app.dock.has_notice()
 
 
 def test_clicking_the_dock_does_not_touch_the_transcript():
@@ -175,8 +185,19 @@ def test_clicking_the_dock_does_not_touch_the_transcript():
 
 
 def test_clicking_a_non_expandable_entry_is_a_no_op():
-    app, doc, _ = _app()
+    """点普通条目：不该展开它下面那条可展开的，也不该留下任何痕迹。
+
+    同上——原来是 `assert True`。这里特意在后面再放一条可展开条目：
+    「点 A 却展开了 B」这类命中测试偏移，只有存在 B 时才测得出来。
+    """
+    app, doc, selection = _app()
     doc.append(text_entry(["普通一行"]))
+    neighbour = _tool_entry()
+    doc.append(neighbour)
     app.refresh()
+
     _feed(app, _press(0) + _release(0))
-    assert True
+
+    assert not neighbour.expanded
+    assert not selection.has_selection
+    assert not app.dock.has_notice()

@@ -917,9 +917,13 @@ def test_instructions_not_duplicated_when_conversation_continues():
                   messages=conversation, instructions=lambda: "项目规矩",
                   on_event=lambda _: None)
 
-    assert [m["content"] for m in conversation].count("项目规矩") == 0 or True
+    # 原来这里有一行 `… count("项目规矩") == 0 or True`：既恒真、又与下面那条
+    # 「必须恰好一条」自相矛盾。删掉它，并把真正的语义补全——不只是「有一条」，
+    # 还得是**同一条**没被第二轮挪位置或改写。
     instruction_msgs = [m for m in conversation if "项目规矩" in str(m.get("content"))]
     assert len(instruction_msgs) == 1
+    assert conversation.index(instruction_msgs[0]) == 1, \
+        "指令消息应稳定待在 system 之后的第一条，第二轮不该把它挪走"
 
 
 # ---------- feature 06 task 5：压缩后重注入（不做就是长会话静默失效） ----------

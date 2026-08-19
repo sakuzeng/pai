@@ -425,10 +425,22 @@ def test_gate_asker_can_be_swapped_after_assembly():
     from pai.core.permissions import RuleSet
     from pai.modes.interactive import AskerRef
 
-    ref = AskerRef(lambda q, o: "老 asker")
+    # 「换之前走的是老 asker」这半边此前从没被验证过：那行断言写成
+    # `reason.endswith("老 asker") or True`——`reason` 里根本不带 asker 的答案
+    # （它是「用户当场拒绝（命中 ask 规则 …）」），所以那句断言本身就是错的，
+    # 而 `or True` 让它永远不会红。真正可观测的证据是「老 asker 有没有被问到」。
+    asked: list = []
+
+    def old_asker(question, options):
+        asked.append("old")
+        return "老 asker"                       # 不是「允许这次」→ 应判 deny
+
+    ref = AskerRef(old_asker)
     gate = make_before_tool_call(RuleSet.from_lists(ask=["bash(*)"]), asker=ref)
-    assert gate("bash", {"command": "ls"}).reason.endswith("老 asker") or True
+
     first = gate("bash", {"command": "ls"})
+    assert asked == ["old"], "换之前该问老 asker"
+    assert first.kind == "deny"
 
     ref.set(lambda q, o: "允许这次")
     second = gate("bash", {"command": "ls"})
