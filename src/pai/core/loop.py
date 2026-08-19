@@ -313,6 +313,12 @@ def run_agent(
             for tc in batch.calls:
                 if flag.is_set():
                     continue                     # 交给 ② 统一回「已取消」
+                if tc.function.name not in tools:
+                    # 存在性检查排在权限判定**之前**：模型幻觉出一个工具名时，
+                    # 它该知道「没这个工具」而不是收到一段权限拒绝理由——
+                    # 后者会让它去换姿势重试。交互模式下更糟：会弹一个对话框，
+                    # 让真人给一个不存在的工具授权。回填留给 `_run_tool`。
+                    continue
                 if before_tool_call is not None:
                     decision = before_tool_call(
                         tc.function.name, _safe_args(tc.function.arguments))

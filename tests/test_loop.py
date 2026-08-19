@@ -1579,3 +1579,61 @@ def test_a_self_argument_does_not_break_the_conversation(tmp_path):
     assert answer == "换个方式"
     filled = [m["tool_call_id"] for m in messages if m.get("role") == "tool"]
     assert len(filled) == 1
+
+
+# ---- R4#10：幻觉工具名不该先过权限链（2026-08-19 评审，动态探针实测）----
+
+
+def test_an_unknown_tool_is_reported_as_unknown_not_as_denied():
+    """模型幻觉出一个不存在的工具时，它该知道「没这个工具」。
+
+    此前 `before_tool_call` 排在存在性检查之前，于是模型收到的是一大段
+    权限拒绝理由（「不参与工作目录边界判定…当前模式无人可问」）——
+    它会据此去换姿势重试，而不是意识到这个工具压根不存在。
+    交互模式下更糟：会弹一个对话框，让真人给一个不存在的工具授权。
+    """
+    seen: list = []
+
+    def gate(name, args):
+        seen.append(name)
+        raise AssertionError("不存在的工具不该走到权限判定")
+
+    script = [
+        {"tool_calls": [("no_such_tool", json.dumps({"x": 1}))]},
+        {"content": "换个方式"},
+    ]
+    messages: list = []
+    answer = run_agent("试试", client=FakeClient(script), model="fake",
+                       tools=get_tools(), on_event=lambda _: None,
+                       messages=messages, before_tool_call=gate)
+
+    assert answer == "换个方式"
+    assert seen == [], "存在性检查必须排在权限判定之前"
+
+    filled = [m["content"] for m in messages if m.get("role") == "tool"]
+    assert len(filled) == 1
+    assert "未知工具" in filled[0]
+    assert "权限" not in filled[0]
+
+
+def test_a_known_tool_still_goes_through_the_gate():
+    """治过头就成了放行：真实存在的工具照旧要过权限判定。"""
+    from pai.core.permissions import Decision
+
+    seen: list = []
+
+    def gate(name, args):
+        seen.append(name)
+        return Decision(kind="deny", reason="测试用：一律拒绝")
+
+    script = [
+        {"tool_calls": [("bash", json.dumps({"command": "echo hi"}))]},
+        {"content": "好"},
+    ]
+    messages: list = []
+    run_agent("试试", client=FakeClient(script), model="fake", tools=get_tools(),
+              on_event=lambda _: None, messages=messages, before_tool_call=gate)
+
+    assert seen == ["bash"]
+    filled = [m["content"] for m in messages if m.get("role") == "tool"]
+    assert "一律拒绝" in filled[0]

@@ -202,3 +202,48 @@ def test_memory_bodies_are_not_loaded_at_startup(tmp_path):
 
 def test_missing_memory_index_returns_empty(tmp_path):
     assert memory.load_memory_index(tmp_path / "不存在") == ""
+
+
+# ---- R4#7：@ 只在「像导入」的位置才算导入（2026-08-19 评审）----
+
+
+def test_an_email_address_is_not_an_import(tmp_path):
+    """`@` 前面贴着字母就不是导入语法。
+
+    此前 `someone@example.com` 被改写成 `someone(@example.com 未找到)`——
+    而这段文本每轮都会作为指令消息注入，模型读到的是被悄悄改过的规约，
+    且没有任何告警。
+    """
+    text = "联系 someone@example.com 获取权限。"
+
+    assert memory.expand_imports(text, base=tmp_path, home=tmp_path) == text
+
+
+def test_a_decorator_is_not_an_import(tmp_path):
+    """`@tool` 这类装饰器名不含路径分隔符，不该被当成文件。
+
+    本仓库自己的规约里就写着「工具 schema 一律由 @tool 装饰器生成」——
+    用户照着写一份 PAI.md，这句话就会被改写掉。
+    `@dataclass(frozen=True)` 更糟：连括号一起被吃进「未找到」里。
+    """
+    for text in ["工具用 @tool 装饰器注册。",
+                 "用 @dataclass(frozen=True) 定义事件。",
+                 "只读属性用 @property。"]:
+        assert memory.expand_imports(text, base=tmp_path, home=tmp_path) == text
+
+
+def test_a_path_shaped_target_is_still_an_import(tmp_path):
+    """治过头就成了另一个 bug：真导入必须照常工作。"""
+    (tmp_path / "child.md").write_text("子文件内容", encoding="utf-8")
+
+    assert "子文件内容" in memory.expand_imports(
+        "见 @child.md 的说明。", base=tmp_path, home=tmp_path)
+    assert "子文件内容" in memory.expand_imports(
+        "@child.md", base=tmp_path, home=tmp_path)          # 行首
+
+
+def test_a_path_shaped_but_missing_target_still_reports(tmp_path):
+    """诊断不能丢：写错路径的人需要知道自己写错了。"""
+    out = memory.expand_imports("见 @docs/nope.md 的说明。", base=tmp_path, home=tmp_path)
+
+    assert "未找到" in out

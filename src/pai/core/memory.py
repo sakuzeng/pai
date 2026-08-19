@@ -30,8 +30,24 @@ MAX_IMPORT_DEPTH = 4                    # 官方数字：最大 4 跳
 # 代码块与行内代码里的 @path 是字面文本（官方语义）——先把它们挖掉再扫导入，
 # 比在导入正则里写「前面不能是反引号」这类否定环视可靠得多
 _CODE = re.compile(r"```.*?```|`[^`\n]*`", re.S)
-# 路径到空白为止；结尾的标点不算路径的一部分（中文文档里 `@a.md，` 很常见）
-_IMPORT = re.compile(r"@([^\s`]+?)(?=[\s，。、）)]|$)")
+# 路径到空白为止；结尾的标点不算路径的一部分（中文文档里 `@a.md，` 很常见）。
+# `@` 必须在行首或空白之后：贴着字母的 `@` 是邮箱不是导入
+# （`someone@example.com` 曾被改写成 `someone(@example.com 未找到)`）。
+_IMPORT = re.compile(r"(?:^|(?<=\s))@([^\s`]+?)(?=[\s，。、）)]|$)", re.M)
+
+
+def _looks_like_a_path(raw: str) -> bool:
+    """还要「长得像路径」才算导入。
+
+    光靠位置挡不住 `@tool` / `@property` / `@dataclass(frozen=True)` 这类
+    装饰器名——它们同样出现在空白之后。而本仓库自己的规约里就写着
+    「工具 schema 一律由 @tool 装饰器生成」，用户照着写一份 PAI.md，
+    那句话每轮都会被悄悄改成「(@tool 未找到)」，且没有任何告警。
+
+    判据取「含分隔符」而不是「文件存在」：后者会让写错路径的人
+    连「未找到」这个诊断都拿不到。
+    """
+    return "/" in raw or "." in raw or raw.startswith("~")
 
 
 def discover(*, cwd: Optional[Path] = None, home: Optional[Path] = None) -> List[Path]:
@@ -79,6 +95,8 @@ def expand_imports(text: str, *, base: Path, home: Optional[Path] = None,
         if in_code(match.start()):
             return match.group(0)
         raw = match.group(1)
+        if not _looks_like_a_path(raw):
+            return match.group(0)      # 不是导入，原样留着（连诊断都不该打）
         target = _resolve(raw, base=base, home=home)
         if depth >= MAX_IMPORT_DEPTH:
             return f"(@{raw} 未展开：已达导入深度上限 {MAX_IMPORT_DEPTH})"
