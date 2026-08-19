@@ -153,9 +153,12 @@
       或以 `~` 开头（治 `@tool` / `@property` / `@dataclass(frozen=True)`，
       后者此前连括号都被吃进「未找到」里）。判据取「含分隔符」而不是「文件存在」：
       后者会让写错路径的人连诊断都拿不到。
-- [ ] R4#8 自动压缩的摘要请求是全链路唯一不设防的网络调用（中）：注释自认
+- [x] ~~R4#8 自动压缩的摘要请求是全链路唯一不设防的网络调用（中）：注释自认
       「全系统最贵的单次请求」却无 try，once 下整个进程崩；且失败不计入熔断，
-      API 抖动时每轮重发最贵请求、熔断器永不跳。
+      API 抖动时每轮重发最贵请求、熔断器永不跳。~~
+      已修 2026-08-19（`fix/network-paths-guarded`）：触发块包 try，失败发
+      `CompactionSkipped(reason="summarize_failed")` 并计入 `state.failures`，
+      撞到 `MAX_COMPACT_FAILURES` 照常发 `BreakerTripped`；事件 reason 新增第三档。
 - [ ] R4#9 全链路假设 tool_call id 非空唯一，无守卫（中）：id 空串时同批调用
       共享 `decisions[""]` 键互相覆盖，后判的权限决定套在所有调用头上。
       pai 经 `PAI_BASE_URL` 明确支持任意 OpenAI 兼容端点，而漏发流式 id 的实现真实存在。
@@ -165,8 +168,10 @@
       已修 2026-08-19（`fix/unknown-tool-before-gate`，小修通道）：存在性检查
       前移到权限判定之前，回填仍交给 `_run_tool`（配对不变量不受影响）。
       真跑探针复验：回填从一大段权限拒绝理由变成「错误：未知工具 no_such_tool」。
-- [ ] R4#11 `/compact` 不在任何兜底之内（中）：已登记的「两条主循环都兜了」
-      只包住 `_run_turn`，而 `_manual_compact` 是唯一碰网络的命令路径。
+- [x] ~~R4#11 `/compact` 不在任何兜底之内（中）：已登记的「两条主循环都兜了」
+      只包住 `_run_turn`，而 `_manual_compact` 是唯一碰网络的命令路径。~~
+      已修 2026-08-19（同上分支）：兜底点定在 `_manual_compact` 内部，一处覆盖
+      REPL 与 TUI 两个调用方；失败告诉用户原因并明说「历史未改动」。
 - [ ] R4#12/13/14 TUI 输入与信号三条（中）：DockRenderer 无 `_drawing` 重入门
       且信号处理器里写 stdout 可能抛 `RuntimeError: reentrant call`；
       busy 期 `poll(timeout=0)` 让 `flush()` 提前把拆包的方向键裁决成 Esc；

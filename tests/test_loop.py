@@ -1637,3 +1637,77 @@ def test_a_known_tool_still_goes_through_the_gate():
     assert seen == ["bash"]
     filled = [m["content"] for m in messages if m.get("role") == "tool"]
     assert "一律拒绝" in filled[0]
+
+
+# ---- R4#8：摘要请求失败不许掀掉整轮，且必须计入熔断（2026-08-19 评审）----
+
+
+class _SummaryFailsClient(FakeClient):
+    """摘要请求打网络时炸掉。
+
+    判据与 `test_breaker_stops_auto_compaction` 一致：摘要请求是拍平重发，
+    请求里没有 `tools` 字段。
+    """
+
+    def __init__(self, script, *, fail_times: int = 99) -> None:
+        super().__init__(script)
+        self.fail_times = fail_times
+        self.summary_attempts = 0
+
+    def _create(self, **kwargs):
+        if "tools" not in kwargs:
+            self.summary_attempts += 1
+            if self.summary_attempts <= self.fail_times:
+                raise RuntimeError("429 Too Many Requests")
+        return super()._create(**kwargs)
+
+
+def _repeated_compaction_script(turns: int):
+    tool_turn = {"tool_calls": [("bash", json.dumps({"command": "true"}))]}
+    script = [{**tool_turn, "usage": _usage(100)}]
+    for _ in range(turns):
+        script.append({**tool_turn, "usage": _usage(850)})
+        script.append({**tool_turn, "usage": _usage(975)})
+    script.append({"content": "done"})
+    return script
+
+
+def test_a_failing_summary_request_does_not_blow_up_the_turn(tmp_path, monkeypatch):
+    """摘要请求是全链路唯一不设防的网络调用，而它恰是最贵、最容易撞 429 的那个。
+
+    此前一次瞬时 API 错误就逃出 `run_agent`：REPL 下本轮作废，
+    once 模式下整个进程带 traceback 崩掉，跑到一半的任务全丢。
+    """
+    monkeypatch.chdir(tmp_path)
+    from pai.core.compaction import CompactionSettings
+    from pai.core.events import CompactionSkipped
+
+    seen: list = []
+    client = _SummaryFailsClient(_repeated_compaction_script(1))
+    answer = run_agent("x", client=client, model="fake", tools=get_tools(),
+                       context_window=1000, max_steps=10,
+                       compaction=CompactionSettings(reserve_tokens=200,
+                                                     keep_recent_tokens=1),
+                       on_event=seen.append)
+
+    assert answer == "done"                       # 本轮活下来了
+    assert client.summary_attempts >= 1           # 确实试过压缩
+    skipped = [e for e in seen if isinstance(e, CompactionSkipped)]
+    assert any(e.reason == "summarize_failed" for e in skipped), \
+        "失败要留痕，不能静默吞掉"
+
+
+def test_repeated_summary_failures_trip_the_breaker(tmp_path, monkeypatch):
+    """失败若不计入熔断，API 持续抖动时每轮都在超线状态下重发最贵的那个请求，
+    熔断器永远不跳——那是一台自动烧钱机。"""
+    monkeypatch.chdir(tmp_path)
+    from pai.core.compaction import MAX_COMPACT_FAILURES, CompactionSettings
+
+    client = _SummaryFailsClient(_repeated_compaction_script(6))
+    run_agent("x", client=client, model="fake", tools=get_tools(),
+              context_window=1000, max_steps=20,
+              compaction=CompactionSettings(reserve_tokens=200, keep_recent_tokens=1),
+              on_event=lambda _: None)
+
+    assert client.summary_attempts == MAX_COMPACT_FAILURES, \
+        f"熔断后不该再试第 {MAX_COMPACT_FAILURES + 1} 次"

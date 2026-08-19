@@ -87,9 +87,12 @@ class Compacted:
 
 @dataclass(frozen=True)
 class CompactionSkipped:
-    # anchors_pending = 刚压完锚点簿被清空，等一轮真实 usage 就能续（正常两步节奏）
-    # nothing_to_cut  = 真的无可压（超长单轮或保留预算吞下全部历史）
-    reason: Literal["anchors_pending", "nothing_to_cut"]
+    # anchors_pending  = 刚压完锚点簿被清空，等一轮真实 usage 就能续（正常两步节奏）
+    # nothing_to_cut   = 真的无可压（超长单轮或保留预算吞下全部历史）
+    # summarize_failed = 摘要请求本身打网络失败（它是全链路最贵的一次请求，
+    #                    也最容易撞 429）。这一档要计入熔断，否则 API 持续抖动时
+    #                    每轮都在超线状态下重发最贵请求，熔断器永远不跳。
+    reason: Literal["anchors_pending", "nothing_to_cut", "summarize_failed"]
     estimated: int
 
 

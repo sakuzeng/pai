@@ -671,7 +671,16 @@ def _manual_compact(*, messages, anchors, state, client, model, compaction, out,
             out("⚠️ 无可压：保留预算已吞下全部历史（或只剩一个超长轮次）。")
         return
     before = len(messages)
-    messages[:], summary, usage = compact(messages, cut=cut, client=client, model=model)
+    try:
+        messages[:], summary, usage = compact(messages, cut=cut, client=client,
+                                              model=model)
+    except Exception as e:   # noqa: BLE001 - 网络边界，什么都可能抛
+        # `/compact` 是唯一碰网络的命令路径。此前它一路裸抛：REPL 下整个 while
+        # 循环带栈掀掉、TUI 下大 try 只有 finally（终端复原了但对话没了）。
+        # 而这恰恰是最不该丢上下文的时刻——用户按 `/compact` 正是因为上下文
+        # 已经攒得很长。`messages` 无需回滚：替换发生在 compact 成功返回之后。
+        out(f"⚠️ 压缩失败（{type(e).__name__}: {e}），历史未改动，可稍后重试。")
+        return
     anchors.reset()                        # 历史被改写，旧锚全部作废（D#18/32）
     state.awaiting_verify = True           # 成败仍只认压缩后首次真实 usage（D#34）
     # 与自动压缩发同一个事件:上下文被换掉这件事,不该因为「是人手动按的」就在观测流里消失

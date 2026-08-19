@@ -200,24 +200,42 @@ def run_agent(
                 else:
                     on_event(CompactionSkipped(reason="nothing_to_cut", estimated=estimated))
             else:
-                messages[:], summary, s_usage = _compacted(
-                    messages, cut=cut, client=client, model=model)
-                anchors.reset()                      # 历史被改写，旧锚全部作废（D#18/32）
-                state.awaiting_verify = True         # 成败等首次真实 usage（D#34）
-                if instructions is not None:
-                    # 压缩重建的是 [system]+[摘要]+[保留尾部]，指令消息在第一条 user
-                    # 位置必然被摘掉——不重注入就是长会话里 PAI.md 静默失效（D#42）。
-                    # 重新调用 loader = 从磁盘重读（官方原话），顺带让中途改的文件生效。
-                    _inject_instructions(messages, instructions, session)
-                # 摘要请求拍平重发近全窗口，是全系统最贵的单次请求，必须计入预算熔断账
-                spent_tokens += s_usage.get("total_tokens") or 0
-                after = context_tokens(messages, tool_schemas)
-                on_event(Compacted(cut=cut, before=estimated, after=after))
-                if session:
-                    session.append({"type": "compaction", "step": step, "cut": cut,
-                                    "summary": summary, "estimated_before": estimated,
-                                    "estimated_after": after, "usage": s_usage})
-                estimated = after
+                try:
+                    messages[:], summary, s_usage = _compacted(
+                        messages, cut=cut, client=client, model=model)
+                except Exception:   # noqa: BLE001 - 网络边界，什么都可能抛
+                    # 摘要请求是全链路最贵的一次（拍平重发近全窗口），也最容易撞
+                    # 429/超时，而它此前是唯一不设防的网络调用：一次瞬时错误就逃出
+                    # run_agent——REPL 下本轮作废，once 下整个进程带 traceback 崩掉。
+                    # 计入熔断同样必须：不计的话 API 持续抖动时每轮都在超线状态下
+                    # 重发最贵请求，熔断器永远不跳，等于一台自动烧钱机。
+                    # messages 无需回滚——`compact()` 成功返回之后才做替换。
+                    state.failures += 1
+                    state.tripped = (state.tripped
+                                     or state.failures >= MAX_COMPACT_FAILURES)
+                    on_event(CompactionSkipped(reason="summarize_failed",
+                                               estimated=estimated))
+                    if state.tripped:
+                        on_event(BreakerTripped(failures=state.failures))
+                else:
+                    anchors.reset()                  # 历史被改写，旧锚全部作废（D#18/32）
+                    state.awaiting_verify = True     # 成败等首次真实 usage（D#34）
+                    if instructions is not None:
+                        # 压缩重建的是 [system]+[摘要]+[保留尾部]，指令消息在第一条
+                        # user 位置必然被摘掉——不重注入就是长会话里 PAI.md 静默失效
+                        # （D#42）。重新调用 loader = 从磁盘重读（官方原话），
+                        # 顺带让中途改的文件生效。
+                        _inject_instructions(messages, instructions, session)
+                    # 摘要请求拍平重发近全窗口，是全系统最贵的单次请求，
+                    # 必须计入预算熔断账
+                    spent_tokens += s_usage.get("total_tokens") or 0
+                    after = context_tokens(messages, tool_schemas)
+                    on_event(Compacted(cut=cut, before=estimated, after=after))
+                    if session:
+                        session.append({"type": "compaction", "step": step, "cut": cut,
+                                        "summary": summary, "estimated_before": estimated,
+                                        "estimated_after": after, "usage": s_usage})
+                    estimated = after
 
         # 主循环走流式（feature 11）。**侧查询不走**——摘要（compaction.summarize）与
         # 召回（recall）的输出没人看，流式只会把装配成本白花一遍。
