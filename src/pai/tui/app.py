@@ -26,6 +26,7 @@ from pai.tui import logo, theme
 from pai.tui.arbiter import EDITOR, InputArbiter
 from pai.tui.component import Container, Component
 from pai.tui.dialog import CANCELLED, Dialog
+from pai.tui.sanitize import sanitize_terminal_text
 from pai.tui.keys import Key
 from pai.tui.dock import Dock
 from pai.tui.clipboard import copy as _copy_to_clipboard
@@ -430,7 +431,7 @@ class TuiApp:
         self._expanded += 1
         event = self._collapsed[-self._expanded]
         head = f"{theme.DETAIL} {event.name} 的完整输出："
-        body = (event.result or "").split("\n")
+        body = _display_result(event).split("\n")
         self.commit([theme.paint(head, theme.CYAN, color=self.color)] + body)
 
     def cancel_dialog(self, dialog: Dialog) -> None:
@@ -501,11 +502,20 @@ def _answer_lines(text: str, *, color: bool = False) -> List[str]:
     return [prefix + lines[0]] + lines[1:]
 
 
+def _display_result(event) -> str:
+    """工具结果里**给终端看的那一份**。
+
+    外来字节要消毒（见 tui/sanitize.py）。**只在这里做**：模型拿到的仍是
+    `event.result` 原文——命令真打印了什么，模型就该看见什么。
+    """
+    return sanitize_terminal_text(event.result or "")
+
+
 MAX_COLLAPSED = 32
 
 
 def _hidden_rows(event) -> int:
-    rows = (event.result or "").split("\n")
+    rows = _display_result(event).split("\n")
     return len([r for r in rows[1:] if r.strip()])
 
 
@@ -523,7 +533,7 @@ def _tool_entry(event, *, color: bool = False) -> TranscriptEntry:
         head = _tool_lines(event, width, color=color, suffix=" (^O 收起)")[0]
         body: List[str] = []
         room = max(8, width - len(_OUTPUT_INDENT))
-        for line in (event.result or "").split("\n"):
+        for line in _display_result(event).split("\n"):
             body.extend(theme.wrap(line, room))
         # 引出符只在第一行，其余对齐——与正文混成一片是上一版最难读的地方
         out = [head]
@@ -552,7 +562,7 @@ def _tool_lines(event, width: int, *, color: bool = False,
     args = ", ".join(f"{k}={v!r}" for k, v in (event.args or {}).items())
     if args:
         head += f"({_truncate(args, max(8, width // 3))})"
-    first = (event.result or "").split("\n")[0].strip()
+    first = _display_result(event).split("\n")[0].strip()
     hidden = _hidden_rows(event)
     line = f"{head} → {first}" if first else head
     if suffix:
