@@ -65,3 +65,55 @@ def test_dragging_highlights_and_copies(session, tmp_path):
     s.drain(0.5)
     blob = "".join(r["data"] for r in load(s.record))
     assert "\x1b[7m" in blob                        # 反显出现过
+
+
+# ---- feature 20：拖动的端到端帧数（2026-08-19）----
+
+
+def test_a_fast_drag_is_batched_into_a_handful_of_frames(session, tmp_path):
+    """一次快速拖选，真 pai 进程只画个位数的帧。
+
+    诚实边界（重要）：**这条钉的不是 feature 16 的渲染节流。**
+    交付 20 时做过对照实验（40 条拖动事件，真 pty）：
+
+    | 事件间隔 | 有节流 | 无节流 |
+    |---|---|---|
+    | 0ms  |  6 |  7 |
+    | 10ms | 71 | 67 |
+    | 30ms | 75 | 70 |
+
+    两列没有差别——这个基建造不出「逐条到达且间隔 <16ms」那种形态：事件要么
+    被一次 `os.read` 全读进来（0ms 那档），要么实际间隔已经超过 16ms 窗口
+    （节流本就不该生效）。
+
+    交付时逐层做了注入反证，确认它到底钉住什么：拆掉节流 → 不红；
+    拆掉 driver 的「读干净再处理」→ 不红（60 条事件约 720 字节，
+    一次 `os.read(4096)` 就全拿到了）；只让每个鼠标事件都 refresh → 不红。
+    **只有把 `_merge_mouse_runs` 一起拆掉才会红**——所以它钉的是
+    「鼠标事件按批合并 + 每批只 refresh 一次」这两条合起来的效果。
+
+    一帧 = 一条写记录（已实测：首帧与后续帧都是 1 条）。
+    """
+    s, _ = session([turn("可以拖选的一行文本。")])
+    s.send("你好\r", until="可以拖选的一行")
+    text = to_text(_screen(s))
+    row = next(i for i, line in enumerate(text.split("\n"))
+               if "可以拖选的一行" in line) + 1
+
+    s.send(f"\x1b[<0;3;{row}M".encode())            # 按下
+    s.drain(0.3)
+    before = len(load(s.record))
+
+    moves = 60
+    for i in range(moves):                          # 一口气送出，不给间隔
+        s.send(f"\x1b[<32;{4 + i % 40};{row}M".encode(), wait=0)
+    s.drain(0.6)
+    frames = len(load(s.record)) - before
+
+    s.send(f"\x1b[<0;40;{row}m".encode())           # 松开
+    s.drain(0.4)
+
+    assert frames < moves // 4, (
+        f"{moves} 条拖动事件写了 {frames} 次终端——鼠标事件的批合并没生效")
+    assert "\x1b[7m" in "".join(r["data"] for r in load(s.record)), \
+        "一次反显都没画出来"
