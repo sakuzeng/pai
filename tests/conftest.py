@@ -44,6 +44,33 @@ def pytest_collection_modifyitems(config, items):
 # 为什么用 autouse 兜底而不是「逐个测试传参」：20 个调用点意味着第 21 个还会忘。
 # 把「碰不到真实 home」变成**结构上做不到**，比依赖记性可靠。
 
+# ---- 2026-08-19 追加：@tool 注册表按测试隔离（R4#T5）----
+#
+# `@tool` 写的是**进程级** REGISTRY，测试里注册的探针工具会漏进后续所有测试
+# （实测：跑完 test_tools.py 之后 `get_tools()` 里多出三个 `_cap_*_probe`，
+# 连同 schema 一起被发给假 client）。此前靠字母序苟活——test_tools 排在多数
+# 文件之后，且后续断言恰好用 `<=` 或按名索引；换个随机序插件就当场爆。
+#
+# 用 autouse 兜底而不是「每处记得清理」：漏一处就白做，而漏掉不会让任何测试变红。
+
+
+@pytest.fixture(autouse=True)
+def isolate_tool_registry():
+    from pai.core.tools import REGISTRY, get_tools
+
+    # 先强制把内置工具注册进来再拍快照：`@tool` 的注册是**惰性**的
+    # （`get_tools()` 首次调用才 import 那几个子模块）。若快照拍在注册之前，
+    # 恢复时就会把内置工具一起清掉——第一版就是这么写的，症状是
+    # 后面的测试 `KeyError: 'bash'`。
+    get_tools()
+    snapshot = dict(REGISTRY)
+    try:
+        yield
+    finally:
+        REGISTRY.clear()
+        REGISTRY.update(snapshot)
+
+
 # ---- 2026-08-18 追加：挂死必须变红（R4#T6）----
 #
 # 机制与理由都在 tests/pai_test_timeout.py（那里也是子进程验证时 `-p` 加载的同一份）。
