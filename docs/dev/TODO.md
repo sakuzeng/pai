@@ -172,7 +172,19 @@
       只包住 `_run_turn`，而 `_manual_compact` 是唯一碰网络的命令路径。~~
       已修 2026-08-19（同上分支）：兜底点定在 `_manual_compact` 内部，一处覆盖
       REPL 与 TUI 两个调用方；失败告诉用户原因并明说「历史未改动」。
-- [ ] R4#12/13/14 TUI 输入与信号三条（中）：DockRenderer 无 `_drawing` 重入门
+- [x] ~~R4#12/13/14 TUI 输入与信号三条（中）：~~ 已修 2026-08-19，走完整流程，
+      档案 [features/19](features/19-20260819-tui-input-and-signals/README.md)，
+      拍板三问均选 A，升格 [D#70](decisions.md)。原文：
+- [ ] feature 19 遗留 1：`ESC_SETTLE_SECONDS = 0.05` 在慢速 ssh / 串口上未验证
+      （出处：19 复盘质疑一）。两包间隔超过 50ms 就退回原病（方向键变 `[A`），
+      离线测不出，需手工清单。
+- [ ] feature 19 遗留 2：粘贴自愈把可能只有半截的内容按成功吐出且无提示
+      （出处：19 复盘质疑三），与「静默失败是 bug」相冲，考虑带一行提示。
+- [ ] feature 19 遗留 3：`RuntimeError: reentrant call` 是按源码结构推的，
+      从未真的触发、修完也没真跑验证（出处：19 复盘质疑四、D#70 诚实边界）。
+- [ ] feature 19 遗留 4：列候选方案时带了倾向性措辞（把「只治一半」写成
+      「制造已修好的错觉」），下次只写做到什么、做不到什么（出处：19 复盘质疑二）。
+      原 R4#12/13/14 条目内容：DockRenderer 无 `_drawing` 重入门
       且信号处理器里写 stdout 可能抛 `RuntimeError: reentrant call`；
       busy 期 `poll(timeout=0)` 让 `flush()` 提前把拆包的方向键裁决成 Esc；
       KeyDecoder 的 pasting 态无出口（`PASTE_END` 丢失即键盘全死）。

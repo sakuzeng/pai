@@ -76,6 +76,8 @@ class TerminalSession:
                  install_signal: Optional[Callable[[int, Callable], object]] = None) -> None:
         self._stream = stream if stream is not None else sys.stdout
         self._on_resize = on_resize
+        # 处理器只置它，重画交给主循环——见 handle_resize 的说明。
+        self.resize_pending = False
         self.alt_screen = alt_screen
         # 鼠标只在备用屏下有意义：main-screen 下 pai 不拥有屏幕，
         # 接管鼠标只会把终端原生的选中复制白白弄坏
@@ -101,18 +103,39 @@ class TerminalSession:
         return self._rows
 
     def handle_resize(self, *_args) -> bool:
-        """返回「尺寸真的变了吗」。
+        """返回「尺寸真的变了吗」。**只更新尺寸并置标志，不画**。
 
-        **同尺寸事件直接丢弃**：终端一次用户操作常发 2 次以上事件，
-        每次都重画等于白闪一遍。
+        同尺寸事件直接丢弃：终端一次用户操作常发 2 次以上事件，
+        每次都重画等于白闪一遍（feature 12 拍板，本轮不动）。
+
+        不在这里画是 feature 19 拍板问 3 改的（对 feature 12「同步处理」那半边
+        的复议，见 decisions）。这个函数跑在**信号处理器**里，而信号会打在
+        主线程的任意一条指令之间：
+        - `DockRenderer` 没有 `AltScreenRenderer` 那样的重入门，一帧写到一半
+          被插入另一帧，字节交错、`_height`/`_cursor_offset` 被重入改写，
+          dock 就永久漂移；
+        - 更硬的一刀：主线程正处于 `sys.stdout.write` 内部时再写同一 stream，
+          Python 的 buffered IO 会抛 `RuntimeError: reentrant call`，
+          而 TUI 的大 try 只有 finally 没有 except，异常直接掀掉整个 TUI。
+        pi 与 CC 的信号处理器也都不直接画。代价是重画晚一个 poll 周期（≤100ms），
+        换掉的是一整类不可复现的崩溃。
         """
         columns, rows = self._size()
         if (columns, rows) == (self._columns, self._rows):
             return False
         self._columns, self._rows = columns, rows
+        self.resize_pending = True
+        return True
+
+    def take_resize_pending(self) -> bool:
+        """主循环取走标志顺带清掉——不清的话每个 poll 周期都会白重画一遍。"""
+        pending, self.resize_pending = self.resize_pending, False
+        return pending
+
+    def redraw_after_resize(self) -> None:
+        """主循环在安全时刻调它（不在信号处理器里）。"""
         if self._on_resize is not None:
             self._on_resize()
-        return True
 
     # --- 生命周期 -----------------------------------------------------
 

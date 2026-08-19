@@ -27,13 +27,21 @@ POLL_SECONDS = 0.1
 class TuiDriver:
     """读 stdin、喂 app、吐动作。"""
 
-    def __init__(self, app: TuiApp, *, fd: Optional[int] = None) -> None:
+    def __init__(self, app: TuiApp, *, fd: Optional[int] = None,
+                 terminal=None) -> None:
         self.app = app
         self._fd = fd if fd is not None else sys.stdin.fileno()
         self._decoder = KeyDecoder()
+        # resize 的重画落点（feature 19 T4）：SIGWINCH 处理器只置标志，
+        # 真正重画在这里做——信号处理器里写 stdout 会与主线程的写重入。
+        self._terminal = terminal
 
     def poll(self, timeout: float = POLL_SECONDS) -> List[Tuple[str, object]]:
         """等一小会儿；有输入就处理，没有就只重画（转圈/计时/抑制到期靠它推进）。"""
+        if self._terminal is not None and self._terminal.take_resize_pending():
+            # 标志取走就清，否则每个 poll 周期都白重画一遍
+            # （feature 12 撞过一次「空闲每 100ms 白刷一帧」）。
+            self._terminal.redraw_after_resize()
         try:
             ready, _, _ = select.select([self._fd], [], [], timeout)
         except (OSError, ValueError):

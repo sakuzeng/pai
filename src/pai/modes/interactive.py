@@ -736,7 +736,7 @@ def _run_tui(*, out, client, model, tools, messages, anchors, state, steering, f
     # 终端生命周期的写也走同一个 write：不然录制里会缺 `?1049h` 这类关键字节
     term = TerminalSession(on_resize=_on_resize, alt_screen=alt, mouse=use_mouse,
                            stream=RecordedStream(write))
-    driver = TuiDriver(app)
+    driver = TuiDriver(app, terminal=term)
     app.dock.set_mode(mode_state())
     app.dock.set_cwd(os.getcwd())
     app.dock.set_model(model)

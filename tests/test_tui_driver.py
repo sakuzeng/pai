@@ -75,3 +75,44 @@ def test_the_idle_tick_lets_time_based_work_happen():
     os.close(r)
     assert app.ticks == 1
     assert app.refreshes == 1
+
+
+# ---- feature 19 T4：主循环取走 resize 标志并重画（2026-08-19）----
+
+
+class _FakeTerminal:
+    def __init__(self) -> None:
+        self.pending = False
+        self.redraws = 0
+
+    def take_resize_pending(self) -> bool:
+        pending, self.pending = self.pending, False
+        return pending
+
+    def redraw_after_resize(self) -> None:
+        self.redraws += 1
+
+
+def test_a_pending_resize_is_redrawn_by_the_poll_loop():
+    """信号处理器只置标志，重画必须有人接——不接就是「resize 后永不重画」的回退。"""
+    r, _w = _pipe_with([])
+    term = _FakeTerminal()
+    term.pending = True
+    driver = TuiDriver(FakeApp(), fd=r, terminal=term)
+
+    driver.poll(timeout=0)
+
+    assert term.redraws == 1
+
+
+def test_no_pending_resize_means_no_extra_redraw():
+    """平时不许白重画：每个 poll 周期都画一遍就是空转（feature 12 撞过一次
+    「空闲每 100ms 白刷一帧」）。"""
+    r, _w = _pipe_with([])
+    term = _FakeTerminal()
+    driver = TuiDriver(FakeApp(), fd=r, terminal=term)
+
+    driver.poll(timeout=0)
+    driver.poll(timeout=0)
+
+    assert term.redraws == 0

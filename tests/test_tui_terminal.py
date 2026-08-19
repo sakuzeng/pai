@@ -72,13 +72,26 @@ def test_same_size_resize_event_is_dropped():
     assert calls == []
 
 
-def test_changed_size_triggers_a_redraw_synchronously():
+def test_changed_size_defers_the_redraw_to_the_main_loop():
+    """feature 19 拍板问 3 改了这条：处理器只置标志，重画交给主循环。
+
+    原来这里叫 `..._triggers_a_redraw_synchronously`，断言 `calls == [1]`——
+    那是 feature 12 拍的「同步处理」。同步本身就是 R4#12 的根因（信号打在
+    一帧写到一半的位置 → 字节交错，或撞上 buffered IO 抛
+    `RuntimeError: reentrant call` 掀掉整个 TUI）。
+    **改的只是「同步」这一半，「不去抖」与「同尺寸丢弃」照旧。**
+    """
     calls = []
     session, _, box = make(on_resize=lambda: calls.append(1))
     box["size"] = (40, 24)
+
     assert session.handle_resize() is True
-    assert calls == [1]
+    assert calls == [], "处理器不许画"
     assert session.columns == 40
+
+    assert session.take_resize_pending() is True
+    session.redraw_after_resize()
+    assert calls == [1], "主循环取走标志之后才画"
 
 
 def test_sigwinch_handler_is_installed_on_start():
@@ -158,3 +171,48 @@ def test_main_thread_produces_no_warning():
     session.start()
     assert session.warnings == []
     session.stop()
+
+
+# ---- feature 19 T4：SIGWINCH 处理器只置标志（2026-08-19，拍板问 3 方案 A）----
+
+
+def test_the_signal_handler_does_not_draw():
+    """处理器里同步写 stdout 是 R4#12 的根因。
+
+    两条后果：DockRenderer 没有 `AltScreenRenderer` 那样的重入门，信号打在
+    一帧写到一半的位置会让两帧字节交错、`_height`/`_cursor_offset` 被重入改写，
+    dock 永久漂移；更硬的一刀是主线程正处在 `sys.stdout.write` 内部时处理器
+    再写同一 stream，Python 的 buffered IO 会抛 `RuntimeError: reentrant call`，
+    而 TUI 的大 try 只有 finally 没有 except，异常直接掀掉整个 TUI。
+
+    feature 12 当时拍的是「同步处理、同尺寸丢弃」（对齐 CC 的不去抖）。
+    本轮只改「同步」这一半——**不去抖照旧**，同尺寸丢弃也照旧。
+    """
+    drawn: list = []
+    sizes = iter([(80, 24), (100, 30)])
+    session = TerminalSession(on_resize=lambda: drawn.append("draw"),
+                              size=lambda: next(sizes))
+
+    changed = session.handle_resize()
+
+    assert changed is True
+    assert drawn == [], "处理器不许画，只许置标志"
+    assert session.resize_pending is True
+
+
+def test_taking_the_pending_flag_clears_it():
+    """标志由主循环取走：取一次就该清掉，否则每个 poll 周期都白重画一遍。"""
+    sizes = iter([(80, 24), (100, 30)])
+    session = TerminalSession(size=lambda: next(sizes))
+    session.handle_resize()
+
+    assert session.take_resize_pending() is True
+    assert session.take_resize_pending() is False
+
+
+def test_a_same_size_event_still_sets_nothing():
+    """同尺寸丢弃是 feature 12 拍板的，本轮不动它。"""
+    session = TerminalSession(size=lambda: (80, 24))
+
+    assert session.handle_resize() is False
+    assert session.resize_pending is False

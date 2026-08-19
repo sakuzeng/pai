@@ -1,5 +1,5 @@
 # 19-tui-input-and-signals
-状态：已拍板
+状态：已交付
 分支：`fix/19-tui-input-and-signals`（三条一并做——同属输入/信号层，
       且问 1 与问 2 共用同一份「时间」机制，拆开反而要写两遍）
 流程：superpowers 全链路（spec + plan）——理由：三条都在输入/信号这一层的接缝上，
@@ -106,7 +106,19 @@ Python 的 buffered IO 会抛 `RuntimeError: reentrant call`，而 TUI 的大 tr
 
 ## 结果与总结
 
-<!-- 交付时填 -->
+四个 task 全部交付，`./test.sh` → 1176 passed, 1 skipped, 3 deselected。
+详细日志见 [devlog.md](devlog.md)，复盘见 [复盘.md](复盘.md)。
+
+- T1 `flush()` 认时间（`ESC_SETTLE_SECONDS = 0.05`）：拆包到达的方向键不再被
+  裁决成 Esc；真按 Esc 照常（`driver.POLL_SECONDS = 0.1` 是阈值的两倍）。
+- T2 pasting 态自愈（`PASTE_SETTLE_SECONDS = 1.0`）：`201~` 丢失后键盘自行恢复，
+  不再需要 kill 进程。
+- T3 `\x1b\x1b` 同批到达时拆成两个 esc：连按两次 Esc 不再产生一个 `unknown`。
+- T4 SIGWINCH 处理器只置标志、主循环重画：升格 [D#70](../../decisions.md)，
+  是对 feature 12「同步处理」那半边的复议（不去抖照旧）。
+
+四条注入反证各红各的。三处既有测试因语义变更被改写，每处都先确认生产路径
+未坏再动测试，理由写进各自 docstring。
 
 ## 遗留问题
 

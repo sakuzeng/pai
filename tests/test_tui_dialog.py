@@ -55,11 +55,35 @@ def test_out_of_range_digit_is_ignored():
     assert press(q(), b"9") == []
 
 
+def _settled_decoder():
+    """喂完就当键盘已静默够久的解码器。
+
+    feature 19 之后 `flush()` 多了一条时间判据：悬着的 ESC 要静默 ≥50ms 才判成
+    esc，否则那只是转义序列被拆包的间隙（干活期 `poll(timeout=0)` 会撞上）。
+    真实路径不受影响——`driver.POLL_SECONDS` 是 0.1s，恰是阈值的两倍，
+    真按 Esc 时 select 超时那一下必然已经静默够久。这里把时钟拨过去，
+    于是下面两条测试断言的仍是它们本来的语义：Esc 取消。
+    """
+    class _Clock:
+        def __init__(self):
+            self.t = 1000.0
+
+        def __call__(self):
+            return self.t
+
+        def settle(self):
+            self.t += 1.0
+
+    clock = _Clock()
+    return KeyDecoder(now=clock), clock
+
+
 def test_esc_cancels():
     assert press(q(), b"\x1b", ) == []        # 单个 ESC 要 flush 才成键
     d = q()
-    decoder = KeyDecoder()
+    decoder, clock = _settled_decoder()
     decoder.feed(b"\x1b")
+    clock.settle()
     assert [d.handle(k) for k in decoder.flush()] == [CANCELLED]
 
 
@@ -100,8 +124,9 @@ def test_permission_dialog_cancel_means_deny():
     """权限框与提问框共用组件，但取消的含义不同，返回值要分得开。"""
     d = Dialog(question="允许 bash 跑 `rm -rf /`？", options=["允许", "拒绝"],
                kind="permission")
-    decoder = KeyDecoder()
+    decoder, clock = _settled_decoder()
     decoder.feed(b"\x1b")
+    clock.settle()
     assert [d.handle(k) for k in decoder.flush()] == [CANCELLED]
     assert d.kind == "permission"
 
