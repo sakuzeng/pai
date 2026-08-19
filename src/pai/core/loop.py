@@ -64,6 +64,10 @@ USAGE_RECORD_TYPE = "usage"
 
 CANCELLED_RESULT = "(已取消，用户中断)"
 
+# 补上的占位结果：让人和模型都看得出这条是补的，别伪装成工具真跑过。
+# CC 有同款（`SYNTHETIC_TOOL_RESULT_PLACEHOLDER`）。
+MISSING_RESULT = "(工具结果缺失：本轮因内部错误中断，该调用未产出结果)"
+
 # 被权限层拦下的调用回填给模型的前缀。带前缀是为了让模型一眼看出「这是规矩不让，
 # 不是工具坏了」——后者会诱发重试，前者该诱发换做法。
 DENIED_PREFIX = "权限被拒绝，该工具调用未执行。原因："
@@ -297,7 +301,9 @@ def run_agent(
         # 保序贪心分批（feature 11）：连续的并发安全工具合成一批并行，其余各自成批串行。
         # 非并发批结构上恒为单个调用，`execute` 对单调用不起线程池——
         # 于是 bash 这类要装信号、要管进程组的工具**永远在主线程跑**。
-        for batch in partition(msg.tool_calls, tools):
+        filled: set = set()
+        try:
+          for batch in partition(msg.tool_calls, tools):
             # ① 本批权限**串行判完再派发**（与 CC 的主要偏离，见 features/11 spec）。
             #    CC 在 runToolUse 内部判，那样同批的两个并行工具会同时要求问真人，
             #    正好撞上「asker 与 REPL 抢同一个输入流」那条已知缺陷。
@@ -340,14 +346,33 @@ def run_agent(
             if flag.is_set():
                 interrupted = True               # 工具跑到一半被中断（bash 被杀）或批前已置位
 
-            # ③ 按**原顺序**回填：并发的是执行，不是交付
+            # ③ 按**原顺序**回填：并发的是执行，不是交付。
+            #    **先进 messages 再发事件**：事件处理器由 modes 层注入且允许抛
+            #    （`trace.compose` 明文不吞渲染器异常），发在前面就等于把不变量
+            #    押在渲染器不出错上。
             for tc, (args, result, is_error) in zip(batch.calls, results):
-                on_event(ToolEnd(tool_call_id=tc.id, name=tc.function.name, args=args,
-                                 result=result, is_error=is_error))
                 tool_entry = {"role": "tool", "tool_call_id": tc.id, "content": result}
                 messages.append(tool_entry)
+                filled.add(tc.id)
                 if session:
                     session.append(tool_entry)
+                on_event(ToolEnd(tool_call_id=tc.id, name=tc.function.name, args=args,
+                                 result=result, is_error=is_error))
+
+        finally:
+            # **配对是硬不变量，异常路径上也得成立。** assistant 已经声明了这些
+            # tool_call，缺一条下一轮就是 400（R#11 有真实复现）。正常路径每个都
+            # 回填过；逃逸时（渲染器抛、asker 抛、参数把 run 打穿）在这里补齐，
+            # 补完让异常继续往上走——REPL 的兜底会把 messages 留着，而留下来的
+            # 必须是**结构合法**的对话，否则「对话留着」反而把失败固化成永久 400。
+            for tc in msg.tool_calls:
+                if tc.id in filled:
+                    continue
+                entry = {"role": "tool", "tool_call_id": tc.id,
+                         "content": MISSING_RESULT}
+                messages.append(entry)
+                if session:
+                    session.append(entry)
 
         if interrupted:
             on_event(Interrupted(where="tool"))
@@ -441,6 +466,10 @@ def _run_tool(tools: dict[str, Tool], tc) -> tuple:
     # 而这一击落在函数门口，必须在这里挡。
     if not isinstance(args, dict):
         return {}, f"错误：工具参数必须是 JSON 对象，收到 {type(args).__name__}", True
+    if "self" in args:
+        # 同一击的另一个形状：`{"self": …}` **是**合法对象，躲过了上面那道检查，
+        # 却会让绑定方法 `t.run` 收到两个 self 而在门口抛 TypeError。
+        return args, "错误：参数名 self 非法（它会与工具对象本身撞车）", True
     t = tools.get(name)
     if not t:
         return args, f"错误：未知工具 {name}", True
