@@ -1,12 +1,12 @@
 # 02-compaction 压缩闭环 · Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+For agentic workers: REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 把 find_cut_point / summarize / compact 接进 loop，压缩闭环在真实轨迹上跑通（spec.md 已批）。
+Goal: 把 find_cut_point / summarize / compact 接进 loop，压缩闭环在真实轨迹上跑通（spec.md 已批）。
 
-**Architecture:** 全部判定逻辑做成 compaction.py 的纯函数/纯数据类（AnchorBook、find_cut_point、CompactionState），loop 只做接线；摘要喂料双模式（flat/raw）由实测裁决默认值；压缩成败只认压缩后首次真实 usage（D#34），连续失败 3 次熔断。
+Architecture: 全部判定逻辑做成 compaction.py 的纯函数/纯数据类（AnchorBook、find_cut_point、CompactionState），loop 只做接线；摘要喂料双模式（flat/raw）由实测裁决默认值；压缩成败只认压缩后首次真实 usage（D#34），连续失败 3 次熔断。
 
-**Tech Stack:** Python 3.9.6（`from __future__ import annotations` 必配）、pytest、tests/fake_llm.py 假 provider。
+Tech Stack: Python 3.9.6（`from __future__ import annotations` 必配）、pytest、tests/fake_llm.py 假 provider。
 
 ## Global Constraints
 
@@ -22,16 +22,16 @@
 
 ### Task 1: AnchorBook——锚点列表化（D#32 实现要求）
 
-**Files:**
+Files:
 - Modify: `src/pai/core/compaction.py`（追加 AnchorBook）
 - Modify: `src/pai/core/loop.py:62-64,109-111`（单锚变量 → AnchorBook）
 - Test: `tests/test_compaction.py`、`tests/test_loop.py`
 
-**Interfaces:**
+Interfaces:
 - Produces: `AnchorBook`——`record(message_index: int, real_tokens: int)`、`latest() -> "tuple[int | None, int]"`（返回 `(anchor, anchor_index)`，无锚时 `(None, 0)`）、`entries: list[tuple[int, int]]`（升序，供 Task 3 消费）、`reset()`（压缩后清空，D#18/32）。
 - 语义：`entries[i] = (该锚覆盖到的 message 下标, 到此为止的累计真实 token)`；相邻差值即该轮真实成本。
 
-- [ ] **Step 1: 写失败测试**（追加到 `tests/test_compaction.py` 末尾）
+- [ ] Step 1: 写失败测试（追加到 `tests/test_compaction.py` 末尾）
 
 ```python
 class TestAnchorBook:
@@ -67,12 +67,12 @@ class TestAnchorBook:
         assert book.entries == []
 ```
 
-- [ ] **Step 2: 跑测试确认红**
+- [ ] Step 2: 跑测试确认红
 
 Run: `python3 -m pytest tests/test_compaction.py::TestAnchorBook -v`
 Expected: FAIL, `ImportError: cannot import name 'AnchorBook'`
 
-- [ ] **Step 3: 最小实现**（追加到 `src/pai/core/compaction.py`，放在 `context_tokens` 之前）
+- [ ] Step 3: 最小实现（追加到 `src/pai/core/compaction.py`，放在 `context_tokens` 之前）
 
 ```python
 @dataclass
@@ -101,7 +101,7 @@ class AnchorBook:
 同文件顶部 import 行 `from dataclasses import dataclass` 改为
 `from dataclasses import dataclass, field`。
 
-- [ ] **Step 4: loop 换用 AnchorBook**（`src/pai/core/loop.py`）
+- [ ] Step 4: loop 换用 AnchorBook（`src/pai/core/loop.py`）
 
 把 66 行前的
 ```python
@@ -128,12 +128,12 @@ class AnchorBook:
 ```
 import 行加 `AnchorBook`：`from pai.core.compaction import AnchorBook, context_tokens`。
 
-- [ ] **Step 5: 跑全量确认既有锚簿记测试仍绿**
+- [ ] Step 5: 跑全量确认既有锚簿记测试仍绿
 
 Run: `./test.sh`
 Expected: 全绿（`test_anchor_bookkeeping_is_exact` 等 2 条既有精确断言不许动——它们钉的语义没变）。
 
-- [ ] **Step 6: Commit**
+- [ ] Step 6: Commit
 
 ```bash
 git add src/pai/core/compaction.py src/pai/core/loop.py tests/test_compaction.py
@@ -144,12 +144,12 @@ git commit -m "feat(compaction): AnchorBook 锚点列表化，loop 换用（D#32
 
 ### Task 2: 并行 tool_calls 配对不变量（R#11，有真实 400 复现）
 
-**Files:**
+Files:
 - Test: `tests/test_loop.py`（只加测试；loop 逻辑上已处理，红了才改 src）
 
-**Interfaces:** 无新接口。钉住的不变量供 Task 6 的 e2e 依赖：一轮 N 个 tool_calls 必须回填 N 条 role=tool 消息、id 一一配对、顺序一致。
+Interfaces: 无新接口。钉住的不变量供 Task 6 的 e2e 依赖：一轮 N 个 tool_calls 必须回填 N 条 role=tool 消息、id 一一配对、顺序一致。
 
-- [ ] **Step 1: 写测试**（追加到 `tests/test_loop.py` 末尾；FakeClient 的 turn 格式见 `tests/fake_llm.py` 头注释）
+- [ ] Step 1: 写测试（追加到 `tests/test_loop.py` 末尾；FakeClient 的 turn 格式见 `tests/fake_llm.py` 头注释）
 
 ```python
 def test_parallel_tool_calls_each_get_a_reply(tmp_path, monkeypatch):
@@ -197,12 +197,12 @@ def test_parallel_tool_calls_mixed_known_and_unknown(tmp_path, monkeypatch):
     assert "未知工具" in tool_msgs[1]["content"]
 ```
 
-- [ ] **Step 2: 跑测试**
+- [ ] Step 2: 跑测试
 
 Run: `python3 -m pytest tests/test_loop.py -k parallel -v`
 Expected: PASS（这是钉不变量的 characterization 测试——loop 现有实现逻辑正确但零覆盖；若意外红，修 loop 而不是改测试）。
 
-- [ ] **Step 3: Commit**
+- [ ] Step 3: Commit
 
 ```bash
 git add tests/test_loop.py
@@ -213,16 +213,16 @@ git commit -m "test(loop): 钉死并行 tool_calls 配对不变量（R#11，真�
 
 ### Task 3: find_cut_point——真实 usage 差值定切点
 
-**Files:**
+Files:
 - Modify: `src/pai/core/compaction.py`（追加 find_cut_point；CompactionSettings 加 keep_recent_tokens）
 - Test: `tests/test_compaction.py`
 
-**Interfaces:**
+Interfaces:
 - Consumes: Task 1 的 `AnchorBook.entries`。
-- Produces: `find_cut_point(messages: Sequence[Mapping[str, object]], anchors: Sequence[tuple[int, int]], *, keep_recent_tokens: int = 20000) -> int`——返回保留段起点下标 `cut`；`messages[cut:]` 保留、`messages[1:cut]` 待摘要（下标 0 的 system 永远保留）。**返回 `1` 表示无可压**（超长单轮/锚不足），调用方走「不压+警告」（spec 非目标裁决）。
+- Produces: `find_cut_point(messages: Sequence[Mapping[str, object]], anchors: Sequence[tuple[int, int]], *, keep_recent_tokens: int = 20000) -> int`——返回保留段起点下标 `cut`；`messages[cut:]` 保留、`messages[1:cut]` 待摘要（下标 0 的 system 永远保留）。返回 `1` 表示无可压（超长单轮/锚不足），调用方走「不压+警告」（spec 非目标裁决）。
 - `CompactionSettings` 新增字段 `keep_recent_tokens: int = 20000`（照 pi 的 keepRecentTokens；与 reserve 一样待实测校准，注释写明）。
 
-- [ ] **Step 1: 写失败测试**
+- [ ] Step 1: 写失败测试
 
 ```python
 class TestFindCutPoint:
@@ -263,12 +263,12 @@ class TestFindCutPoint:
         assert find_cut_point(msgs, anchors, keep_recent_tokens=99999) == 1
 ```
 
-- [ ] **Step 2: 跑测试确认红**
+- [ ] Step 2: 跑测试确认红
 
 Run: `python3 -m pytest tests/test_compaction.py::TestFindCutPoint -v`
 Expected: FAIL, `ImportError: cannot import name 'find_cut_point'`
 
-- [ ] **Step 3: 最小实现**（追加到 compaction.py；CompactionSettings 加字段）
+- [ ] Step 3: 最小实现（追加到 compaction.py；CompactionSettings 加字段）
 
 ```python
 def find_cut_point(
@@ -303,12 +303,12 @@ def find_cut_point(
     keep_recent_tokens: int = 20000
 ```
 
-- [ ] **Step 4: 跑测试确认绿，随后全量**
+- [ ] Step 4: 跑测试确认绿，随后全量
 
 Run: `python3 -m pytest tests/test_compaction.py::TestFindCutPoint -v && ./test.sh`
 Expected: PASS / 全绿
 
-- [ ] **Step 5: Commit**
+- [ ] Step 5: Commit
 
 ```bash
 git add src/pai/core/compaction.py tests/test_compaction.py
@@ -319,16 +319,16 @@ git commit -m "feat(compaction): find_cut_point 用真实 usage 差值定切点�
 
 ### Task 4: summarize 双模式 + 花钱实测脚手架
 
-**Files:**
+Files:
 - Modify: `src/pai/core/compaction.py`（SUMMARY_INSTRUCTIONS、summarize）
 - Create: `tests/test_llm_summarize_experiment.py`（`@pytest.mark.llm`，唯一花钱步骤，已获用户授权 ≤1 元）
 - Test: `tests/test_compaction.py`（离线部分）
 
-**Interfaces:**
-- Produces: `summarize(messages: Sequence[Mapping[str, object]], *, client, model: str, style: str = "flat", instructions: str | None = None) -> tuple[str, dict]`——返回 `(摘要文本, usage_dict)`；`style="flat"` 拍平喂料（serialize_conversation，跳过 system——R#16），`style="raw"` 原样发消息数组（**同样不含 system**——用户仲裁 2026-08-09：两模式同跳 system 才是公平对照，且原 system 会人为放大「继续干活」风险；重建时 compact 另行放回）；`instructions` 覆盖默认保留清单（官方 compact 自定义指令同款能力）。usage 用 `loop._usage_fields` 同款提取逻辑——为避免跨模块 import 私有函数，把 `_usage_fields` **从 loop.py 移到 compaction.py 并改名 `usage_fields`**，loop 改为 `from pai.core.compaction import usage_fields`（函数体一字不动，既有 loop 测试守护此迁移）。
+Interfaces:
+- Produces: `summarize(messages: Sequence[Mapping[str, object]], *, client, model: str, style: str = "flat", instructions: str | None = None) -> tuple[str, dict]`——返回 `(摘要文本, usage_dict)`；`style="flat"` 拍平喂料（serialize_conversation，跳过 system——R#16），`style="raw"` 原样发消息数组（同样不含 system——用户仲裁 2026-08-09：两模式同跳 system 才是公平对照，且原 system 会人为放大「继续干活」风险；重建时 compact 另行放回）；`instructions` 覆盖默认保留清单（官方 compact 自定义指令同款能力）。usage 用 `loop._usage_fields` 同款提取逻辑——为避免跨模块 import 私有函数，把 `_usage_fields` 从 loop.py 移到 compaction.py 并改名 `usage_fields`，loop 改为 `from pai.core.compaction import usage_fields`（函数体一字不动，既有 loop 测试守护此迁移）。
 - `SUMMARY_INSTRUCTIONS`：模块常量，官方六项保留清单（context-management.md 笔记）。
 
-- [ ] **Step 1: 写失败测试（离线）**
+- [ ] Step 1: 写失败测试（离线）
 
 ```python
 class TestSummarize:
@@ -374,12 +374,12 @@ class TestSummarize:
         assert "只保留文件名" in joined and SUMMARY_INSTRUCTIONS[:8] not in joined
 ```
 
-- [ ] **Step 2: 跑测试确认红**
+- [ ] Step 2: 跑测试确认红
 
 Run: `python3 -m pytest tests/test_compaction.py::TestSummarize -v`
 Expected: FAIL, `ImportError: cannot import name 'summarize'`
 
-- [ ] **Step 3: 实现**（追加到 compaction.py；`usage_fields` 自 loop.py 原样迁入并去下划线，loop.py 改 import——迁移函数体禁止改动一个字符）
+- [ ] Step 3: 实现（追加到 compaction.py；`usage_fields` 自 loop.py 原样迁入并去下划线，loop.py 改 import——迁移函数体禁止改动一个字符）
 
 ```python
 SUMMARY_INSTRUCTIONS = (
@@ -420,12 +420,12 @@ def summarize(
     return text, usage_fields(response)
 ```
 
-- [ ] **Step 4: 跑离线测试确认绿，随后全量**
+- [ ] Step 4: 跑离线测试确认绿，随后全量
 
 Run: `python3 -m pytest tests/test_compaction.py::TestSummarize -v && ./test.sh`
 Expected: PASS / 全绿（loop 的 usage 相关测试守护 `usage_fields` 迁移无损）。
 
-- [ ] **Step 5: 写实测脚手架**（新文件 `tests/test_llm_summarize_experiment.py`；跑法沿用 test_llm_smoke 的双开关门）
+- [ ] Step 5: 写实测脚手架（新文件 `tests/test_llm_summarize_experiment.py`；跑法沿用 test_llm_smoke 的双开关门）
 
 ```python
 """拍平 vs 原样发实测（spec 问 1/问 3，用户已授权 ≤1 元）。
@@ -464,12 +464,12 @@ def test_summarize_experiment(style):
         assert text.strip(), f"{style} run{run} 摘要为空"
 ```
 
-- [ ] **Step 6: 跑实测并把数据落 decisions**
+- [ ] Step 6: 跑实测并把数据落 decisions
 
 Run: `./test.sh --llm`（此步之外全程禁打真实 API）
-Expected: 6 个 JSON 落 evidence/。随后**人工判读**：逐份看 summary 是「摘要」还是「继续干活」（不听话率）、比 usage 的含缓存成本与摘要长度 → decisions 追加一条（裁决 flat 还是 raw 为默认、顺带用真实摘要长度评 reserve_tokens=16384）→ **若裁决为 raw，把 summarize 的 `style: str = "flat"` 默认值改为 `"raw"` 并让本 task 测试同步**。判读结论若两可，交用户仲裁（工作流的计划冲突仲裁点）。
+Expected: 6 个 JSON 落 evidence/。随后人工判读：逐份看 summary 是「摘要」还是「继续干活」（不听话率）、比 usage 的含缓存成本与摘要长度 → decisions 追加一条（裁决 flat 还是 raw 为默认、顺带用真实摘要长度评 reserve_tokens=16384）→ 若裁决为 raw，把 summarize 的 `style: str = "flat"` 默认值改为 `"raw"` 并让本 task 测试同步。判读结论若两可，交用户仲裁（工作流的计划冲突仲裁点）。
 
-- [ ] **Step 7: Commit**
+- [ ] Step 7: Commit
 
 ```bash
 git add src/pai/core/compaction.py src/pai/core/loop.py tests/test_compaction.py tests/test_llm_summarize_experiment.py docs/dev/features/02-20260803-compaction/evidence docs/dev/decisions.md
@@ -480,18 +480,18 @@ git commit -m "feat(compaction): summarize 双模式 + 实测脚手架，evidenc
 
 ### Task 5: compact + 熔断状态机（D#34）
 
-**Files:**
+Files:
 - Modify: `src/pai/core/compaction.py`（CompactionState、verify_compaction、compact、MAX_COMPACT_FAILURES）
 - Test: `tests/test_compaction.py`
 
-**Interfaces:**
+Interfaces:
 - Produces:
   - `MAX_COMPACT_FAILURES = 3`（对齐 CC，D#14）。
   - `@dataclass CompactionState: failures: int = 0; awaiting_verify: bool = False; tripped: bool = False`——loop 每次 run 持有一份。
   - `compact(messages, *, cut: int, client, model, style: str = "flat", instructions: str | None = None) -> tuple[list[dict], str]`——返回 `(新消息列表, 摘要文本)`；新列表 = `[原 system, 摘要消息] + messages[cut:]`，摘要消息为 `{"role": "user", "content": "[早前对话的摘要，供延续任务用]\n" + summary}`（用 user 而非 system：OpenAI 兼容协议下多条 system 的支持度参差，user 前缀最稳）。调用方负责 `anchors.reset()` 与 `state.awaiting_verify = True`。
-  - `verify_compaction(prompt_tokens: int, window: int, settings: CompactionSettings, state: CompactionState) -> CompactionState`——D#34：压缩后**首次真实 prompt_tokens** 仍超线 → `failures + 1`，达 `MAX_COMPACT_FAILURES` 置 `tripped=True`；降回线内 → `failures = 0`。任何情况都清 `awaiting_verify`。返回新 state（frozen 语义，纯函数可测）。
+  - `verify_compaction(prompt_tokens: int, window: int, settings: CompactionSettings, state: CompactionState) -> CompactionState`——D#34：压缩后首次真实 prompt_tokens 仍超线 → `failures + 1`，达 `MAX_COMPACT_FAILURES` 置 `tripped=True`；降回线内 → `failures = 0`。任何情况都清 `awaiting_verify`。返回新 state（frozen 语义，纯函数可测）。
 
-- [ ] **Step 1: 写失败测试**
+- [ ] Step 1: 写失败测试
 
 ```python
 class TestCompactAndBreaker:
@@ -540,12 +540,12 @@ class TestCompactAndBreaker:
         assert state.tripped                                          # 第 3 次即熔断
 ```
 
-- [ ] **Step 2: 跑测试确认红**
+- [ ] Step 2: 跑测试确认红
 
 Run: `python3 -m pytest tests/test_compaction.py::TestCompactAndBreaker -v`
 Expected: FAIL, `ImportError: cannot import name 'compact'`
 
-- [ ] **Step 3: 实现**（追加到 compaction.py）
+- [ ] Step 3: 实现（追加到 compaction.py）
 
 ```python
 MAX_COMPACT_FAILURES = 3   # 对齐 CC（D#14）：没有熔断时真实事故是数千次连续失败
@@ -598,12 +598,12 @@ def compact(
     return rebuilt, summary
 ```
 
-- [ ] **Step 4: 跑测试确认绿，随后全量**
+- [ ] Step 4: 跑测试确认绿，随后全量
 
 Run: `python3 -m pytest tests/test_compaction.py::TestCompactAndBreaker -v && ./test.sh`
 Expected: PASS / 全绿
 
-- [ ] **Step 5: Commit**
+- [ ] Step 5: Commit
 
 ```bash
 git add src/pai/core/compaction.py tests/test_compaction.py
@@ -614,12 +614,12 @@ git commit -m "feat(compaction): compact 重建 + 熔断状态机，成败只认
 
 ### Task 6: 接线进 loop + 端到端（含超长单轮警告）
 
-**Files:**
+Files:
 - Modify: `src/pai/core/loop.py`（run_agent 加参 + 触发块 + verify 块）
 - Modify: `src/pai/config.py`、`src/pai/modes/once.py`（window 接线）
 - Test: `tests/test_loop.py`
 
-**Interfaces:**
+Interfaces:
 - Consumes: Task 1/3/4/5 的全部产物（签名见各 task Produces）。
 - Produces:
   - `run_agent(..., context_window: int | None = None, compaction: CompactionSettings | None = None)`——两者都给才启用压缩；默认 None = 行为与现状完全一致（既有全部测试零改动的保证）。
@@ -627,7 +627,7 @@ git commit -m "feat(compaction): compact 重建 + 熔断状态机，成败只认
   - `once.run_once` 透传：`context_window=context_window(), compaction=CompactionSettings()`。
   - session 落盘新记录 `{"type": "compaction", "step": N, "cut": i, "summary": ..., "estimated_before": ..., "estimated_after": ...}`。
 
-- [ ] **Step 1: 写失败测试**
+- [ ] Step 1: 写失败测试
 
 ```python
 def _usage(prompt, completion=10):
@@ -708,12 +708,12 @@ def test_breaker_stops_auto_compaction(tmp_path, monkeypatch):
     assert len(summary_reqs) == 3                        # 熔断后没有第 4 次
 ```
 
-- [ ] **Step 2: 跑测试确认红**
+- [ ] Step 2: 跑测试确认红
 
 Run: `python3 -m pytest tests/test_loop.py -k "compacts or warns or breaker" -v`
 Expected: FAIL, `TypeError: run_agent() got an unexpected keyword argument 'context_window'`
 
-- [ ] **Step 3: loop 接线实现**（`src/pai/core/loop.py`；import 行扩为
+- [ ] Step 3: loop 接线实现（`src/pai/core/loop.py`；import 行扩为
 `from pai.core.compaction import AnchorBook, CompactionSettings, CompactionState, compact, context_tokens, find_cut_point, should_compact, usage_fields, verify_compaction`）
 
 签名加参：
@@ -755,7 +755,7 @@ Expected: FAIL, `TypeError: run_agent() got an unexpected keyword argument 'cont
 ```
 （`MAX_COMPACT_FAILURES` 加进 import。）
 
-- [ ] **Step 4: config/once 接线**
+- [ ] Step 4: config/once 接线
 
 `src/pai/config.py` 追加：
 ```python
@@ -769,18 +769,18 @@ def context_window() -> int:
         compaction=CompactionSettings(),
 ```
 
-- [ ] **Step 5: 跑测试确认绿，随后全量**
+- [ ] Step 5: 跑测试确认绿，随后全量
 
 Run: `python3 -m pytest tests/test_loop.py -k "compacts or warns or breaker" -v && ./test.sh`
 Expected: PASS / 全绿（既有测试不传新参，行为不变是硬承诺）。
 
-- [ ] **Step 6: 留痕与收尾**
+- [ ] Step 6: 留痕与收尾
 
 - 本目录 `devlog.md` 各 task 红→绿数字补齐；档案 README「结果与测试」更新。
 - STATUS：模块表 compaction 行改「可用」、compaction.py 函数表更新、缺陷 1/4/5 按实况改写、下一步指向实测裁决/microcompact 评估。
 - TODO：划掉 P0/P1 已完成项（注明出处），reserve_tokens 校准结论登记。
 
-- [ ] **Step 7: Commit**
+- [ ] Step 7: Commit
 
 ```bash
 git add -A
@@ -791,7 +791,7 @@ git commit -m "feat(compaction): 压缩闭环接进 loop——触发/切/摘/重
 
 ## Self-Review（已执行）
 
-1. **Spec 覆盖**：目标 1→Task 1+3；目标 2→Task 4；目标 3→Task 5；目标 4→Task 6；目标 5→Task 2；实测设计→Task 4 Step 5-6；非目标（超长单轮不压+警告）→Task 6 警告路径。无缺口。
-2. **占位符扫描**：无 TBD/TODO/「适当处理」；每个代码步骤有完整代码。
-3. **类型一致性**：`AnchorBook.entries: list[tuple[int,int]]` 贯穿 1→3→6；`summarize -> tuple[str, dict]` 贯穿 4→5；`CompactionState` 字段 5→6 一致；`usage_fields` 迁移在 4 声明、6 的 import 使用。
+1. Spec 覆盖：目标 1→Task 1+3；目标 2→Task 4；目标 3→Task 5；目标 4→Task 6；目标 5→Task 2；实测设计→Task 4 Step 5-6；非目标（超长单轮不压+警告）→Task 6 警告路径。无缺口。
+2. 占位符扫描：无 TBD/TODO/「适当处理」；每个代码步骤有完整代码。
+3. 类型一致性：`AnchorBook.entries: list[tuple[int,int]]` 贯穿 1→3→6；`summarize -> tuple[str, dict]` 贯穿 4→5；`CompactionState` 字段 5→6 一致；`usage_fields` 迁移在 4 声明、6 的 import 使用。
 ```

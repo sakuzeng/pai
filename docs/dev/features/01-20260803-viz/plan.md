@@ -1,20 +1,20 @@
 # pai-viz 架构可视化 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+For agentic workers: REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 一个零依赖本地网页 `pai-viz`,展示 pai 的运行时结构图(工具从 `@tool` 注册表自动自省)与阶段路线图(解析 STATUS.md,状态着色),加新工具刷新即现。
+Goal: 一个零依赖本地网页 `pai-viz`,展示 pai 的运行时结构图(工具从 `@tool` 注册表自动自省)与阶段路线图(解析 STATUS.md,状态着色),加新工具刷新即现。
 
-**Architecture:** `src/pai/viz/` 三个文件:`collect.py`(子进程数据收集,打 JSON 到 stdout)、`server.py`(stdlib http.server,`/` 回页面、`/api/structure` 起子进程透传 JSON)、`index.html`(手写单页,卡片 + SVG 连线)。每次 API 请求起新解释器收集,保证模块缓存不会挡住新加的工具。
+Architecture: `src/pai/viz/` 三个文件:`collect.py`(子进程数据收集,打 JSON 到 stdout)、`server.py`(stdlib http.server,`/` 回页面、`/api/structure` 起子进程透传 JSON)、`index.html`(手写单页,卡片 + SVG 连线)。每次 API 请求起新解释器收集,保证模块缓存不会挡住新加的工具。
 
-**Tech Stack:** Python 标准库(http.server / subprocess / importlib.resources)+ 手写 HTML/CSS/JS。零新增依赖。
+Tech Stack: Python 标准库(http.server / subprocess / importlib.resources)+ 手写 HTML/CSS/JS。零新增依赖。
 
-**Spec:** `docs/superpowers/specs/2026-08-03-viz-design.md`
+Spec: `docs/superpowers/specs/2026-08-03-viz-design.md`
 
 ## Global Constraints
 
-- Python **>=3.9** 兼容(pyproject 如此声明):运行时代码不用 `X | Y` 联合类型语法(注解里配合 `from __future__ import annotations` 可以用)
-- **零新增依赖**:不改 `[project] dependencies`
-- **不动现有代码**:`cli.py`、`core/`、`modes/` 一行不改;pyproject 只加 script 注册与 package-data
+- Python >=3.9 兼容(pyproject 如此声明):运行时代码不用 `X | Y` 联合类型语法(注解里配合 `from __future__ import annotations` 可以用)
+- 零新增依赖:不改 `[project] dependencies`
+- 不动现有代码:`cli.py`、`core/`、`modes/` 一行不改;pyproject 只加 script 注册与 package-data
 - 测试全离线,不打真实 API(项目铁律:花钱的副作用不能是默认行为)
 - 注释风格与现有代码一致:中文、讲"为什么"
 - 每个文件开头有模块 docstring,说明该模块存在的理由(项目惯例)
@@ -35,16 +35,16 @@ pyproject.toml             +2 处:pai-viz script、package-data
 
 ### Task 1: collect.py — 工具自省 + pipeline 概念图 + model 名
 
-**Files:**
+Files:
 - Create: `src/pai/viz/__init__.py`
 - Create: `src/pai/viz/collect.py`
 - Test: `tests/test_viz_collect.py`
 
-**Interfaces:**
+Interfaces:
 - Consumes: `pai.core.tools.get_tools()`(已存在,返回 `dict[str, Tool]`,`Tool.parameters` 是 JSON Schema 的 object 定义)、`pai.config.model_name()`(已存在,读 env,不需要 API key)
 - Produces: `build_structure(status_path: Path) -> dict`,键:`model`(str)、`tools`(list[dict])、`pipeline`(dict,含 `nodes`/`edges`)、`stages`(list,本 task 恒为 `[]`)、`warnings`(list[str])。Task 2 往 `stages`/`warnings` 里填内容,Task 3 的 server 调 `python -m pai.viz.collect` 拿整个 JSON。
 
-- [ ] **Step 1: 写失败的测试**
+- [ ] Step 1: 写失败的测试
 
 创建 `tests/test_viz_collect.py`:
 
@@ -90,12 +90,12 @@ def test_structure_is_json_serializable_and_has_model():
     assert s["warnings"]
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [ ] Step 2: 跑测试确认失败
 
 Run: `pytest tests/test_viz_collect.py -v`
 Expected: FAIL,`ModuleNotFoundError: No module named 'pai.viz'`
 
-- [ ] **Step 3: 最小实现**
+- [ ] Step 3: 最小实现
 
 创建空的 `src/pai/viz/__init__.py`,再创建 `src/pai/viz/collect.py`:
 
@@ -204,17 +204,17 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [ ] Step 4: 跑测试确认通过
 
 Run: `pytest tests/test_viz_collect.py -v`
 Expected: 3 项 PASS
 
-- [ ] **Step 5: 手工验证子进程入口**
+- [ ] Step 5: 手工验证子进程入口
 
 Run: `python -m pai.viz.collect | python -c "import json,sys; d=json.load(sys.stdin); print(d['model'], len(d['tools']))"`
 Expected: 打印 model 名和工具数(4)
 
-- [ ] **Step 6: Commit**
+- [ ] Step 6: Commit
 
 ```bash
 git add src/pai/viz/__init__.py src/pai/viz/collect.py tests/test_viz_collect.py
@@ -225,11 +225,11 @@ git commit -m "feat(viz): collect.py 工具自省 + pipeline 概念图数据"
 
 ### Task 2: STATUS.md「模块现状」表解析,接入 build_structure
 
-**Files:**
+Files:
 - Modify: `src/pai/viz/collect.py`
 - Test: `tests/test_viz_collect.py`(追加)
 
-**Interfaces:**
+Interfaces:
 - Produces: `parse_status_table(text: str) -> list`,每项 `{"key": str, "label": str, "status": "ok"|"partial"|"todo"|"unknown", "note": str}`;`build_structure()` 的 `stages` 从此有内容。前端(Task 4)靠 `key` 与 pipeline 节点的 `stage` 字段对上。
 
 STATUS.md 的表长这样(解析目标,格式已存在于 `docs/dev/STATUS.md`):
@@ -247,7 +247,7 @@ STATUS.md 的表长这样(解析目标,格式已存在于 `docs/dev/STATUS.md`):
 
 要点:模块列可能一格多个模块(用「空格斜杠空格」分隔——路径里的 `/` 两侧无空格,不会误切);状态词可能带 `**` 加粗;模块名可能带反引号、路径前缀、`.py` 后缀、目录尾 `/`。
 
-- [ ] **Step 1: 写失败的测试**
+- [ ] Step 1: 写失败的测试
 
 在 `tests/test_viz_collect.py` 追加:
 
@@ -299,12 +299,12 @@ def test_build_structure_reads_real_status(tmp_path):
     assert any(st["key"] == "loop" and st["status"] == "ok" for st in s["stages"])
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [ ] Step 2: 跑测试确认失败
 
 Run: `pytest tests/test_viz_collect.py -v`
 Expected: 新增 3 项 FAIL,`ImportError: cannot import name 'parse_status_table'`
 
-- [ ] **Step 3: 实现解析器**
+- [ ] Step 3: 实现解析器
 
 在 `collect.py` 中(`STATUS_DEFAULT` 之后)加:
 
@@ -384,17 +384,17 @@ def parse_status_table(text: str) -> list:
             warnings.append(f"{status_path} 里没解析出「模块现状」表(格式变了?),阶段路线图为空")
 ```
 
-- [ ] **Step 4: 跑全部 viz 测试确认通过**
+- [ ] Step 4: 跑全部 viz 测试确认通过
 
 Run: `pytest tests/test_viz_collect.py -v`
 Expected: 6 项 PASS(注意 Task 1 的 `test_structure_...` 断言 STATUS 缺失时 `stages == []` 且有警告,应仍然通过)
 
-- [ ] **Step 5: 用真实 STATUS.md 手工验证**
+- [ ] Step 5: 用真实 STATUS.md 手工验证
 
 Run: `python -m pai.viz.collect | python -c "import json,sys; [print(s['key'], s['status']) for s in json.load(sys.stdin)['stages']]"`
 Expected: 打印 loop/tools/session 等为 ok,compaction 为 partial,memory 等为 todo
 
-- [ ] **Step 6: Commit**
+- [ ] Step 6: Commit
 
 ```bash
 git add src/pai/viz/collect.py tests/test_viz_collect.py
@@ -405,16 +405,16 @@ git commit -m "feat(viz): 解析 STATUS.md 模块现状表,阶段状态入 JSON"
 
 ### Task 3: server.py + pyproject 注册(pai-viz 命令)
 
-**Files:**
+Files:
 - Create: `src/pai/viz/server.py`
 - Modify: `pyproject.toml`(`[project.scripts]` 加一行;新增 `[tool.setuptools.package-data]`)
 - Test: `tests/test_viz_server.py`
 
-**Interfaces:**
+Interfaces:
 - Consumes: `python -m pai.viz.collect`(Task 1/2 的子进程入口);`src/pai/viz/index.html`(Task 4 提供,本 task 先放占位页)
 - Produces: `pai.viz.server:main`(console script 入口);`GET /` → HTML,`GET /api/structure` → collect 的 JSON(失败时 500 + `{"error": stderr}`)
 
-- [ ] **Step 1: 写失败的测试**
+- [ ] Step 1: 写失败的测试
 
 创建 `tests/test_viz_server.py`:
 
@@ -461,12 +461,12 @@ def test_unknown_path_404(viz_server):
     assert ei.value.code == 404
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [ ] Step 2: 跑测试确认失败
 
 Run: `pytest tests/test_viz_server.py -v`
 Expected: FAIL,`ModuleNotFoundError`/`ImportError`(server 还不存在)
 
-- [ ] **Step 3: 放占位 index.html + 实现 server.py**
+- [ ] Step 3: 放占位 index.html + 实现 server.py
 
 先放一个最小占位页(Task 4 会整体替换),`src/pai/viz/index.html`:
 
@@ -585,17 +585,17 @@ pai-viz = "pai.viz.server:main"
 "pai.viz" = ["*.html"]
 ```
 
-- [ ] **Step 4: 重装(让新 script 生效)并跑测试**
+- [ ] Step 4: 重装(让新 script 生效)并跑测试
 
 Run: `pip install -e ".[dev]" -q && pytest tests/test_viz_server.py -v`
 Expected: 3 项 PASS
 
-- [ ] **Step 5: 手工冒烟**
+- [ ] Step 5: 手工冒烟
 
 Run: `pai-viz --no-open --port 7799 &` 然后 `curl -s localhost:7799/api/structure | head -c 200`,最后 kill 后台进程
 Expected: JSON 开头含 `"model"`
 
-- [ ] **Step 6: Commit**
+- [ ] Step 6: Commit
 
 ```bash
 git add src/pai/viz/server.py src/pai/viz/index.html tests/test_viz_server.py pyproject.toml
@@ -606,11 +606,11 @@ git commit -m "feat(viz): stdlib http server + pai-viz 命令注册"
 
 ### Task 4: index.html — 单页前端(结构图 + 阶段路线图)
 
-**Files:**
+Files:
 - Modify: `src/pai/viz/index.html`(整体替换占位页)
 - Test: `tests/test_viz_server.py`(追加 1 项)
 
-**Interfaces:**
+Interfaces:
 - Consumes: `GET /api/structure` 的 JSON:`model` / `tools[{name,description,params[{name,type,desc,required}]}]` / `pipeline{nodes[{id,label,desc?,col,stage?}],edges[[a,b]]}` / `stages[{key,label,status,note}]` / `warnings[str]`;错误时 `{error}`。
 - Produces: 完整页面。无构建步骤、无外部资源(离线可用)。
 
@@ -621,7 +621,7 @@ git commit -m "feat(viz): stdlib http server + pai-viz 命令注册"
 - 顶部:标题 + meta(最后刷新时间 · model · 工具数)+ 刷新按钮(重新 fetch,不刷整页)
 - `warnings` → 黄条;fetch 失败/`{error}` → 红条,结构图区照常尝试渲染已有数据
 
-- [ ] **Step 1: 追加测试(先失败)**
+- [ ] Step 1: 追加测试(先失败)
 
 在 `tests/test_viz_server.py` 追加:
 
@@ -636,7 +636,7 @@ def test_index_is_real_page_not_placeholder(viz_server):
 
 Run: `pytest tests/test_viz_server.py -v` → 新增 1 项 FAIL(占位页没有这些)
 
-- [ ] **Step 2: 整体替换 index.html**
+- [ ] Step 2: 整体替换 index.html
 
 ```html
 <!doctype html>
@@ -856,15 +856,15 @@ load();
 </html>
 ```
 
-- [ ] **Step 3: 跑测试确认通过**
+- [ ] Step 3: 跑测试确认通过
 
 Run: `pytest tests/test_viz_server.py -v`
 Expected: 4 项 PASS
 
-- [ ] **Step 4: 手工验收(核心体验)**
+- [ ] Step 4: 手工验收(核心体验)
 
 1. `pai-viz` → 浏览器自动打开,确认:结构图四列、loop 绿边、compaction 黄边、memory 等虚线灰、连线正常;工具组里 4 张卡,点开 `bash` 能看到 `command` 参数标 `*`
-2. **加新工具实验**:在 `src/pai/core/tools/fs.py` 临时加
+2. 加新工具实验:在 `src/pai/core/tools/fs.py` 临时加
 
    ```python
    @tool
@@ -873,11 +873,11 @@ Expected: 4 项 PASS
        return "TODO"
    ```
 
-   浏览器点「刷新」→ 工具组出现 `web_fetch`。**这一步是整个项目的验收标准。**
+   浏览器点「刷新」→ 工具组出现 `web_fetch`。这一步是整个项目的验收标准。
    验完把临时工具删掉,`git checkout src/pai/core/tools/fs.py` 或手工还原。
 3. 把 STATUS.md 里 compaction 的「部分」临时改成「可用」,刷新 → 结构图 compaction 节点变绿。改回来。
 
-- [ ] **Step 5: Commit**
+- [ ] Step 5: Commit
 
 ```bash
 git add src/pai/viz/index.html tests/test_viz_server.py
@@ -888,12 +888,12 @@ git commit -m "feat(viz): 单页前端——结构图(SVG 连线)+ 阶段路线�
 
 ### Task 5: 文档收尾 + 全量回归
 
-**Files:**
+Files:
 - Modify: `README.md`(结构一节加 viz)
 - Modify: `docs/dev/STATUS.md`(模块现状表加 viz 行——加完 viz 自己就会显示自己,顺手验证)
 - Modify: `docs/dev/devlog.md`(按项目惯例追加一条记录)
 
-- [ ] **Step 1: README 结构树加一段**
+- [ ] Step 1: README 结构树加一段
 
 在 `README.md` 结构树 `modes/` 段之后加:
 
@@ -901,7 +901,7 @@ git commit -m "feat(viz): 单页前端——结构图(SVG 连线)+ 阶段路线�
   viz/             架构可视化:pai-viz 起本地网页,结构图(工具自动自省)+ 阶段路线图(解析 STATUS.md)
 ```
 
-- [ ] **Step 2: STATUS.md 模块现状表加一行**
+- [ ] Step 2: STATUS.md 模块现状表加一行
 
 在 `modes/once.py` 行后加:
 
@@ -909,19 +909,19 @@ git commit -m "feat(viz): 单页前端——结构图(SVG 连线)+ 阶段路线�
 | `viz/` | 可用 | `pai-viz` 本地架构可视化:工具自省自动上图,阶段状态解析本表 |
 ```
 
-- [ ] **Step 3: devlog.md 按现有条目格式追加记录**
+- [ ] Step 3: devlog.md 按现有条目格式追加记录
 
 内容要点:做了 pai-viz(动机:直观看到架构与进度)、三个文件的分工、
 「每请求起子进程」的设计原因、STATUS.md 作为阶段状态单一事实来源。
 格式参照 devlog.md 现有条目(日期 + 小节),与最近几条保持一致。
 
-- [ ] **Step 4: 全量回归**
+- [ ] Step 4: 全量回归
 
 Run: `./test.sh`
 Expected: 原 56 项 + 新增约 10 项全部 PASS(1 项 llm 标记 deselected 照旧);
 再跑一次 `pai-viz --no-open --port 7788 &` + `curl -s localhost:7788/ | grep -c pipeline` 确认非占位页,kill 之。
 
-- [ ] **Step 5: Commit**
+- [ ] Step 5: Commit
 
 ```bash
 git add README.md docs/dev/STATUS.md docs/dev/devlog.md

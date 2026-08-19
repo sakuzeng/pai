@@ -16,7 +16,7 @@
 | hooks、hooks-guide | 阶段 4 权限 | [permissions-hooks.md](permissions-hooks.md) ✓ |
 | skills | 阶段 6 | 未读 |
 | mcp、mcp-quickstart | 阶段 6 | 未读 |
-| sub-agents、agent-teams | **不做**——超精简边界；大输出隔离问题用 read_file 截断提示兜（TODO R#17） | — |
-| checkpointing | **暂不做**——回滚/重演依赖会话树，等阶段 2 后按需评估 | — |
-| settings、cli-reference、statusline 等产品配置类 | **不做**——产品面功能，非 harness 学习目标 | — |
-| agent-sdk/* | **不做**——pai 本身就是在造这一层 | — |
+| sub-agents、agent-teams | 不做——超精简边界；大输出隔离问题用 read_file 截断提示兜（TODO R#17） | — |
+| checkpointing | 暂不做——回滚/重演依赖会话树，等阶段 2 后按需评估 | — |
+| settings、cli-reference、statusline 等产品配置类 | 不做——产品面功能，非 harness 学习目标 | — |
+| agent-sdk/* | 不做——pai 本身就是在造这一层 | — |

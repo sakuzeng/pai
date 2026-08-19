@@ -4,7 +4,7 @@
 
 ## 目标
 
-一个本地网页,直观展示 pai 的**整体架构**,并且代码变化(尤其是新增 `@tool` 工具)后刷新页面即可看到。
+一个本地网页,直观展示 pai 的整体架构,并且代码变化(尤其是新增 `@tool` 工具)后刷新页面即可看到。
 不做运行时观测/会话回放——那是以后的事。
 
 ## 用户确认过的决定
@@ -21,7 +21,7 @@
 
 - 新增目录 `src/pai/viz/`(3 个文件,自成一体)
 - `pyproject.toml` 加一行 console script:`pai-viz = "pai.viz.server:main"`
-- **`cli.py`、`core/`、`modes/` 一行不动**。删掉 viz 目录和那一行,项目回原样。
+- `cli.py`、`core/`、`modes/` 一行不动。删掉 viz 目录和那一行,项目回原样。
 
 ## 文件布局
 
@@ -42,20 +42,20 @@ server 是常驻进程,Python 模块 import 后有缓存,新加的 `@tool` 在�
 每次 `/api/structure` 起一个新解释器(`python -m pai.viz.collect`)现场收集,
 约 100-200ms,本地开发无感。收益:
 
-1. **改完代码 → 刷新浏览器 → 新工具立刻出现**(核心体验)
+1. 改完代码 → 刷新浏览器 → 新工具立刻出现(核心体验)
 2. 隔离性:代码写出语法错误时,子进程失败、错误显示在页面上,server 本身不挂
 
 ## 数据层(collect.py 输出的 JSON)
 
 三块:
 
-- **`tools`(全自动)**:调 `get_tools()` 拿注册表,每个工具输出
+- `tools`(全自动):调 `get_tools()` 拿注册表,每个工具输出
   name / description / 参数列表(名字、类型、描述、是否必填)。
   全部来自 `@tool` 从签名生成的 schema,零手工维护。
-- **`pipeline`(手写数据、程序渲染)**:运行时结构图的节点与连线,定义为 collect.py 里的一份
+- `pipeline`(手写数据、程序渲染):运行时结构图的节点与连线,定义为 collect.py 里的一份
   Python 数据:`user task → agent loop ⇄ LLM(显示当前 model 名)/ tools 组 → session 落盘 / 预算熔断`。
   将来接入 compaction、permissions 等环节时,改这份数据即可上图。
-- **`stages`(解析 STATUS.md)**:解析 `docs/dev/STATUS.md` 的「模块现状」表,
+- `stages`(解析 STATUS.md):解析 `docs/dev/STATUS.md` 的「模块现状」表,
   每行输出 模块名 / 状态(可用、部分、未开始)/ 说明。
   不另造状态文件——STATUS.md 保持单一事实来源。
 
@@ -80,10 +80,10 @@ pipeline 数据从第一版就把 compaction、permissions、streaming、memory�
 
 单页,dark 主题(参照 Pi Coding Agent 仪表盘的气质)。两个区域:
 
-1. **运行时结构图**:按 `pipeline` 数据渲染卡片分组
+1. 运行时结构图:按 `pipeline` 数据渲染卡片分组
    (agent loop 框内含 LLM 节点;tools 组内每个工具一张卡,可展开看参数),
    卡片间用一层 SVG 画连线。
-2. **阶段路线图**:`stages` 渲染成网格卡片,
+2. 阶段路线图:`stages` 渲染成网格卡片,
    绿=可用 / 黄=部分 / 灰=未开始,卡片附说明文字。
 
 顶部状态栏:最后刷新时间 + 刷新按钮(重新 fetch,不刷整页)。不做自动轮询。

@@ -10,14 +10,14 @@
 ## 候选方案与确认
 
 四档范围（只修值得改 4 条 / 值得改+顺手 6 条 / 全修 15 条 / 只登记不修）。
-**用户拍板（2026-08-09）**：值得改 4（R3#1 门禁 NotebookEdit 漏拦、R3#2 @tool 两个
+用户拍板（2026-08-09）：值得改 4（R3#1 门禁 NotebookEdit 漏拦、R3#2 @tool 两个
 静默缺口、R3#3 bash 超时丢输出、R3#4 空断言测试）+ 顺手 6（R3#7 load_dotenv 入
 config、R3#9 Bash 旁路写进诚实边界、R3#10 max-tokens 校验、R3#13 恒真断言、
 R3#14 状态正则跨行）。其余 5 条（R3#5/6/8/15/16）登记 TODO。
 
 ## 结果与总结
 
-严格 TDD：先落 7 枚红钉（**7 failed, 85 passed**）再修，全绿 **92 passed, 1 deselected**。
+严格 TDD：先落 7 枚红钉（7 failed, 85 passed）再修，全绿 92 passed, 1 deselected。
 修复清单：门禁补 `target_path()` 拦 NotebookEdit + 状态正则不跨行 + Bash 旁路写进
 诚实边界；@tool 未知参数类型显式报错、`Tool.run` 返回强转 str（loop 不再会被
 非 str 返回崩掉）；bash 超时改回传部分输出（`TIMEOUT_SECONDS` 常量化）；

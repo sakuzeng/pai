@@ -4,50 +4,50 @@
 
 ## 2026-08-10 · Task 1：`core/paths.py` 路径唯一事实源
 
-**目标**：把「`~/.pai` 在哪、项目目录怎么算」从三处（`memory.py` / `config.py` /
+目标：把「`~/.pai` 在哪、项目目录怎么算」从三处（`memory.py` / `config.py` /
 `interactive.py`）收敛到一处，slug 换成可读的全路径连字符。
 
-**改动**：新建 `src/pai/core/paths.py`、`tests/test_paths.py`。
+改动：新建 `src/pai/core/paths.py`、`tests/test_paths.py`。
 
-**测试**：红 `ModuleNotFoundError: No module named 'pai.core.paths'` → 绿 `6 passed`。
+测试：红 `ModuleNotFoundError: No module named 'pai.core.paths'` → 绿 `6 passed`。
 
-**实测 slug**：`-Users-sakuzeng-improve-coding-agent-projects-pai`——与 CC 同形。
+实测 slug：`-Users-sakuzeng-improve-coding-agent-projects-pai`——与 CC 同形。
 
-**设计要点**：`test_known_slug_collision_is_documented` **把已知缺陷钉成了测试**，
+设计要点：`test_known_slug_collision_is_documented` 把已知缺陷钉成了测试，
 断言 `/a-b/c` 与 `/a/b-c` 确实撞成同一 slug。它不测正确性，测的是「将来有人想顺手修好时，
 先撞见这条测试并读到理由」——CC 就是这么拼的，加转义就不再与 CC 同形，
 而那正是本需求的诉求。
 
 ## 2026-08-10 · Task 2：`memory.py` 转调 paths
 
-**改动**：`memory.memory_dir` 转调 `paths.memory_dir`，删掉重复的 `_git_root` 与 hashlib 依赖；
+改动：`memory.memory_dir` 转调 `paths.memory_dir`，删掉重复的 `_git_root` 与 hashlib 依赖；
 对外签名不变，`build_context` / `memory_tool` 的调用点一行没改。
 
-**测试**：`test_memory_dir_now_lives_under_the_readable_slug` 断言目录名含连字符且长于
+测试：`test_memory_dir_now_lives_under_the_readable_slug` 断言目录名含连字符且长于
 16 位哈希；既有的「git 根归并」「非 git 回退」全绿。
 
 ## 2026-08-10 · Task 3：`SessionLog` 落用户目录 + sessionId/cwd + 去碰撞
 
-**目标**：**本轮最要紧的一条**——不再往当前工作目录写 `sessions/`。
+目标：本轮最要紧的一条——不再往当前工作目录写 `sessions/`。
 
-**改动**：`src/pai/core/session.py` 重写（默认目录取 `sessions_dir()`、每条记录带
+改动：`src/pai/core/session.py` 重写（默认目录取 `sessions_dir()`、每条记录带
 `sessionId` 与 `cwd`、文件名加短 id）。
 
-**测试**：红 5 条 → 全套绿。四条关键断言：当前目录不出现 `sessions/`、
-每条记录带 `sessionId`+`cwd`、同秒两个 SessionLog 得到两个文件（**关掉 R#15 旧账**）、
+测试：红 5 条 → 全套绿。四条关键断言：当前目录不出现 `sessions/`、
+每条记录带 `sessionId`+`cwd`、同秒两个 SessionLog 得到两个文件（关掉 R#15 旧账）、
 文件名保留时间戳前缀。
 
-**一处刻意的写法**：默认参数写 `None` 再在函数体里取 `sessions_dir()`，
-**不能**写成 `directory=sessions_dir()`——默认参数在函数定义时求值，
+一处刻意的写法：默认参数写 `None` 再在函数体里取 `sessions_dir()`，
+不能写成 `directory=sessions_dir()`——默认参数在函数定义时求值，
 测试隔离 `$HOME` 之后就追不回来（feature 05 补漏五刚在 `history_path_for` 上栽过同款，
 这次是照着教训写的，没再红一次）。
 
 ## 2026-08-10 · Task 4：装配层与可见性
 
-**改动**：`once.py` / `interactive.py` 的 `SessionLog()` 无参调用自动吃到新默认值（零改动）；
+改动：`once.py` / `interactive.py` 的 `SessionLog()` 无参调用自动吃到新默认值（零改动）；
 `_show_memory` 增加「💾 会话记录目录」一行。
 
-**测试**：`272 passed, 3 deselected`（259 → 272，+13）。
+测试：`272 passed, 3 deselected`（259 → 272，+13）。
 
 ## 2026-08-10 · 端到端实测（真跑，非测试）
 
@@ -68,11 +68,11 @@ cwd : /private/tmp/othersproject      ← 集中存放后仍分得清在哪跑�
 
 ## 2026-08-10 · 越界修复：asker 会吞掉用户给 REPL 的输入
 
-**先声明这是越界的**。按本档案[复盘](复盘.md)第一条刚立的判据——「顺手」只在
-**不做它本轮交付就是有缺陷的**时成立——这个 bug 属于 feature 05（AskUserQuestion），
-不修也不影响 08 的交付。**用户明确要求在本需求下修，我照做，但记在这里避免下次拿它当先例。**
+先声明这是越界的。按本档案[复盘](复盘.md)第一条刚立的判据——「顺手」只在
+不做它本轮交付就是有缺陷的时成立——这个 bug 属于 feature 05（AskUserQuestion），
+不修也不影响 08 的交付。用户明确要求在本需求下修，我照做，但记在这里避免下次拿它当先例。
 
-**怎么发现的**：用户问「↑ 翻的历史是不是存在 session 下」，我跑了个对照演示，
+怎么发现的：用户问「↑ 翻的历史是不是存在 session 下」，我跑了个对照演示，
 结果会话记录里出现了这两行：
 
 ```
@@ -81,22 +81,22 @@ assistant | 看起来这个交互环境里没有真人可问（工具返回了�
 ```
 
 我喂进去的 `!echo 我是命令` 本该由 REPL 当 shell 命令执行，却被模型的
-`ask_user_question` **当成了对问题的回答**。铁证是它没进输入历史——历史里只有
+`ask_user_question` 当成了对问题的回答。铁证是它没进输入历史——历史里只有
 `第一句问题`，因为那一行根本没被主循环读到。
 
-**根因**：asker 与 REPL 主循环**共用同一个 `reader`**。模型一提问，asker 就去读下一行
+根因：asker 与 REPL 主循环共用同一个 `reader`。模型一提问，asker 就去读下一行
 stdin，而用户此刻敲的可能是命令。真人交互时危害小一些（屏幕上有 `❓` 提示），
-但**被提问时用户没法退出**——`/exit` 会变成答案，人被困在问题里。
+但被提问时用户没法退出——`/exit` 会变成答案，人被困在问题里。
 
-**改动**：`_make_asker` 给三条出路——空行跳过、`/exit` 退出、其他 `/命令` 提示后重读；
+改动：`_make_asker` 给三条出路——空行跳过、`/exit` 退出、其他 `/命令` 提示后重读；
 `tests/test_interactive.py` +3。
 
-**一处不能用异常的地方**：`/exit` 不能靠抛异常传出去。`EOFError` 会被 `Tool.run` 的
+一处不能用异常的地方：`/exit` 不能靠抛异常传出去。`EOFError` 会被 `Tool.run` 的
 `except Exception` 吞成错误字符串；`KeyboardInterrupt` 又会一路掀出 `run_interactive`。
 所以用一个闭包里的 `state["exit"]` 标志，让主循环在本轮收尾后再退——
-**与 D#41「中断是数据路径不是异常路径」是同一条判断**。
+与 D#41「中断是数据路径不是异常路径」是同一条判断。
 
-**测试**：红 2 条 → 绿 **`276 passed, 3 deselected`**（273 → 276，+3）。
+测试：红 2 条 → 绿 `276 passed, 3 deselected`（273 → 276，+3）。
 
-**遗留**：`!命令` 开头的输入仍会被当成答案（只特判了 `/`）。真实答案以 `!` 开头的可能性
+遗留：`!命令` 开头的输入仍会被当成答案（只特判了 `/`）。真实答案以 `!` 开头的可能性
 不为零，所以没一并拦；已记 TODO。

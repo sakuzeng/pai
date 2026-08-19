@@ -1,29 +1,29 @@
 # 11-streaming · 实施计划
 
-spec 见 [spec.md](spec.md)（方案 B）。6 个 task，严格 TDD：**先写测试跑红（贴红的输出），
-再写实现跑绿（贴绿的数字）**。
+spec 见 [spec.md](spec.md)（方案 B）。6 个 task，严格 TDD：先写测试跑红（贴红的输出），
+再写实现跑绿（贴绿的数字）。
 
-**测试数字一律写成下限（`≥ N passed`）**——这是 [feature 09 复盘](../09-20260810-working-dir-boundary/README.md)
+测试数字一律写成下限（`≥ N passed`）——这是 [feature 09 复盘](../09-20260810-working-dir-boundary/README.md)
 留下的教训并已登记 TODO：上一轮 7 个 task 有 4 个实际数与 plan 不符，
 把「计划的估算」当成「应该达到的事实」，制造了必然失败的对账。
-基线：**458 passed, 3 deselected**。
+基线：458 passed, 3 deselected。
 
 ## 动工前已核实的两件事（省掉的工作）
 
-1. **`render_tool_line` 已经结构性支持多个 `◐` 并列**（`statusline.py:66` 的 `running` 是
+1. `render_tool_line` 已经结构性支持多个 `◐` 并列（`statusline.py:66` 的 `running` 是
    `dict[tool_call_id]`，渲染时 `for … in running.values()` 全部展开）。
-   它的 docstring 说「pai 一次只跑一个工具，所以不做」——**说法过时，代码是对的**。
+   它的 docstring 说「pai 一次只跑一个工具，所以不做」——说法过时，代码是对的。
    Task 6 只需补测试钉死 + 订正 docstring，不用重写渲染。
-2. **三个进程级全局不需要动**（`set_memory_dir` / `set_notifier` / `set_origin_session`）：
+2. 三个进程级全局不需要动（`set_memory_dir` / `set_notifier` / `set_origin_session`）：
    装配期写、执行期只读，线程并发下不构成竞争。TODO 里那条担忧核实后不成立，交付时去登记。
 
 ---
 
 ## Task 1：`core/streaming.py` 装配器 + 流式假 provider
 
-**目标**：把 chunk 序列装配成一条与非流式同形状的响应。纯函数，不碰 loop。
+目标：把 chunk 序列装配成一条与非流式同形状的响应。纯函数，不碰 loop。
 
-**测试先行**（`tests/test_streaming.py` 新建；`tests/fake_llm.py` 加流式支持是它的前置）：
+测试先行（`tests/test_streaming.py` 新建；`tests/fake_llm.py` 加流式支持是它的前置）：
 
 ```python
 """流式装配器。夹具剪裁自真实探针，见
@@ -145,7 +145,7 @@ def test_interrupt_stops_consuming_and_reports_no_usage():
     assert r.finish_reason is None
 ```
 
-**实现**（`src/pai/core/streaming.py` 新建）：
+实现（`src/pai/core/streaming.py` 新建）：
 
 ```python
 """流式装配：把 chunk 序列装回一条与非流式同形状的响应。
@@ -279,7 +279,7 @@ def _as_dict(usage) -> dict:
     return {k: v for k, v in vars(usage).items() if not k.startswith("_")}
 ```
 
-**`tests/fake_llm.py` 加流式**（同 task，测试基建）：
+`tests/fake_llm.py` 加流式（同 task，测试基建）：
 
 ```python
 def _chunks_for(turn: dict, call_id_counter):
@@ -299,16 +299,16 @@ def _create(self, **kwargs):
     return _make_response(turn, self._ids)
 ```
 
-**验收**：红阶段应看到 `ModuleNotFoundError: pai.core.streaming`；绿阶段
-`./test.sh` **≥ 465 passed**（新增 7 条左右）。
+验收：红阶段应看到 `ModuleNotFoundError: pai.core.streaming`；绿阶段
+`./test.sh` ≥ 465 passed（新增 7 条左右）。
 
 ---
 
 ## Task 2：loop 改用流式（含中断到流中途 + unmetered 留痕）
 
-**目标**：`create(stream=True)` → 装配器；**除了多出增量事件，loop 的可观察行为逐字不变**。
+目标：`create(stream=True)` → 装配器；除了多出增量事件，loop 的可观察行为逐字不变。
 
-**测试先行**（追加 `tests/test_loop.py`）：
+测试先行（追加 `tests/test_loop.py`）：
 
 ```python
 def test_streaming_produces_identical_messages_and_session_records():
@@ -330,7 +330,7 @@ def test_interrupted_stream_does_not_count_toward_budget_and_leaves_a_trace():
     偏差方向是恒定的（总是少算），静默的恒定偏差比随机误差危险。"""
 ```
 
-**实现**（`src/pai/core/loop.py` 改动点）：
+实现（`src/pai/core/loop.py` 改动点）：
 
 ```python
         stream = client.chat.completions.create(
@@ -365,15 +365,15 @@ class MessageDelta:
 
 `Interrupted.where` 的取值从 `("tool", "step")` 扩成 `("tool", "step", "stream")`。
 
-**验收**：红阶段 `MessageDelta` 未定义 / `stream` kwarg 未传；绿阶段 **≥ 470 passed**。
+验收：红阶段 `MessageDelta` 未定义 / `stream` kwarg 未传；绿阶段 ≥ 470 passed。
 
 ---
 
 ## Task 3：能力标志进 `@tool`
 
-**目标**：`is_read_only` / `is_concurrency_safe` 收 `input` 的函数、默认 `False`。
+目标：`is_read_only` / `is_concurrency_safe` 收 `input` 的函数、默认 `False`。
 
-**测试先行**（追加 `tests/test_tools.py`）：
+测试先行（追加 `tests/test_tools.py`）：
 
 ```python
 def test_capabilities_default_to_false_for_undeclared_tools():
@@ -399,7 +399,7 @@ def test_builtin_tool_capabilities():
     前件不存在就不装。"""
 ```
 
-**实现**（`src/pai/core/tools/__init__.py`）：
+实现（`src/pai/core/tools/__init__.py`）：
 
 ```python
 # 工具能力标志（feature 11）。与 get_path/access 同一个模式：框架问问题，工具用
@@ -447,18 +447,18 @@ def capabilities_for(tool_func, *, read_only=False, concurrency_safe=False) -> N
 
 各工具模块尾部：`capabilities_for(read_file, read_only=True, concurrency_safe=True)`；
 `write_file` / `edit_file` / `remember` / `ask_user_question` 显式 `False, False`（写清楚比默认更好读）；
-**`bash` 一行都不写**（不声明本身就是声明）。
+`bash` 一行都不写（不声明本身就是声明）。
 
-**验收**：红阶段 `AttributeError: 'Tool' object has no attribute 'read_only'`；
-绿阶段 **≥ 475 passed**。
+验收：红阶段 `AttributeError: 'Tool' object has no attribute 'read_only'`；
+绿阶段 ≥ 475 passed。
 
 ---
 
 ## Task 4：`core/scheduler.py` 保序贪心分批
 
-**目标**：纯函数 `partition` + 带线程池的 `execute`，**并发的是执行，不是交付**。
+目标：纯函数 `partition` + 带线程池的 `execute`，并发的是执行，不是交付。
 
-**测试先行**（`tests/test_scheduler.py` 新建）：
+测试先行（`tests/test_scheduler.py` 新建）：
 
 ```python
 def test_consecutive_safe_tools_merge_into_one_batch():
@@ -493,7 +493,7 @@ def test_unknown_tool_is_never_parallel():
     """未知工具名判不出能力 → 串行。判不出来 ≠ 没问题。"""
 ```
 
-**实现**（`src/pai/core/scheduler.py` 新建）：
+实现（`src/pai/core/scheduler.py` 新建）：
 
 ```python
 """工具调度：连续的并发安全工具合成一批并行跑，其余串行。
@@ -554,15 +554,15 @@ def execute(batch: Batch, run_one: Callable, *, max_workers: int = MAX_TOOL_WORK
         return list(pool.map(run_one, batch.calls))
 ```
 
-**验收**：红阶段 `ModuleNotFoundError: pai.core.scheduler`；绿阶段 **≥ 482 passed**。
+验收：红阶段 `ModuleNotFoundError: pai.core.scheduler`；绿阶段 ≥ 482 passed。
 
 ---
 
 ## Task 5：loop 接调度器 + 权限按批前置 + `SessionLog` 加锁
 
-**目标**：把 Task 4 接进 loop，**不破任何既有不变量**。
+目标：把 Task 4 接进 loop，不破任何既有不变量。
 
-**测试先行**（追加 `tests/test_loop.py`）：
+测试先行（追加 `tests/test_loop.py`）：
 
 ```python
 def test_tool_call_id_pairing_survives_parallel_execution():
@@ -592,31 +592,31 @@ def test_serial_batch_behaviour_is_byte_identical_to_before():
     """全是串行工具时（bash / write_file），行为与接调度器之前逐字相同。"""
 ```
 
-**实现**：
+实现：
 
 - `loop.py` 把「遍历 `msg.tool_calls` 逐个判权限 + 执行」换成：
   `for batch in partition(msg.tool_calls, tools):` → 先串行判完本批权限（发
   `PermissionDecided`），把 allow 的交给 `execute(batch, run_one)`，
-  denied / 中断的直接生成结果；最后**按原顺序**追加 `tool_entry` 与发 `ToolEnd`。
-- 事件时序的诚实边界：并发批里 `ToolStart` 由各线程发出，**顺序不保证**；
+  denied / 中断的直接生成结果；最后按原顺序追加 `tool_entry` 与发 `ToolEnd`。
+- 事件时序的诚实边界：并发批里 `ToolStart` 由各线程发出，顺序不保证；
   `ToolEnd` 与消息追加按原顺序。状态行只关心「谁在跑」，不依赖顺序。
 - `session.py`：`append` 用 `threading.Lock` 包住。
 
-**验收**：绿阶段 **≥ 490 passed**。
+验收：绿阶段 ≥ 490 passed。
 
 ---
 
 ## Task 6：终端上屏（增量文本 / 不重复打印最终答案 / 多个 ◐）
 
-**目标**：流式文本真的逐字上屏，且**最终答案不打两遍**。
+目标：流式文本真的逐字上屏，且最终答案不打两遍。
 
 现状：`cli.py:64` 与 `interactive._run_turn` 都在结尾打 `🤖 {answer}`。
 流式之后那段文字已经逐字打过了，再打一遍就是重复。
 
-**规则**（写进代码注释）：`AgentEnd.reason == "final"` 的文本**是模型说的**（已流式打过，不重打）；
-`budget` / `max_steps` / `interrupted` 的文本**是 loop 合成的**（从没流过，必须打）。
+规则（写进代码注释）：`AgentEnd.reason == "final"` 的文本是模型说的（已流式打过，不重打）；
+`budget` / `max_steps` / `interrupted` 的文本是 loop 合成的（从没流过，必须打）。
 
-**测试先行**（追加 `tests/test_modes.py`）：
+测试先行（追加 `tests/test_modes.py`）：
 
 ```python
 def test_final_answer_is_not_printed_twice_when_streamed():
@@ -627,21 +627,21 @@ def test_status_line_shows_multiple_running_tools():
     只是 docstring 写着「不做」——本 task 补测试钉死并订正那句话。"""
 ```
 
-**实现**：新增 `src/pai/modes/echo.py` 的 `make_stream_echo()`，
+实现：新增 `src/pai/modes/echo.py` 的 `make_stream_echo()`，
 `once` 用它当默认 `on_event`，`interactive.make_event_handler` 与状态行组合；
 `cli.py` 与 `_run_turn` 去掉结尾的 `🤖 {answer}`。
 `statusline.py` 的 docstring 订正（「一次只跑一个工具」已不成立）。
 
-**验收**：绿阶段 **≥ 496 passed**。
+验收：绿阶段 ≥ 496 passed。
 
 ---
 
 ## 交付收尾（不是 task）
 
-1. `./test.sh` 全绿，把**真实数字**写回 STATUS（机器对账会校验）。
+1. `./test.sh` 全绿，把真实数字写回 STATUS（机器对账会校验）。
 2. 写 [复盘.md](复盘.md)（四问，「我现在质疑什么」必答）。
 3. 遗留问题逐条登记 TODO；顺带核销两条：
-   - 「三个进程级全局一旦有并发就要重新考虑」→ **核实不成立**（装配期写、执行期只读）；
+   - 「三个进程级全局一旦有并发就要重新考虑」→ 核实不成立（装配期写、执行期只读）；
    - R#11「单轮多 tool_calls 无测试覆盖」→ Task 5 的配对测试覆盖了。
 4. 够格升格的取舍进 `decisions.md`：① 一次响应 = 一条 assistant 消息（拒绝 CC 的 block 级记录）；
    ② 权限按批前置（偏离 CC，理由是绕开抢输入流 + 语义变化限制在批内）；
