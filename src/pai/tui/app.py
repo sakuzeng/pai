@@ -120,6 +120,7 @@ class TuiApp:
         # （用户 2026-08-11：「我从后往前移动复制不了」）。
         self._grab: Optional[str] = None
         self._now = now or time.monotonic
+        self._last_frame_at = 0.0   # 拖动节流的窗口起点（见 DRAG_FRAME_INTERVAL）
         self._drag_at: Optional[float] = None   # 最后一条拖动事件的时刻
         self._copied: str = ""                  # 上次放进剪贴板的内容（避免重复复制）
         self._expanded = 0                 # 已经展开到倒数第几条
@@ -195,10 +196,27 @@ class TuiApp:
         合并是第二道（挡「将来有人在事件处理里直接 refresh」）。
         """
         actions: List[Tuple[str, object]] = []
+        dragging_before = self._drag_at is not None
         for key in _merge_mouse_runs(decoder.feed(data)):
             actions.extend(self._key(key))
+        if self._should_throttle_frame(dragging_before):
+            # 压住这一帧，交给 `needs_tick()` 推出来的收尾帧
+            # （拖动期间它本来就为真）。不压住的话，事件一条一批到达时
+            # 一次手势要画上百帧——那正是「拖选卡顿」的根因。
+            return actions
+        self._last_frame_at = self._now()
         self.refresh()
         return actions
+
+    def _should_throttle_frame(self, dragging_before: bool) -> bool:
+        """只在拖动期节流，且只压「距上一帧不足一个窗口」的那些。
+
+        判据用「这批之前就在拖」而不是「现在在拖」：按下那一帧要立刻画出来
+        （用户得看见选区起点），松手那一帧同样——它们都不满足 dragging_before。
+        """
+        if not dragging_before or self._drag_at is None:
+            return False
+        return self._now() - self._last_frame_at < DRAG_FRAME_INTERVAL
 
     def _key(self, key) -> List[Tuple[str, object]]:
         name = key.name
@@ -510,6 +528,13 @@ def _display_result(event) -> str:
     """
     return sanitize_terminal_text(event.result or "")
 
+
+# 拖动期两帧之间至少隔这么久。数字取自 pi 的 `TuiBase.MIN_RENDER_INTERVAL_MS = 16`
+# （约 60fps，人眼跟得上而机器省得下）。实测依据见
+# `pai_playground/bench/drag_render.py`：一次手势 120 条移动事件，
+# 事件一条一批到达时 206~263ms / 写终端 121 次；按 16ms 合并后 27~35ms / 16 次。
+# **只对拖动生效**——按键必须帧帧跟手，一个字都不许并。
+DRAG_FRAME_INTERVAL = 0.016
 
 MAX_COLLAPSED = 32
 
