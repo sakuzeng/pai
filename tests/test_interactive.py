@@ -4,6 +4,7 @@
 「输入源可注入」是这一层能被测的唯一原因，也是 modes/ 层依赖注入约束的延续。
 """
 import json
+from types import SimpleNamespace
 
 import pytest
 from fake_llm import FakeClient
@@ -503,3 +504,43 @@ def test_repl_holds_recall_state_across_turns(tmp_path, monkeypatch):
                     on_event=lambda _: None, no_session=True)
 
     assert len(client.requests) == 3          # 召回 1 次 + 两轮各 1 次
+
+
+# ---- R4#11：/compact 是唯一碰网络的命令路径，不许掀掉会话（2026-08-19 评审）----
+
+
+def test_manual_compact_survives_a_network_error():
+    """`/compact` 撞上一次网络抖动不该掀掉整个会话。
+
+    已登记的「两条主循环都兜了」只包住 `_run_turn`；`_handle_command`
+    是一路裸抛的——REPL 下整个 while 循环带栈掀掉、TUI 下大 try 只有 finally
+    （终端复原了但对话没了）。而这恰恰是最不该丢上下文的时刻：
+    用户按 `/compact` 正是因为上下文已经攒得很长了。
+    """
+    from pai.core.compaction import AnchorBook, CompactionSettings, CompactionState
+    from pai.modes.interactive import _manual_compact
+
+    class Exploding:
+        def __init__(self):
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(create=self._boom))
+
+        def _boom(self, **kwargs):
+            raise RuntimeError("429 Too Many Requests")
+
+    messages = [{"role": "system", "content": "s"}]
+    messages += [{"role": "user", "content": f"第 {i} 句"} for i in range(6)]
+    before = list(messages)
+
+    anchors = AnchorBook()
+    anchors.record(2, 100)
+    anchors.record(4, 900)
+
+    said: list = []
+    _manual_compact(messages=messages, anchors=anchors, state=CompactionState(),
+                    client=Exploding(), model="fake",
+                    compaction=CompactionSettings(keep_recent_tokens=1),
+                    out=said.append)
+
+    assert messages == before, "失败了就不该动历史"
+    assert any("压缩失败" in line for line in said), f"要告诉用户为什么，实际：{said}"
