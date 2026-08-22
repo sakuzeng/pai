@@ -77,6 +77,16 @@ def test_interrupted_has_its_own_line():
     assert "中断" in render_text(Interrupted(where="step"))
 
 
+def test_interrupted_in_stream_does_not_claim_the_request_was_never_sent():
+    """R4#21：`where="stream"` 是掐在模型输出中途——请求早已发出、服务端照样计费、
+    本地拿不到 usage（这步消耗不进账）。旧文案把它落进 else 分支说成
+    「停在下一次请求之前」，与事实相反：用户会以为这步没花钱。"""
+    text = render_text(Interrupted(where="stream"))
+    assert "下一次请求之前" not in text, "stream 中断不该复用 step 的文案"
+    assert "输出中途" in text
+    assert "计费" in text or "不进账" in text, "钱的事必须说：服务端已计费而本地无 usage"
+
+
 def test_events_are_frozen_dataclasses():
     event = TurnStart(step=1)
     with pytest.raises(dataclasses.FrozenInstanceError):

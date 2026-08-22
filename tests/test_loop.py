@@ -1168,6 +1168,27 @@ def test_recall_failure_does_not_break_the_turn():
     assert answer == "好"
 
 
+def test_recall_crash_is_reported_not_swallowed():
+    """R4#22：上一条只钉「不炸」，没钉「说出来」。loop 外层的 except 此前彻底静默——
+    不发事件不留痕，与仓库基调（静默失败是 bug）相悖，也与 RecallFailed 自己的
+    docstring（「pai 要说出来」）相悖。逃到这里的异常是 make_recall 包装层
+    自己的 bug（正常失败在包装层内已转 on_failure），更得留痕。"""
+    from pai.core.events import RecallFailed
+
+    def boom(query):
+        raise RuntimeError("召回内部炸了")
+
+    seen = []
+    client = FakeClient([{"content": "好"}])
+    run_agent("我的问题", client=client, model="fake", tools=get_tools(),
+              recall=boom, on_event=seen.append)
+    failures = [e for e in seen if isinstance(e, RecallFailed)]
+    assert len(failures) == 1
+    assert failures[0].reason == "crashed"
+    assert "召回内部炸了" in failures[0].detail
+    assert failures[0].disabled is False, "loop 层不持有熔断状态，说不了「已停用」"
+
+
 # ---------------------------------------------------------------------------
 # feature 11 task 2：loop 改用流式
 # ---------------------------------------------------------------------------

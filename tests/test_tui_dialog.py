@@ -47,12 +47,40 @@ def test_enter_answers_with_the_selected_option():
     assert press(d, b"\r") == ["方案 B"]
 
 
-def test_digit_keys_pick_directly():
-    assert press(q(), b"2") == ["方案 B"]
+def perm():
+    return Dialog(question="允许执行 echo hi 吗？",
+                  options=["允许这次", "拒绝"], kind="permission")
 
 
-def test_out_of_range_digit_is_ignored():
-    assert press(q(), b"9") == []
+def test_digit_keys_pick_directly_in_a_permission_dialog():
+    """R4#16 拍板「按框分流」（2026-08-22）：权限框保留首键直选——它没有
+    自由文本语义（固定「允许这次/拒绝」），CC 的框正是因为没有自由文本才敢直选。"""
+    assert press(perm(), b"2") == ["拒绝"]
+
+
+def test_out_of_range_digit_is_ignored_in_a_permission_dialog():
+    assert press(perm(), b"9") == []
+
+
+def test_question_dialog_does_not_eat_digit_prefixed_free_text():
+    """R4#16 的病灶本身：提问框答「3天后再说」，首键直选把「3」吃成选项 3。
+    拍板后提问框判**整串**（回车才裁决），与 REPL 的 `_make_asker` 一致。"""
+    d = q()
+    assert press(d, "3天后再说".encode()) == []      # 中途不裁决
+    assert press(d, b"\r") == ["3天后再说"]
+
+
+def test_question_dialog_judges_the_whole_string_like_the_repl():
+    d = q()
+    assert press(d, b"2") == []                       # 光敲数字不再立即选中
+    assert press(d, b"\r") == ["方案 B"]              # 回车时整串是序号 → 选它
+
+
+def test_question_dialog_out_of_range_number_is_free_text():
+    """REPL 语义（interactive.py `_make_asker`）：整串是数字但越界 → 当自由文本。"""
+    d = q()
+    press(d, b"9")
+    assert press(d, b"\r") == ["9"]
 
 
 def _settled_decoder():

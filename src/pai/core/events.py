@@ -107,7 +107,9 @@ class RecallFailed:
     否则用户看到的只是「召回好像不生效」，而真实原因（provider 报错 / 回复没法解析）
     一点痕迹都不留（2026-08-11 真跑冒烟撞到的正是这个）。"""
 
-    reason: Literal["request_failed", "unparseable"]
+    # crashed = 异常逃出了 make_recall 包装层本身（前两种在包装层内已转 on_failure），
+    # 由 loop 的兜底 except 补发（R4#22）——它不持有熔断状态，disabled 恒 False
+    reason: Literal["request_failed", "unparseable", "crashed"]
     detail: str
     disabled: bool          # 熔断是否已跳闸（本会话不再尝试）
 
@@ -242,6 +244,10 @@ def render_text(event: AgentEvent) -> Optional[str]:
     if isinstance(event, MemoryWritten):
         return f"🧠 已记住（{event.topic}）→ {event.path}"
     if isinstance(event, Interrupted):
-        where = "工具执行被终止" if event.where == "tool" else "停在下一次请求之前"
+        # 三个取值三句话，不许合并分支：stream 的请求已发出且服务端照样计费
+        # （本地拿不到 usage，这步消耗不进账），说成「停在请求之前」与事实相反（R4#21）
+        where = {"tool": "工具执行被终止",
+                 "stream": "掐在模型输出中途（该请求服务端已计费，本地无 usage 不进账）",
+                 }.get(event.where, "停在下一次请求之前")
         return f"⛔ 已中断：{where}，已完成的工作保留"
     return None

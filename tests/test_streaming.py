@@ -206,3 +206,33 @@ def test_fake_client_can_emit_the_openai_usage_shape():
     chunks = list(client.chat.completions.create(model="m", messages=[], stream=True))
     assert chunks[-1].choices == []          # OpenAI 形状：末块 choices 为空数组
     assert assemble(iter(chunks)).usage["total_tokens"] == 3
+
+
+def test_empty_tool_call_ids_are_synthesized_unique():
+    """R4#9：OpenAI 兼容生态里漏发流式 id 的实现真实存在（部分 vLLM/网关），
+    而 pai 经 `PAI_BASE_URL` 明确支持任意兼容端点。id 空串时同批调用会共享
+    loop 的 `decisions[""]` 键互相覆盖（deny 的可能被放行），落盘后下一轮 400。
+    守卫定在装配出口：空 id 合成 `call_synth_{index}`。"""
+    chunks = [_chunk(delta={"tool_calls": [_frag(0, id="", name="a", arguments="{}")]}),
+              _chunk(delta={"tool_calls": [_frag(1, name="b", arguments="{}")]}),
+              _chunk(delta={}, finish_reason="tool_calls")]
+    r = assemble(iter(chunks))
+    ids = [tc.id for tc in r.tool_calls]
+    assert ids == ["call_synth_0", "call_synth_1"]
+
+
+def test_duplicate_tool_call_ids_are_made_unique():
+    """R4#9 的另一半：重复的非空 id 与空 id 撞的是同一个键。
+    首个保留原样（正常路径零改动），后来的重复者改写成合成 id。"""
+    chunks = [_chunk(delta={"tool_calls": [_frag(0, id="dup", name="a", arguments="{}")]}),
+              _chunk(delta={"tool_calls": [_frag(1, id="dup", name="b", arguments="{}")]}),
+              _chunk(delta={}, finish_reason="tool_calls")]
+    r = assemble(iter(chunks))
+    assert [tc.id for tc in r.tool_calls] == ["dup", "call_synth_1"]
+
+
+def test_normal_unique_ids_are_left_untouched():
+    """守卫不许碰正常路径：真实 id 一个字符都不能改。"""
+    r = assemble(_real_stream())
+    assert [tc.id for tc in r.tool_calls] == [
+        "call_00_U7xgjcyOxXvXbNTPOy2d8207", "call_01_i1QcRhY1WoHdH1peEnQ12146"]

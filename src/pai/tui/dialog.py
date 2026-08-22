@@ -67,7 +67,11 @@ class Dialog(Component):
         if name == "esc":
             return CANCELLED
         if name == "char":
-            if not self.typed and key.text.isdigit():
+            # 首键数字直选**只给权限框**（R4#16 拍板「按框分流」2026-08-22）：
+            # 它没有自由文本语义（固定「允许这次/拒绝」），CC 的框正是因此才敢直选。
+            # 提问框允许自由作答，「3天后再说」的 3 被直选吃掉就是病灶本身——
+            # 它判整串，裁决在 enter 分支，与 REPL 的 `_make_asker` 同一套语义。
+            if self.kind == "permission" and not self.typed and key.text.isdigit():
                 index = int(key.text) - 1
                 if 0 <= index < len(self.options):
                     return self.options[index]
@@ -84,7 +88,13 @@ class Dialog(Component):
         elif name == "enter":
             if self.handoff() is not None:
                 return None                   # 命令不是答案，等主循环来取
-            if self.typed.strip():
+            text = self.typed.strip()
+            if text:
+                # 提问框的整串判定（REPL 同款）：整串是序号且在范围内 → 选它；
+                # 越界的数字当自由文本——用户想说「9」就让他说
+                if (self.kind == "question" and text.isdigit()
+                        and 1 <= int(text) <= len(self.options)):
+                    return self.options[int(text) - 1]
                 return self.typed
             return self.options[self.selected]
         return None

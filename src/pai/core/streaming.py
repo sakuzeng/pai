@@ -90,11 +90,23 @@ def assemble(
             if getattr(choice, "finish_reason", None):
                 finish_reason = choice.finish_reason
 
+    assembled = [calls[i] for i in order]
+    # R4#9：全链路（gate 的 decisions 字典、落盘配对）都假设 id 非空且同批唯一，
+    # 而漏发流式 id 的 OpenAI 兼容实现真实存在（部分 vLLM/网关），pai 经
+    # PAI_BASE_URL 明确支持任意兼容端点。守卫定在装配出口：空的与撞了的合成
+    # `call_synth_{index}`；正常 id 一个字符都不碰。发回给 provider 的历史里
+    # assistant 与 tool 两侧用的都是装配后的 id，配对自洽。
+    # （合成 id 理论上仍可能与某个真实 id 撞，真实 id 长相是 call_00_<24位>，不设防。）
+    seen: set = set()
+    for i, call in zip(order, assembled):
+        if not call.id or call.id in seen:
+            call.id = f"call_synth_{i}"
+        seen.add(call.id)
     return StreamedResponse(
         content="".join(parts) or None,
         # None 而不是空列表：loop 用 `if not msg.tool_calls` 判终止没差别，
         # 但空数组会被原样写进 assistant_entry，把下一轮请求的形状弄脏
-        tool_calls=[calls[i] for i in order] or None,
+        tool_calls=assembled or None,
         finish_reason=finish_reason,
         usage=usage,
     )

@@ -84,7 +84,14 @@ def test_replay_is_lenient_about_unknown_sequences():
 
 
 def test_png_is_produced_and_non_trivial(tmp_path):
-    pytest.importorskip("PIL")
+    # R4#26：不许 importorskip——回放出图是所有 e2e 的测量仪器，仪器缺席
+    # 必须红而不是静默 skip（skip 在全绿的滚动条里没人看，缺了几个月都不知道）。
+    # Pillow 已列进 pyproject 的 dev 依赖。
+    try:
+        import PIL  # noqa: F401
+    except ImportError:
+        pytest.fail("Pillow 缺失：pai-replay 出不了图，e2e 的测量仪器缺席。"
+                    "装上：pip install pillow（已在 pyproject [dev] 里）")
     path = tmp_path / "r.jsonl"
     rec = Recorder(str(path), size=lambda: (30, 5), now=lambda: 0.0)
     rec.wrap(lambda _: None)("\x1b[36m› 中文 and ascii\x1b[0m\r\n● 答案")

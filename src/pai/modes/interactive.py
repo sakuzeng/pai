@@ -283,10 +283,14 @@ def await_dialog_answer(driver, app, dialog, on_action) -> str:
 
     中断 / EOF 要**连框一起撤**（R4#3）：只置一个「不等了」的标志会把框留在
     队列里接管全部按键，用户事后答掉它，结论就流向了下一个问题。
+
+    `on_action` 返回真值 = 用户要退出（dialog 期间敲了 `/exit`），与 EOF 同款
+    撤框（R4#15：此前 dispatch 的 quit 返回值被丢弃，`/exit` 在框里是静默空操作，
+    而 REPL 的 asker 同款逃生口是好使的——两处语义漂移）。
     """
     def handle(kind, payload) -> None:
-        on_action(kind, payload)
-        if kind in (INTERRUPT, EOF):
+        quit_requested = on_action(kind, payload)
+        if kind in (INTERRUPT, EOF) or quit_requested:
             app.cancel_dialog(dialog)
 
     driver.pump_until(lambda: dialog.resolved, handle)
@@ -727,11 +731,8 @@ def _run_tui(*, out, client, model, tools, messages, anchors, state, steering, f
                  selection=selection, history=_history_lines(history), color=color)
     app.editor.color = color
     def _on_resize() -> None:
-        # 终端在 resize 时会自己挪动备用屏的内容（实测），所以不能只重画——
-        # 要先把「上一帧屏幕上有什么」的记忆作废，逼出一次全量重绘。
-        if hasattr(app.renderer, "invalidate"):
-            app.renderer.invalidate()
-        app.refresh()
+        # 全套动作（作废重绘记忆 + 清选区 + 重画）在 app.handle_resize 里，那里可离线测
+        app.handle_resize()
 
     # 终端生命周期的写也走同一个 write：不然录制里会缺 `?1049h` 这类关键字节
     term = TerminalSession(on_resize=_on_resize, alt_screen=alt, mouse=use_mouse,
@@ -753,6 +754,14 @@ def _run_tui(*, out, client, model, tools, messages, anchors, state, steering, f
     def commit(text: str) -> None:
         app.commit(str(text))          # 拆换行与折行都在 app.commit 里做
 
+    def cycle_mode() -> None:
+        """shift+tab 切权限模式。空闲/busy/对话框期三处共用（R4#25 拍板
+        「放行安全三键」2026-08-22）：连环权限申请时恰是最想切 acceptEdits 的
+        时刻，此前 busy 与对话框期它被静默丢弃。"""
+        mode_state.cycle(bypass_available=True)
+        app.dock.set_mode(mode_state())
+        commit(theme.paint(f"[权限] 模式 → {mode_state()}", theme.YELLOW, color=color))
+
     def ask_human(question: str, options: List[str]) -> str:
         """真人问答：排一个对话框，然后**继续读键盘**直到它被答掉。
 
@@ -767,16 +776,28 @@ def _run_tui(*, out, client, model, tools, messages, anchors, state, steering, f
 
         def on_action(kind, payload):
             if kind == COMMAND:
-                _dispatch_command(payload, commit=commit, out=commit, messages=messages,
-                                  anchors=anchors, state=state, tools=tools,
-                                  client=client, model=model, compaction=compaction,
-                                  context_window=context_window, rules=rules,
-                                  hooks=hooks, mode_state=mode_state, session=session,
-                                  flag=flag, app=app, on_event=on_event)
+                quit_ = _dispatch_command(payload, commit=commit, out=commit,
+                                          messages=messages,
+                                          anchors=anchors, state=state, tools=tools,
+                                          client=client, model=model, compaction=compaction,
+                                          context_window=context_window, rules=rules,
+                                          hooks=hooks, mode_state=mode_state, session=session,
+                                          flag=flag, app=app, on_event=on_event)
+                if quit_:
+                    # `/exit`：与 REPL asker 的同款逃生口对齐（R4#15）——
+                    # 本轮收尾后退出，本框按「未作答」撤掉（撤框在 await_dialog_answer）
+                    asker_state["exit"] = True
+                return quit_
             elif kind == INTERRUPT:
                 flag.set()
             elif kind == EOF:
                 asker_state["exit"] = True
+            elif kind == CYCLE_MODE:      # 对话框期也可切（R4#25）
+                cycle_mode()
+            elif kind == EXPAND:
+                app.expand_last()
+            elif kind == REDRAW:
+                app.refresh()
 
         # 撤框与「等到有结论为止」都在 await_dialog_answer 里（那里可离线测）
         return await_dialog_answer(driver, app, dialog, on_action)
@@ -801,6 +822,14 @@ def _run_tui(*, out, client, model, tools, messages, anchors, state, steering, f
                 app.dock.set_queued(_queue_size(steering))
             elif kind == INTERRUPT:
                 flag.set()
+            # 安全三键 busy 期放行（R4#25）；EOF 刻意不放——干活中途误触即退
+            # 的代价太大，退出走空闲态的 Ctrl+C 两级或 Ctrl+D
+            elif kind == CYCLE_MODE:
+                cycle_mode()
+            elif kind == EXPAND:
+                app.expand_last()
+            elif kind == REDRAW:
+                app.refresh()
 
     term.start()
     # **不能用 out（print）**：终端此刻在 raw mode，`\n` 不回列首，会打成阶梯状。
@@ -825,6 +854,10 @@ def _run_tui(*, out, client, model, tools, messages, anchors, state, steering, f
                     if pending_exit:
                         return
                     pending_exit = True
+                    # 文案说「已清空」就得真的清（R4#24：此前只打话不动手，文本原样还在）；
+                    # arbiter 也要知道——不然它还按「有人在打字」压着对话框
+                    app.editor.clear()
+                    app.arbiter.note_typing("")
                     commit("(输入已清空，再按一次 Ctrl+C 退出)")
                     continue
                 pending_exit = False
@@ -833,10 +866,12 @@ def _run_tui(*, out, client, model, tools, messages, anchors, state, steering, f
                 elif kind == EXPAND:
                     app.expand_last()
                 elif kind == CYCLE_MODE:
-                    mode_state.cycle(bypass_available=True)
-                    app.dock.set_mode(mode_state())
-                    commit(theme.paint(f"[权限] 模式 → {mode_state()}", theme.YELLOW, color=color))
+                    cycle_mode()
                 elif kind == COMMAND:
+                    # 与 REPL 对齐（R4#17）：`!` 进历史、`/` 不进——REPL 那边
+                    # `_append_history` 排在 `/` 分支之后、`!` 分支之前，语义即此
+                    if payload.startswith("!"):
+                        _append_history(history, payload)
                     if _dispatch_command(payload, commit=commit, out=commit,
                                          messages=messages, anchors=anchors,
                                          state=state, tools=tools, client=client,
@@ -895,13 +930,17 @@ def _run_tui(*, out, client, model, tools, messages, anchors, state, steering, f
                         return          # 排队的 `/exit` 与提问里退出走同一条收尾路径
     finally:
         term.stop()
+        # 清 dock 必须排在任何 print 之前（R4#18）：DockRenderer.clear() 靠相对
+        # 光标移动找自己的行，先 print 会把光标推走、清到别人的行上——残影留给
+        # shell、退出提示反而可能被抹掉。alt 路径的 clear() 是无输出的状态复位，
+        # 先后无所谓，顺序按 main-screen 的约束定。
+        app.renderer.clear()
         # `term.stop()` 之后才打——`?1049l` 之前写的东西留在备用屏上，跟着屏幕一起没了。
         # 形态对齐 CC 的 `printResumeHint()`（它也是先退 alt 再打）。
         # **不提示 `--resume`**：pai 还没有这个入口，提示不存在的命令比不提示更糟
         # （已登记 TODO，紧接着单独立项）。
         if session is not None:
             out(f"会话已存 {session.path}")
-        app.renderer.clear()
         if recorder is not None:
             recorder.close()
         out("再见。")

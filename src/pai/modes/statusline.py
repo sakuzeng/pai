@@ -44,9 +44,25 @@ def display_width(text: str) -> int:
 
     按 len() 截断的话，一行中文会实际占掉两倍宽度把终端撑破行——这是中文终端 UI
     最常见的一个坑，也是本模块唯一真正需要动脑的地方。
+
+    契约（R4#6 残余）：**调用方必须先消毒**（`tui/sanitize.py`），本函数对 `\\t`
+    按 1 列计——这是错的，但结构上算不对：tab 的真实宽度取决于它落在第几列，
+    而这里只拿得到片段。入口消毒（展开 `\\t`）之后正常路径上不会有 tab 到达这里；
+    绕过消毒直接调用，宽度就是错的。
+
+    组合记号（Mn/Me）与格式字符（Cf，含 ZWJ/零宽空格）计 0 列（R4#19 最小修，
+    2026-08-22 拍板）：终端把它们叠在基字符上或根本不画。诚实边界：ZWJ emoji
+    序列仍算错（各成员按 2 列相加，真实终端画 2 列）——那要 UAX#29 字素归组，
+    拍板选了不引依赖的最小修，测试里有一条钉住这个已知错误。
     """
     visible = _ESCAPES.sub("", text)
-    return sum(2 if unicodedata.east_asian_width(c) in ("W", "F") else 1 for c in visible)
+    return sum(_char_width(c) for c in visible)
+
+
+def _char_width(c: str) -> int:
+    if unicodedata.category(c) in ("Mn", "Me", "Cf"):
+        return 0
+    return 2 if unicodedata.east_asian_width(c) in ("W", "F") else 1
 
 
 def _truncate(text: str, width: int) -> str:

@@ -11,6 +11,8 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
+    # 回放出图（pai-replay → PNG）是 e2e 的测量仪器，缺了它相关测试直接红（R4#26）
+    "pillow>=10.0",
 ]
 
 [project.scripts]
