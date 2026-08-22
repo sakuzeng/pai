@@ -197,3 +197,67 @@ def test_render_width_never_exceeds_terminal(text):
     press(e, text.encode("utf-8"))
     for line in e.render(8):
         assert display_width(line) <= 8
+
+
+# ---- feature 21：输入行超宽折行（拍板 A，2026-08-22）----
+
+
+def _rows_text(lines):
+    """剥掉 2 列前缀（`› ` / `… ` / 折行续排的两个空格）与光标标记，拼回原文。"""
+    return "".join(ln.replace(CURSOR_MARKER, "")[2:] for ln in lines)
+
+
+def test_overwide_line_wraps_instead_of_overflowing():
+    """R4#27 的病灶：`render(width)` 收了 width 却没用。main-screen 下终端
+    自动折行让 dock 高度记账全错（阶梯同款根因），alt 下 `_fit` 连
+    CURSOR_MARKER 一起截掉。拍板 A·折行（pi 与 CC 独立同选）。"""
+    e = LineEditor(prompt="› ")
+    press(e, b"x" * 30)
+    lines = e.render(12)
+    assert len(lines) == 3                     # 每行 10 列正文（12 − 前缀 2）
+    for line in lines:
+        assert display_width(line) <= 12
+    assert _rows_text(lines) == "x" * 30, "折行不许丢一个字符"
+
+
+def test_cursor_marker_survives_wrapping_and_lands_on_the_right_row():
+    e = LineEditor(prompt="› ")
+    press(e, b"x" * 30)
+    press(e, b"\x1b[D" * 15)                   # 光标退回中段
+    lines = e.render(12)
+    marked = [i for i, ln in enumerate(lines) if CURSOR_MARKER in ln]
+    assert marked == [1], f"光标该在中间那行：{lines!r}"
+    before = lines[1].split(CURSOR_MARKER)[0]
+    assert display_width(before) == 2 + 5      # 前缀 2 列 + 行内 5 个 x
+
+
+def test_cursor_at_the_end_of_an_overwide_line_is_still_visible():
+    """alt 下旧行为的直接反面：截断把行尾光标扔掉，打字不可见、IME 失锚。"""
+    e = LineEditor(prompt="› ")
+    press(e, b"x" * 25)
+    lines = e.render(12)
+    assert CURSOR_MARKER in lines[-1], "行尾光标必须活在最后一个折行段里"
+
+
+def test_wide_characters_never_split_across_wrapped_rows():
+    e = LineEditor(prompt="› ")
+    press(e, "汉字宽度测试折行".encode("utf-8"))
+    lines = e.render(8)                        # 正文室 6 列 = 3 个汉字
+    for line in lines:
+        assert display_width(line) <= 8
+    assert _rows_text(lines) == "汉字宽度测试折行"
+
+
+def test_selection_highlight_is_balanced_on_every_wrapped_row():
+    """反显对必须**行内配平**：alt 屏按行 diff 重绘，跨行悬空的 SGR 会在只重绘
+    其中一行时漏出来。"""
+    from pai.tui.editor import REVERSE, UNREVERSE
+
+    e = LineEditor(prompt="› ")
+    press(e, b"x" * 30)
+    e.start_selection(0)
+    e.extend_selection(30)
+    lines = e.render(12)
+    assert any(REVERSE in ln for ln in lines)
+    for ln in lines:
+        assert ln.count(REVERSE) == ln.count(UNREVERSE), f"这行反显不配平：{ln!r}"

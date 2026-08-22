@@ -334,3 +334,45 @@ def test_mode_cycle_works_during_dialogs_and_busy(session, tmp_path):
     s.send("1", wait=0.2)                                       # 允许，进入 busy
     s.send("\x1b[Z", until="模式 → bypassPermissions")          # busy 期再切
     s.send("", until="睡完了")
+
+
+# ---- feature 21：输入行超宽折行 ----
+
+
+def test_overwide_input_tail_is_visible_in_alt_screen(session, tmp_path):
+    """feature 21（R4#27）：alt 下旧行为是 `_fit` 硬截——96 列之后的内容
+    （连同光标）直接消失，粘长命令的人看不到自己粘了什么。
+    折行后行尾必须可见。"""
+    s, _ = session([turn("用不到")])
+    s.send("", until="/help 看命令")
+    s.send("x" * 120 + "TAIL", until="TAIL")
+    assert "TAIL" in s.screen_text()
+
+
+def test_overwide_input_does_not_break_the_main_screen_dock(session, tmp_path):
+    """feature 21（R4#27）：main-screen 下超宽行被终端自动折行，dock 的
+    高度记账全错（阶梯同款根因）。折行后 dock 结构必须完好：
+    分隔线在输入区上方、footer 是最后一行、输入折成的每行都带前缀。"""
+    work = tmp_path / "ms21"
+    (work / ".pai").mkdir(parents=True)
+    (work / ".pai" / "settings.json").write_text(
+        json.dumps({"tui": {"altScreen": False}}), encoding="utf-8")
+    s, _ = session([turn("用不到")], cwd=str(work))
+    s.send("", until="/help 看命令")
+    s.send("y" * 120 + "TAIL", until="TAIL")
+
+    lines = [l for l in s.screen_text().split("\n")]
+    while lines and not lines[-1].strip():
+        lines.pop()
+    footer = lines[-1]
+    # footer 是状态行（含 cwd 路径，路径里可能有零星字母），判据用「不是输入行」：
+    # 不带提示符、也不是折行正文（连续 y）
+    assert footer.strip() and "›" not in footer and "yyyy" not in footer, \
+        f"footer 必须是最后一行：{lines[-4:]!r}"
+    rows = [i for i, l in enumerate(lines) if "y" * 10 in l or "TAIL" in l]
+    assert rows, "输入内容要在屏幕上"
+    sep = lines[rows[0] - 1]
+    assert set(sep.strip()) == {"─"}, f"分隔线该在输入区上方：{sep!r}"
+    assert lines[rows[0]].lstrip().startswith("›"), "输入首行带提示符"
+    for i in rows[1:]:
+        assert lines[i].startswith("  "), f"折行续排行该带两格缩进：{lines[i]!r}"

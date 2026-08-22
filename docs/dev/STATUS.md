@@ -1,6 +1,11 @@
 # 当前状态快照
 
-最后更新：2026-08-13（feature 18 排队消息通电：干活时打的字本轮就注入）。
+最后更新：2026-08-22（feature 20 交付：接缝三条 e2e/断言收紧，其间推翻了
+feature 16「节流修了拖选卡顿」的交付结论——真机帧数低是鼠标事件批合并挡的，
+卡顿成因重开待诊。同日 R4 低批清 11 条：#9 tool_call id 守卫、#15/17/18/20/21/
+22/24 交互与文案八小修、#23 记档、#26 Pillow、#28 承诺收窄；随后 #16/19/25/27
+经用户一轮拍板同日修完——R4#15~28 全部清零，#27 立档案
+[features/21](features/21-20260822-input-line-overflow/README.md) 交付输入行折行）。
 数字由机器对账：`test_status_reports_the_current_test_count` 会在完整跑时校验本页的 passed 数——漂了三次之后不再靠人肉。
 给接手者（人或 AI）一页看清现状。
 「做了什么」的时间线见 [devlog.md](devlog.md)，「为什么这么选」见 [decisions.md](decisions.md)，
@@ -76,7 +81,7 @@ feature 12 被用户打回的三条 bug 各钉了一条 e2e。
 | `tui/component.py` | 可用 | `Component.render(width) -> list[str]` 纯函数契约 + `invalidate()`；`Container` 递归；`CURSOR_MARKER`（APC，零宽，`display_width` 已会剥） |
 | `tui/renderer.py` | 可用 | 唯一碰终端的地方：dock 整块重绘（相对光标移动 + `CSI 2K`，包在同步输出里）、变矮先清再收缩、`commit()` 把内容上交 scrollback、提取 `CURSOR_MARKER` 摆硬件光标（IME 锚点）。绝不发 `2J`/`3J`——pai 不持有整份文档，清掉就画不回来 |
 | `tui/keys.py` | 可用 | 字节 → 按键，带状态（多字节字符与转义序列会被拆成两次 read 送达）；未识别序列丢弃但留 `unknown`；bracketed paste 整段进 |
-| `tui/editor.py` | 可用 | 行编辑器（纯状态机）：插入/删除/词跳/Ctrl-U-K-W/历史↑↓/`\` 续行/中文宽度感知光标。`Ctrl+R` 是已知回退 |
+| `tui/editor.py` | 可用 | 行编辑器（纯状态机）：插入/删除/词跳/Ctrl-U-K-W/历史↑↓/`\` 续行/中文宽度感知光标；超宽按显示列折行（feature 21，CURSOR_MARKER 与选区反显跨行存活）。`Ctrl+R` 是已知回退 |
 | `tui/arbiter.py` | 可用 | 输入归属仲裁：输入框非空即压住对话框，停手 1500ms 放行（常量抄自 CC，来源写在旁边），`is_suppressing()` 可被问出来（不许静默） |
 | `tui/dialog.py` | 可用 | 权限 ask 与 AskUserQuestion 共用；`handoff()` 把 `!`/`/` 交回主循环执行（08 铁证的修法）；Esc 取消 |
 | `tui/dock.py` | 可用 | 活动区（按动作聚合计数）/ 队列区 / 状态行（转圈 + 已用时 + token + 模式 + 待决数）；`AgentEnd` 吐一行摘要给 commit |
@@ -125,7 +130,9 @@ feature 12 被用户打回的三条 bug 各钉了一条 e2e。
 + feature 13 alt-screen task 1-7 + feature 16 鼠标与选区 task 1-9
 + feature 17 viz-flow task 1-3.5（事件落盘 + RecallInjected/ConversationCleared + 装配））：
 
-- `./test.sh` → 1182 passed, 3 deselected，全部离线，约 112s。这是默认路径。
+- `./test.sh` → 1205 passed, 3 deselected，全部离线，约 2 分钟。这是默认路径。
+  R4#26 已修（2026-08-22）：Pillow 进 dev 依赖并已装，此前常驻的那条 skip 归零；
+  今后 Pillow 缺席相关测试直接红（带修法提示），不再静默 skip。
   两套假 provider 分工是硬的：`tests/fake_llm.py` 注入的假客户端测装配与逻辑；
   `tests/fake_provider.py` 起一个真 HTTP 服务，让真 pai 进程经 `PAI_BASE_URL` 打进来——
   于是 `tests/test_e2e_tui.py` 能在真 pty 里跑完整回合（真 SSE、真 gate、真 TUI），
@@ -195,9 +202,11 @@ feature 12 被用户打回的三条 bug 各钉了一条 e2e。
 
 下一步：用户 2026-08-11 拍板——先不做新功能，测试与优化已有的。
 候选清单（按「用户能感知」排序）：
-1. 修 feature 16 那条坏路径：driver 层读干净再处理（让事件真的凑成一批）+
-   「拖动中迟迟没有 release」的兜底；
-2. 给已交付功能补真实回合的 e2e——13/16 两轮共打回 13 条，没有一条是离线测试能发现的；
+1. 修 feature 16 那条坏路径——处方已被 feature 20 推翻重开：原写的「driver 层
+   读干净再处理」实测拆掉也不红（60 条事件一次 `os.read(4096)` 本来就全拿到），
+   真机拖选卡顿成因至今未确诊，见 TODO ★「拖选卡顿成因未确诊」；
+2. 给已交付功能补真实回合的 e2e——13/16 两轮共打回 13 条，没有一条是离线测试能发现的。
+   feature 20 已交付第一批（拖动帧数 e2e + 阶梯断言收紧 + getsource 裁决 3 换 3 留）；
 3. 量一量再优化（`perf` 的判据是先有数字）：整屏帧渲染、`_highlight` 的逐字符扫描、
    transcript 无上限增长；
 4. 之后才是 `--resume`（13 引入的缺口）与阶段 6 skills / MCP client。
