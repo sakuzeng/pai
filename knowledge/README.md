@@ -16,6 +16,7 @@ memory/          记忆分层与召回
 permissions/     权限求值、工作目录边界、hooks 与门禁
 tui/             终端 UI：绘制、备用屏、鼠标、输入归属、终端物理特性
 streaming/       流式输出与工具调度
+skills/          按需加载的能力扩展：发现、索引注入、渐进式披露
 model-api/       打模型 API 时要知道的事（key 取法、max_tokens 语义）
 engineering/     换个项目仍成立的通用工程方法（测试、观测、接缝、进程）
 overview/        跨主题的覆盖图与索引
@@ -132,6 +133,11 @@ dsh 的文档与源码在同一个仓库、同一个 commit 里，拆开只会�
 | `streaming/` | | | |
 | [streaming/cc-streaming-tools.md](streaming/cc-streaming-tools.md) | 工具在模型还没说完就开跑：能力标志是收 input 的函数（默认全 false）、保序贪心分批、只有 Bash 出错才杀兄弟、子 AbortController 不向上传播；`getAssistantMessageId` 那条不适用于 pai（协议不同） | 精读 | src/pai/core/loop.py、roadmap 阶段 5 |
 | [streaming/streaming-tool-calls.md](streaming/streaming-tool-calls.md) | 流式下 tool_calls 按 `index` 归并且 `arguments` 逐字符分片；usage 实测永远在末块（`include_usage` 是空操作，惯用的「choices 为空即 usage 块」分支永不触发 → 用量静默丢失）；中断的流没有 usage | 沉淀 | src/pai/core/loop.py、roadmap 阶段 5 |
+| `skills/` | | | |
+| [skills/claude-skills.md](skills/claude-skills.md) | 官方 skills 全景：SKILL.md（frontmatter+正文）、四级存放与冲突规则、渐进式披露（description 常驻/正文调用时载）、列表预算（窗口 1% + 每条 1536 字符）、压缩后重挂（单个 5k/共享 25k token）；含 2.1.239 真实探针两条出入（frontmatter name 也能调起、坏 YAML 时正文首段顶 description） | 精读 | roadmap 阶段 6、features/25 |
+| [skills/pi-skills.md](skills/pi-skills.md) | pi 最小形态（R4#A4 原型）：扫描（SKILL.md 目录不再递归/根下 .md/ignore 文件/realpath 去重/先到先得）+ `<available_skills>` XML 进 system prompt + 模型用 read 加载正文（零新增工具，pi 自认不总灵）+ `/skill:name` 展开成 `<skill>` 块。⚠️ 无列表预算（三家唯一）、压缩后正文不重挂；文档说 name 必填而源码回退目录名 | 精读 | features/25、src/pai/core/memory.py |
+| [skills/cc-skills.md](skills/cc-skills.md) | CC 2.1.88 反编译：skill=command，Skill 工具调用（inline 展开 prompt / fork 子 agent 两路）；目录经 system-reminder attachment 增量注入（sentSkillNames + resume 抑制），预算窗口 1%、每条 250 字符（官方文档已放宽到 1536——版本漂移实据）；压缩重挂 `createSkillAttachmentIfNeeded`（最近优先、单个截 5k、总预算 25k、装不下整条丢）与官方数字交叉验证一致 | 精读 | features/25、src/pai/core/compaction.py |
+| [skills/dsh-skills.md](skills/dsh-skills.md) | dsh（pin 47f9438）四件套切分：registry/provider/consumer 三层 + 三层数据结构（Summary→Candidate→Definition，目录轻/正文重分离）；rank 优先级（项目赢用户）；目录注入是持久 user-role system-reminder + digest 比对替换 + 压缩隐藏后自愈重发；`skill({name})` 专用工具每次重读盘。⚠️「零新增工具」是 pi 形态，dsh 有工具——加载动作三家三分 | 精读 | features/25、roadmap 阶段 6 |
 | `model-api/` | | | |
 | [model-api/pi-cc-api-keys.md](model-api/pi-cc-api-keys.md) | pi 的映射表+注入钩子 vs CC 的带来源+apiKeyHelper；结论：key 留 .env 不进 settings.json | 精读 | src/pai/config.py |
 | [model-api/reasoning-models-max-tokens.md](model-api/reasoning-models-max-tokens.md) | 推理模型的 reasoning 计进 `max_tokens`：上限设小不省钱，只会让 content 静默变空串（实测同 query 思考量差 17 倍） | 沉淀 | src/pai/core/recall.py |

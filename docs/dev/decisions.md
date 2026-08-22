@@ -983,3 +983,38 @@ Python 的 buffered IO 会抛 `RuntimeError: reentrant call`——**它在我们
 真的触发过它**，修完也没有真跑验证。按 pai 的证据等级，它属「推」不属「实测」。
 
 出处：[features/19](features/19-20260819-tui-input-and-signals/README.md) 拍板问 3。
+
+## 71. skills 的加载动作走专用 skill 工具，不走「模型自己 read」（2026-08-22，feature 25）
+
+pi：索引给 SKILL.md 路径，模型用 read 工具自己加载——零新增工具，但 pi 文档自认
+*models don't always do this*。CC：Skill 工具把正文展开进对话（inline）或丢进
+fork 子 agent。dsh：专用 `skill({name})` 工具把正文作为 tool result 返回。
+R4#A4 的评审定向写的是「照 pi 最小形态（零新增工具）」——动工前反向对照
+（features/25 evidence）证实那只是三家之一的形态，不是共识。
+
+pai：照 dsh 缩水——新增 `skill(name)` 工具返回 `<skill_content>` 包装的正文；
+目录只给 name + description 不给路径（路径与 read 形态绑定：给了路径没有工具，
+或有工具还给路径诱导绕过，都是拆开抄的错）。
+
+理由（用户拍板，问 1 候选 B）：加载动作显式可观测——ToolStart/ToolEnd 事件、
+状态行、viz、「已加载哪些」的追踪全部白拿；对服从性没有保证的模型（pai 打
+DeepSeek），工具 schema 的强制力也高于 system prompt 里的一句指导语。
+代价如实记：工具集混入一个框架私有动作（此前 5 个全是通用原语），且偏离
+R4#A4 的字面定向——本条即为那次偏离的落点。
+
+出处：[features/25](features/25-20260822-skills/README.md) 拍板问 1。
+
+## 72. skills 同名冲突：项目级赢用户级（2026-08-22，feature 25）
+
+三家三种语义：dsh 项目赢用户（rank 100 < 400）、CC 个人赢项目（理由：个人配置
+是用户主动装的、更可信）、pi 先到先得（按扫描顺序）。
+
+pai：取 dsh——`<项目>/.pai/skills/` 覆盖 `~/.pai/skills/` 的同名者。
+理由（用户拍板，问 3 候选 A）：越具体越优先，与 pai 记忆分层「cwd 在后、
+后来居上」的既有直觉一致；项目里检入的 skill 是给这个项目定制的，
+被用户的通用版盖掉才是意外。CC 的「个人更可信」前提在 pai 不成立：
+pai 的项目 skills 同样过不了别人塞进仓库就静默生效那关——它没有 CC 的
+工作区信任对话框，这个洞与「配了 Bash allow 即可越界」同属一类，
+登记在 TODO 遗留里，不靠冲突语义兜。
+
+出处：[features/25](features/25-20260822-skills/README.md) 拍板问 3。

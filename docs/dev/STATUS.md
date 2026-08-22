@@ -1,6 +1,12 @@
 # 当前状态快照
 
-最后更新：2026-08-22（晚：feature 24 交付——会话格式 v1（三家收敛形：header
+最后更新：2026-08-22（深夜：feature 25 交付——阶段 6 skills 子阶段（MCP 子阶段未动）：
+`<name>/SKILL.md` 两级目录扫描（项目赢用户 D#72）→ `<available_skills>` 目录经
+build_system_prompt 装配缝注入（带预算）→ 专用 `skill(name)` 工具加载正文
+（D#71，偏离 R4#A4 的 pi 定向）→ 压缩后重挂已加载正文（搭 D#42 指令重注入的车，
+零 loop 改动）→ `/skill` 命令显式通道。档案
+[features/25](features/25-20260822-skills/README.md)。
+更早（晚）：feature 24 交付——会话格式 v1（三家收敛形：header
 首行 / 统一信封 / 消息嵌套 / 压缩即条目带 firstKeptEntryId）+ 全量 `pai --resume`
 （配平 + 状态从零 + 按原 id 重录，两进程接力 e2e 钉死），13 号「退出即失联」
 与 23 号「拒收压缩会话」两笔债一并关掉，档案
@@ -52,6 +58,9 @@ usage 的取法按实测重写（D#58）：`include_usage` 在 DeepSeek 上是�
 本地假 provider 说 OpenAI 兼容协议，于是真 pai 进程能在真 pty 里跑完整回合
 （真 SSE / 真 gate / 真 TUI），「需要模型开口」的功能也能自动测了——
 feature 12 被用户打回的三条 bug 各钉了一条 e2e。
+阶段 6 前半程 skills 已交付——SKILL.md 两级目录扫描、目录索引进 system prompt
+（description 常驻/正文按需的渐进式披露）、`skill(name)` 工具加载、压缩后重挂、
+`/skill` 显式通道；MCP client 子阶段未动。
 功能全貌见 [features/02](features/02-20260803-compaction/README.md)、
 [features/05](features/05-20260810-repl/README.md)、
 [features/07](features/07-20260810-permissions/README.md)。
@@ -105,7 +114,9 @@ feature 12 被用户打回的三条 bug 各钉了一条 e2e。
 | `tui/screen.py` | 可用 | 最小终端模拟器（字节 → 屏幕，含 SGR 配色跟踪）。测试断言与回放出图共用同一份——分成两份的话「测试全绿」与「图上是对的」会各说各话 |
 | `tui/record.py` / `tui/replay.py` | 可用 | `PAI_TUI_RECORD=<路径>` 录下写给终端的字节（含尺寸与 resize）；`pai-replay <文件> -o 图.png` 回放成 PNG，让 AI 自己看得见界面（feature 14） |
 | `tui/terminal.py` | 可用 | raw mode 进出、进出备用屏（`?1049h` + `?7l`，退出无条件复原且顺序不能反）、`SIGWINCH` 同步不去抖 + 同尺寸丢弃、非 tty 闸门（判 stdout）、非主线程明确告警 |
-| skills / mcp_client / evals | 未开始 | 路线图后续阶段，见 [roadmap.md](roadmap.md) |
+| `core/skills.py` | 可用 | skills（feature 25）：`scan_skills` 两级目录（`~/.pai/skills` 与 `<git根>/.pai/skills`，项目赢 D#72；缺/坏 frontmatter 跳过并 warn——刻意不抄 CC 的回退首段）、`render_catalog`（name+description 不给路径，每条 500 字符 + 总 8000 字节双上限）、`render_loaded_skills` + `make_instructions`（压缩后重挂：最近优先、单篇 2 万字符截头保留、总 10 万装不下整条丢，预算是 CC 5k/25k token 的换算值未实测校准） |
+| `core/tools/skill.py` | 可用 | `skill(name)` 工具（D#71）：现读磁盘剥 frontmatter 回 `<skill_content>` + 相对路径基准；未知与被隐藏说同一句话（不泄露）；声明 READ + get_path（未知名回 cwd——幻觉名报「未知」不撞权限话术，R4#10 同款）；once/interactive 装配把用户级 skills 根加进 WorkingDirs.additional（否则 once 下结构性不可用），`/skill` 命令走展开注入（REPL 空闲即跑轮次，TUI 忙碌期进 steering 队列） |
+| mcp_client / evals | 未开始 | 路线图后续阶段，见 [roadmap.md](roadmap.md) |
 
 ## compaction.py 里有什么
 
@@ -138,7 +149,7 @@ feature 12 被用户打回的三条 bug 各钉了一条 e2e。
 + feature 13 alt-screen task 1-7 + feature 16 鼠标与选区 task 1-9
 + feature 17 viz-flow task 1-3.5（事件落盘 + RecallInjected/ConversationCleared + 装配））：
 
-- `./test.sh` → 1242 passed, 3 deselected，全部离线，约 2 分钟。这是默认路径。
+- `./test.sh` → 1291 passed, 3 deselected，全部离线，约 2.5 分钟。这是默认路径。
   R4#26 已修（2026-08-22）：Pillow 进 dev 依赖并已装，此前常驻的那条 skip 归零；
   今后 Pillow 缺席相关测试直接红（带修法提示），不再静默 skip。
   两套假 provider 分工是硬的：`tests/fake_llm.py` 注入的假客户端测装配与逻辑；
