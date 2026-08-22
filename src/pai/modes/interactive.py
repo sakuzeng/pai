@@ -52,7 +52,7 @@ from pai.core.events import (
 from pai.core.interrupt import InterruptFlag, set_current
 from pai.core.gate import make_before_tool_call
 from pai.core.hooks import load_hooks
-from pai.core.loop import run_agent
+from pai.core.loop import build_system_prompt, run_agent
 from pai.core.permissions import (
     DEFAULT_MODE,
     MODE_CYCLE,
@@ -424,7 +424,8 @@ def run_interactive(
             with _interruptible(flag):
                 try:
                     _run_shell(line[1:].strip(), messages=messages,
-                               session=session, out=out)
+                               session=session, out=out,
+                               system_prompt=build_system_prompt(tools))
                 except KeyboardInterrupt:
                     # 信号可能落在装处理器之前/之后的缝隙里（或非主线程装不上），
                     # 这是最后一道：宁可少收一条输出，也不能让 REPL 死掉
@@ -479,6 +480,9 @@ def _run_turn(task: str, *, client, model, tools, messages, anchors, state, stee
             compaction=compaction,
             before_tool_call=before_tool_call,
             recall=recall,
+            # 按实际工具集生成（feature 22）：REPL 有 ask_user_question、
+            # visible_tools 可能删过——常量那句「你有这些工具」在这条路上是谎话
+            system_prompt=build_system_prompt(tools),
             instructions=build_context,
             # 谓词把 `/`、`!` 滤掉且留在队列里——它们是给客户端执行的，
             # 当文本发给模型是 CC 明文禁止的那件事（feature 18 问 5/7）。
@@ -517,7 +521,8 @@ def _restore_sigint(previous) -> None:
             pass
 
 
-def _run_shell(command: str, *, messages: List[dict], session, out) -> None:
+def _run_shell(command: str, *, messages: List[dict], session, out,
+               system_prompt: Optional[str] = None) -> None:
     """`!命令`：不经模型直接跑，命令与输出都进上下文。
 
     官方 v2.1.186 起会在输出进上下文后**自动接话**，pai 默认不接——每次 `!` 都自动接话
@@ -533,7 +538,11 @@ def _run_shell(command: str, *, messages: List[dict], session, out) -> None:
     out(sanitize_terminal_text(output))
     entry = {"role": "user", "content": f"我执行了命令 `{command}`，输出：\n{output}"}
     if not messages:
-        messages.append({"role": "system", "content": _system_prompt()})
+        # 首个动作就是 `!命令` 时由这里建 system：优先用装配层生成的（feature 22），
+        # 不接线会建出常量、之后整个会话都换不掉
+        messages.append({"role": "system",
+                         "content": system_prompt if system_prompt is not None
+                         else _system_prompt()})
         if session:
             session.append(messages[0])
     messages.append(entry)
@@ -952,7 +961,8 @@ def _dispatch_command(line: str, *, commit, app, session, flag, on_event, **kw) 
         with _interruptible(flag):
             try:
                 _run_shell(line[1:].strip(), messages=kw["messages"],
-                           session=session, out=commit)
+                           session=session, out=commit,
+                           system_prompt=build_system_prompt(kw["tools"]))
             except KeyboardInterrupt:
                 commit("⛔ 已中断")
         app.refresh()

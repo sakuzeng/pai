@@ -12,7 +12,7 @@ from pai.config import context_window, make_client, model_name, recall_model
 from pai.core.compaction import CompactionSettings
 from pai.core.gate import make_before_tool_call
 from pai.core.hooks import load_hooks
-from pai.core.loop import run_agent
+from pai.core.loop import build_system_prompt, run_agent
 from pai.modes.echo import make_stream_echo
 from pai.core.events import AgentEvent, MemoryWritten, RecallFailed, RecallInjected
 from pai.core.memory import build_context, memory_dir
@@ -69,6 +69,8 @@ def run_once(
         client=client,
         model=model or model_name(),
         tools=tools,
+        # prompt 按过滤后的实际工具集生成（feature 22）——模型看见几个就说几个
+        system_prompt=build_system_prompt(tools),
         max_steps=max_steps,
         max_total_tokens=max_total_tokens,
         session=session,

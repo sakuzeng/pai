@@ -43,3 +43,32 @@ class SessionLog:
         with self._lock:
             with open(self.path, "a", encoding="utf-8") as f:
                 f.write(line)
+
+
+# SessionLog.append 自动加的元数据键——重放时要剥掉的就是这三个
+_META_KEYS = ("ts", "sessionId", "cwd")
+
+
+def replay_messages(path: Union[str, Path]) -> list:
+    """把会话 JSONL 重放成「发给模型的 messages」（feature 23，R4#E3；evals 地基）。
+
+    只取带 `role` 的记录——`type` 记录（usage/compaction/agent_end）是旁账；
+    剥掉 SessionLog 加的元数据键。含 compaction 记录的会话直接拒绝：
+    压缩改写历史（切 + 摘 + 重建），按落盘顺序拼出来的是错序的对话，
+    看似完整比明确报错更糟。完整回放语义归 R4#A1 会话格式立项
+    （CC 靠消息 uuid 链解这个，pai 的消息还没有身份字段）。
+    """
+    out: list = []
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            record = json.loads(line)
+            if record.get("type") == "compaction":
+                raise ValueError(
+                    "该会话经历过压缩（历史被改写），按落盘顺序重放会得到错序的对话；"
+                    "完整回放要等会话格式改造（R4#A1）")
+            if "role" not in record:
+                continue
+            out.append({k: v for k, v in record.items() if k not in _META_KEYS})
+    return out

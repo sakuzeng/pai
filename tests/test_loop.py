@@ -1736,3 +1736,102 @@ def test_repeated_summary_failures_trip_the_breaker(tmp_path, monkeypatch):
 
     assert client.summary_attempts == MAX_COMPACT_FAILURES, \
         f"熔断后不该再试第 {MAX_COMPACT_FAILURES + 1} 次"
+
+
+# ---- feature 22（R4#E2）：system prompt 从常量变装配 ----
+
+
+def test_build_system_prompt_follows_the_actual_toolset():
+    """形状照 CC 的 getSystemPrompt（features/22 拍板）：只列名字不抄描述
+    （schema 本来就走请求的 tools 参数），指导语按「有没有这个工具」条件化。"""
+    from pai.core.loop import build_system_prompt
+
+    full = build_system_prompt(get_tools())
+    assert "bash" in full and "edit_file" in full
+    assert "ask_user_question" not in full, "默认集没有它，prompt 不许谎报"
+    assert "edit_file 做精确修改" in full
+
+    no_edit = {k: v for k, v in get_tools().items() if k != "edit_file"}
+    assert "edit_file" not in build_system_prompt(no_edit), \
+        "工具不在就不许提——常量时代的谎报正是本 feature 的病灶"
+
+
+def test_build_system_prompt_is_stable_for_the_same_toolset():
+    """会话内 prompt 必须逐字稳定（CC 用 SYSTEM_PROMPT_DYNAMIC_BOUNDARY 护缓存
+    前缀的同一课）：同一工具集两次生成一个字都不许差。"""
+    from pai.core.loop import build_system_prompt
+
+    assert build_system_prompt(get_tools()) == build_system_prompt(get_tools())
+
+
+def test_run_agent_uses_the_injected_system_prompt():
+    from pai.core.loop import run_agent
+
+    client = FakeClient([{"content": "好"}])
+    run_agent("x", client=client, model="fake", tools=get_tools(),
+              system_prompt="注入的 prompt", on_event=lambda _: None)
+    assert client.requests[0]["messages"][0] == {
+        "role": "system", "content": "注入的 prompt"}
+
+
+def test_run_agent_without_injection_keeps_the_constant_verbatim():
+    """兼容护栏（features/22 验收 1）：不传新参数时行为逐字不变。"""
+    from pai.core.loop import SYSTEM_PROMPT, run_agent
+
+    client = FakeClient([{"content": "好"}])
+    run_agent("x", client=client, model="fake", tools=get_tools(),
+              on_event=lambda _: None)
+    assert client.requests[0]["messages"][0]["content"] == SYSTEM_PROMPT
+
+
+# ---- feature 23（R4#E3）：「模型可见即已落盘」升格为可测不变量 ----
+
+
+def test_replay_messages_rebuilds_the_conversation_from_a_real_trajectory(tmp_path):
+    """重放助手（evals 地基）：会话 JSONL → 发给模型的 messages。
+    真实轨迹夹具（REAL_TRAJECTORY 含真实中文与 tool_calls.arguments）；
+    type 记录（usage 等）是旁账要滤掉，SessionLog 加的 ts/sessionId/cwd 要剥掉。"""
+    from test_compaction import REAL_TRAJECTORY
+
+    from pai.core.session import SessionLog, replay_messages
+
+    log = SessionLog(tmp_path)
+    for m in REAL_TRAJECTORY:
+        log.append(m)
+    log.append({"type": "usage", "step": 1, "total_tokens": 5})
+    assert replay_messages(log.path) == REAL_TRAJECTORY
+
+
+def test_replay_refuses_compacted_sessions(tmp_path):
+    """压缩改写历史（切 + 摘 + 重建），而重放是按落盘顺序拼的——两者对不上。
+    完整回放语义归 R4#A1 会话格式立项；在那之前宁可炸，
+    也不给一份看似完整实则错序的对话（CC 的 recordTranscript 靠 uuid 链
+    处理这个，pai 的消息还没有身份字段）。"""
+    from pai.core.session import SessionLog, replay_messages
+
+    log = SessionLog(tmp_path)
+    log.append({"role": "user", "content": "x"})
+    log.append({"type": "compaction", "step": 3, "cut": 2})
+    with pytest.raises(ValueError):
+        replay_messages(log.path)
+
+
+def test_session_replay_equals_the_model_visible_messages(tmp_path):
+    """不变量本体：跑一个含工具与召回注入的真实回合后，
+    重放会话 JSONL == loop 手里的 messages == 最后一次请求 + 收尾 assistant。
+    此前 messages/session 的成对 append 散在 5 处，漏一半不会红——
+    收口到 _record 之后，这条测试就是那道闸（对应 CC 的 recordTranscript
+    唯一收口；它的 uuid 幂等增量那半归 R4#A1）。"""
+    from pai.core.session import SessionLog, replay_messages
+
+    session = SessionLog(tmp_path)
+    client = FakeClient([{"tool_calls": [("bash", json.dumps({"command": "true"}))]},
+                         {"content": "好"}])
+    messages: list = []
+    run_agent("跑一下", client=client, model="fake", tools=get_tools(),
+              session=session, messages=messages, on_event=lambda _: None,
+              recall=lambda q: ("<system-reminder>召回</system-reminder>", {}),
+              system_prompt="s")
+    assert replay_messages(session.path) == messages
+    assert messages == client.requests[-1]["messages"] + [messages[-1]], \
+        "内存里的对话必须恰好是「模型最后看到的 + 收尾 assistant」"

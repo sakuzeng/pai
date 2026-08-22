@@ -1,11 +1,14 @@
 # 当前状态快照
 
-最后更新：2026-08-22（feature 20 交付：接缝三条 e2e/断言收紧，其间推翻了
-feature 16「节流修了拖选卡顿」的交付结论——真机帧数低是鼠标事件批合并挡的，
-卡顿成因重开待诊。同日 R4 低批清 11 条：#9 tool_call id 守卫、#15/17/18/20/21/
-22/24 交互与文案八小修、#23 记档、#26 Pillow、#28 承诺收窄；随后 #16/19/25/27
-经用户一轮拍板同日修完——R4#15~28 全部清零，#27 立档案
-[features/21](features/21-20260822-input-line-overflow/README.md) 交付输入行折行）。
+最后更新：2026-08-22（R4 清账日：低批 11 条 + 拍板四条（#16/19/25/27，
+#27 立 [features/21](features/21-20260822-input-line-overflow/README.md) 交付
+输入行折行）——R4#15~28 全清；随后 E 系列前三条交付：E1 扩展点地图
+（[docs/dev/扩展点.md](扩展点.md)）、E2 system prompt 装配
+（[features/22](features/22-20260822-system-prompt-assembly/README.md)，
+prompt 不再谎报工具集）、E3 落盘唯一收口 + 回放不变量
+（[features/23](features/23-20260822-model-visible-is-recorded/README.md)，
+`replay_messages` 是 evals 地基），E2/E3 按用户指示参照 CC。
+当日早些时候 feature 20 交付并推翻 feature 16 的节流结论，卡顿成因重开待诊）。
 数字由机器对账：`test_status_reports_the_current_test_count` 会在完整跑时校验本页的 passed 数——漂了三次之后不再靠人肉。
 给接手者（人或 AI）一页看清现状。
 「做了什么」的时间线见 [devlog.md](devlog.md)，「为什么这么选」见 [decisions.md](decisions.md)，
@@ -130,7 +133,7 @@ feature 12 被用户打回的三条 bug 各钉了一条 e2e。
 + feature 13 alt-screen task 1-7 + feature 16 鼠标与选区 task 1-9
 + feature 17 viz-flow task 1-3.5（事件落盘 + RecallInjected/ConversationCleared + 装配））：
 
-- `./test.sh` → 1205 passed, 3 deselected，全部离线，约 2 分钟。这是默认路径。
+- `./test.sh` → 1214 passed, 3 deselected，全部离线，约 2 分钟。这是默认路径。
   R4#26 已修（2026-08-22）：Pillow 进 dev 依赖并已装，此前常驻的那条 skip 归零；
   今后 Pillow 缺席相关测试直接红（带修法提示），不再静默 skip。
   两套假 provider 分工是硬的：`tests/fake_llm.py` 注入的假客户端测装配与逻辑；

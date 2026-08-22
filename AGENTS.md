@@ -51,6 +51,8 @@
 - 工具错误不 throw：工具内部异常必须转成字符串结果回填给模型（tool_call_id 严格配对），loop 不因单个工具失败而崩。
 - 模块边界按学习阶段切：一个阶段一个模块，不要把多个阶段的逻辑塞进 loop.py。
 - 依赖注入优先：loop 的 client / model / tools 都可注入，保证离线可测。
+- 新模块依赖 events.py 的事件与注入回调，绝不 import loop.py 内部（R4 评审自
+  dsh 对 agent-loop 的同款戒律采纳）。「要加 X 去哪里」见 docs/dev/扩展点.md。
 
 ## 测试
 

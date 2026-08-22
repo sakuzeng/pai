@@ -236,13 +236,26 @@
         （误触即退代价太大）；e2e 钉对话框期与 busy 期各切一次模式；
       - [x] #27 输入行超宽 → 拍板 A·折行，立档案交付，见
         [features/21](features/21-20260822-input-line-overflow/README.md)。
-- [ ] R4#E1~E5 可扩展性改造（对照 dsh，用户 2026-08-17 提出「想像 dsh 一样可扩展」）：
-      E1「要加 X 去哪里」映射表（纯文档零风险，可立即做）→ E2 system prompt
-      从常量变装配（skills 阶段硬前置）→ E3「模型可见即已记录」升格为可测不变量
-      （evals 地基，顺手钉住 R4#5）→ E4 ToolSource seam（MCP 立项时一并做，
-      须配一条 decisions 把「schema 与代码同源」改述）→ E5 after_tool_call
-      对称缝（等 microcompact 这类真实需求出现再开）。
+- [ ] R4#E1~E5 可扩展性改造（对照 dsh，用户 2026-08-17 提出「想像 dsh 一样可扩展」）。
+      2026-08-22 清掉前三条（E2/E3 用户拍板「参照 CC」，走读沉淀
+      K loop/cc-prompt-and-transcript.md）：
+      - [x] E1「要加 X 去哪里」映射表 → docs/dev/扩展点.md（末节「现在还
+        说不清的」即 E2~E5 的证据）；顺带把「新模块只依赖 events 与注入回调、
+        绝不 import loop 内部」采纳进 AGENTS「架构约束」。
+      - [x] E2 system prompt 从常量变装配 → 交付见
+        [features/22](features/22-20260822-system-prompt-assembly/README.md)。
+        追记：CC 的 env 段（cwd/日期/模型进 prompt）刻意未抄，skills 阶段
+        加段时一并评估。
+      - [x] E3「模型可见即已记录」不变量 → 交付见
+        [features/23](features/23-20260822-model-visible-is-recorded/README.md)。
+      仍开着的两条：E4 ToolSource seam（MCP 立项时一并做，须配一条 decisions
+      把「schema 与代码同源」改述）→ E5 after_tool_call 对称缝
+      （等 microcompact 这类真实需求出现再开）。
       点名不抄：Cordis 全插件化 / profile 分层 / waterfall 事件总线。
+- [ ] feature 23 遗留：收口只覆盖 loop——`modes/interactive.py` 的
+      `_run_shell`（`!命令` 转述）与 `/clear` 重建仍有自己的成对 append，
+      回放不变量照不到 REPL 侧路径。下次动 interactive 落盘时并进 `_record`
+      （出处：23 复盘质疑一）。
 - [ ] R4#A1~A10 跨项目吸收 10 条：会话格式一次到位改造 → 线性 `--resume`（高）、
       成本核算（pi 费率结构 + waku「台账只存 token、金额读时算」，高）、
       记忆双时间轴 `valid_at`/`invalid_at`（graphiti，成本近零，高）、
