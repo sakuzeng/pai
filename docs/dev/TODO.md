@@ -252,11 +252,12 @@
       把「schema 与代码同源」改述）→ E5 after_tool_call 对称缝
       （等 microcompact 这类真实需求出现再开）。
       点名不抄：Cordis 全插件化 / profile 分层 / waterfall 事件总线。
-- [ ] feature 23 遗留：收口只覆盖 loop——`modes/interactive.py` 的
-      `_run_shell`（`!命令` 转述）与 `/clear` 重建仍有自己的成对 append，
-      回放不变量照不到 REPL 侧路径。下次动 interactive 落盘时并进 `_record`
-      （出处：23 复盘质疑一）。
-- [ ] R4#A1~A10 跨项目吸收 10 条：会话格式一次到位改造 → 线性 `--resume`（高）、
+- [x] ~~feature 23 遗留：收口只覆盖 loop——`_run_shell` 与 `/clear` 重建仍有
+      自己的成对 append。~~ 已关闭 2026-08-22（feature 24 T4b）：`_run_shell`
+      改走 `loop._record`，`/clear` 同步裁台账，REPL 侧不再有裸成对 append。
+- [ ] R4#A1~A10 跨项目吸收 10 条（A1 已于 2026-08-22 交付，见
+      [features/24](features/24-20260822-session-format-and-resume/README.md)）：
+      ~~会话格式一次到位改造 → 线性 `--resume`（高）~~、
       成本核算（pi 费率结构 + waku「台账只存 token、金额读时算」，高）、
       记忆双时间轴 `valid_at`/`invalid_at`（graphiti，成本近零，高）、
       skills 照 pi 最小形态（高，阶段 6）等，完整表见评审文件第四节。
@@ -562,10 +563,11 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
       「可读性的价值在目录树里，不在同级文件名里」。但用户正是翻着
       `~/.pai/history/e4887ef95b86e3ee` 问「这是什么」才发现测试污染的——
       文件名可读的话也许更早发现。倾向于承认判断错了，重新评估。
-- [ ] 会话记录的完整字段改造（需求池，08 只并进了 sessionId + cwd）：
-      `uuid`/`parentUuid` 父子链（`--resume`/回退/分支重开的地基）、ISO 时间戳、
-      统一顶层判别字段（现在消息用 `role`、其他记录用 `type`，分类要写
-      `r.get('type', r.get('role'))`）。属「换格式」，影响阶段 7 回放，需独立立项。
+- [x] ~~会话记录的完整字段改造（需求池，08 只并进了 sessionId + cwd）：
+      `uuid`/`parentUuid` 父子链、ISO 时间戳、统一顶层判别字段。~~
+      已交付 2026-08-22（[features/24](features/24-20260822-session-format-and-resume/README.md)
+      格式 v1）：header 首行 + `{type,id,parentId,ts}` 信封 + 消息嵌套。
+      刻意偏离一处：信封 ts 保持 epoch float（viz 时间算术），header 才用 ISO。
 - [ ] 「顺手并入」的判据要收紧（08 复盘一）：本轮把 `sessionId` 搭车并入，
       理由「本来就要动 SessionLog」——那是 scope creep 最常见的措辞。
       规矩 7 应加一句：「顺手」只在『不做它本轮交付就是有缺陷的』时成立
@@ -793,7 +795,10 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
 档案：[features/13](features/13-20260811-alt-screen/README.md)、[spec](features/13-20260811-alt-screen/spec.md)。
 三条都是拍板时就知道的，不是事后发现。
 
-- [ ] `--resume` 不存在，而 13 交付后历史只剩 JSONL（13 brainstorm 问 2，用户提出）。
+- [x] ~~`--resume` 不存在，而 13 交付后历史只剩 JSONL（13 brainstorm 问 2，用户提出）。~~
+      已交付 2026-08-22，见 [features/24](features/24-20260822-session-format-and-resume/README.md)：
+      `pai --resume`（latest / id 前缀 / 路径）+ 配平 + 状态从零 + 按原 id 重录；
+      退出提示已改真话。原条目余文照留：
       今天退出 pai，整段对话还在终端 scrollback 里能翻能复制；alt 屏没有 scrollback，
       13 又拍板不回吐完整文档（对齐 CC 的 `printResumeHint()`）。
       于是从 13 交付到 resume 落地这段时间，退出那一刻历史就只在
@@ -952,6 +957,23 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
       CC 的 frontmatter `description`（给召回器）与索引行钩子（给主模型）是两个不同字符串，
       本机样本实测确实不同。pai 合并成一份省了字段，但两处读者与用途不同。
       建议等有数据再复议，别忘了这是个*选择*而不是自然结果。
+
+### feature 24（会话格式 + resume）遗留 —— 2026-08-22
+
+- [ ] `--resume` 只进交互模式：与任务参数组合（CC 的 `-c -p`）被拒绝，
+      once 续跑未做（出处：24 README 遗留）。
+- [ ] resume 只恢复对话不恢复设置：权限模式/模型/system prompt 取当前环境，
+      dsh 明确警告「恢复不同构图的组合是错误」而 pai 连警告都没有（同上）。
+- [ ] `resolve_resume_target` 同秒 mtime tie 时 latest 未定义：排序键补
+      st_mtime_ns 或文件名即可，一行的事（出处：24 复盘质疑四）。
+- [ ] 观测流 `.events.jsonl` 仍是旧平铺格式：一对文件两种形状，viz 靠读边
+      归一化弥合；events 侧换不换信封等 evals 立项时定（出处：24 README 遗留）。
+- [ ] resume 重录全量历史进新文件：自包含的代价是每 resume 复制一份历史，
+      反复 resume 长会话会滚雪球，「文件数 × 全量」的账没算过（24 复盘质疑三）。
+- [ ] 跨轮平行状态已三件（messages/anchors/ledger），到第四件该封 Session
+      会话对象（pi SessionManager 的角色）（出处：24 复盘质疑一）。
+- [ ] 树操作（回退/分支重开）只有 parentId 字段没有功能——pi 证明是纯读取侧
+      算法，需求出现再开（出处：24 README 遗留）。
 
 ### 分层记忆：与 CC 官方文档逐条对照 —— 2026-08-19（用户提问引出）
 
