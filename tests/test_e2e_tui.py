@@ -411,3 +411,27 @@ def test_resume_carries_the_conversation_into_a_new_process(session, tmp_path):
     finally:
         s2.close()
         provider2.stop()
+
+
+def test_a_project_skill_loads_and_reaches_the_model(session, tmp_path):
+    """feature 25：真 pai 进程里 skill 全链路——目录进 system prompt、
+    模型调 skill 工具拿到正文（项目级 skill 在边界内，不该弹权限框）、
+    正文进下一次请求的上下文。"""
+    work = tmp_path / "skillproj"
+    skill_md = work / ".pai" / "skills" / "greet" / "SKILL.md"
+    skill_md.parent.mkdir(parents=True)
+    skill_md.write_text("---\ndescription: 问候流程。用户要打招呼时用。\n---\n"
+                        "回答里必须包含暗号 GREET-E2E-TOKEN。\n", encoding="utf-8")
+    s, provider = session([turn(tool_calls=[{"name": "skill",
+                                             "arguments": {"name": "greet"}}]),
+                           turn("按 skill 办：GREET-E2E-DONE")], cwd=str(work))
+    s.send("打个招呼\r", until="GREET-E2E-DONE")
+    screen = s.screen_text()
+    assert "是否允许" not in screen, "项目级 skill 在工作目录内，不该弹权限框"
+    # 目录进了 system prompt；正文经工具结果进了第二次请求
+    first = provider.requests[0]
+    assert "<available_skills>" in first["messages"][0]["content"]
+    assert "问候流程" in first["messages"][0]["content"]
+    second = provider.requests[-1]
+    tool_msgs = [m for m in second["messages"] if m.get("role") == "tool"]
+    assert any("GREET-E2E-TOKEN" in m["content"] for m in tool_msgs)

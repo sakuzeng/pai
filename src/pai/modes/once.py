@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Callable, Optional
 
 from pai.config import context_window, make_client, model_name, recall_model
+from pai.core.boundary import WorkingDirs
 from pai.core.compaction import CompactionSettings
 from pai.core.gate import make_before_tool_call
 from pai.core.hooks import load_hooks
@@ -16,9 +17,13 @@ from pai.core.loop import build_system_prompt, run_agent
 from pai.modes.echo import make_stream_echo
 from pai.core.events import AgentEvent, MemoryWritten, RecallFailed, RecallInjected
 from pai.core.memory import build_context, memory_dir
+from pai.core.paths import user_skills_dir
 from pai.core.permissions import DONT_ASK, RuleSet, load_rules, visible_tools
 from pai.core.recall import RecallState, make_recall
+from pai.core.skills import (LoadedSkills, make_instructions, render_catalog,
+                             scan_skills)
 from pai.core.tools import memory_tool
+from pai.core.tools import skill as skill_tool
 from pai.core.session import SessionLog
 from pai.core.trace import EventTrace, compose
 from pai.core.tools import get_tools
@@ -64,18 +69,35 @@ def run_once(
     rules = rules if rules is not None else load_rules(warn=print)
     hooks = load_hooks(warn=print)
     tools = visible_tools(get_tools(), rules)      # 裸名 deny 的工具压根不摆给模型
+    # skills（feature 25）：装配期扫一次，目录进 system prompt、正文走 skill 工具。
+    # 没有任何 skill 时把工具收走——摆一个必然空手而归的工具就是让模型撞空
+    # （与 INTERACTIVE_ONLY 同一个道理）。
+    skills = scan_skills(warn=print)
+    loaded_skills = LoadedSkills()
+    skill_tool.set_catalog({s.name: s for s in skills} if skills else None)
+    skill_tool.set_tracker(loaded_skills)
+    if not skills:
+        tools = {n: t for n, t in tools.items() if n != "skill"}
+    # 用户级 skills 根进边界（spec 第 3 节）：否则 once 下用户级 skill 的正文与
+    # 附属文件（read_file）全被「界外 ask → 无真人 deny」拦死，功能结构性不可用。
+    # 代价如实声明：~/.pai/skills/ 下任何文件的读取从此免问。
+    working_dirs = WorkingDirs.from_startup(
+        None, additional=(str(user_skills_dir()),) if skills else ())
     return run_agent(
         task,
         client=client,
         model=model or model_name(),
         tools=tools,
         # prompt 按过滤后的实际工具集生成（feature 22）——模型看见几个就说几个
-        system_prompt=build_system_prompt(tools),
+        system_prompt=build_system_prompt(tools, skills_catalog=render_catalog(skills)),
         max_steps=max_steps,
         max_total_tokens=max_total_tokens,
         session=session,
         on_event=on_event,
-        instructions=build_context,
+        # 组合 loader（feature 25）：压缩重建后 loop 重调 instructions，
+        # 已加载 skills 的正文跟着指令消息回到上下文（重挂机制，spec 第 4 节）
+        instructions=make_instructions(
+            build_context, loaded_skills, {s.name: s for s in skills}),
         recall=recall,
         context_window=context_window(),
         compaction=CompactionSettings(),
@@ -83,5 +105,6 @@ def run_once(
         # 显式传 mode 可覆盖——`--dangerously-skip-permissions` 就走这条。
         before_tool_call=make_before_tool_call(
             rules, hooks=hooks, tools=tools, asker=None, warn=print,
+            working_dirs=working_dirs,
             mode=mode if mode is not None else DONT_ASK),
     )

@@ -265,6 +265,32 @@
       引用时须在 decisions 补一条「参照源定级」。
 
 
+### feature 25（skills）遗留 —— 2026-08-22
+
+- [ ] 项目级 skill 无信任门槛（25 遗留 1，D#72 顺带点名）：别人塞进仓库的
+      `.pai/skills/` 静默生效并能指挥模型干活。CC 靠工作区信任对话框挡，
+      pai 没有这层。与「配了 Bash allow 即可越界」（feature 09 遗留）同类：
+      洞在明面上，至少该在首次扫到项目级 skill 时提示一次。
+- [ ] 会话中途增删改 skill 不生效（25 遗留 2）：扫描只在装配期跑一次（pi 同款），
+      CC 的实时变更检测 / dsh 的 Chokidar watcher 都没抄。最小修法是
+      `/skill reload` 或按轮重扫；注意重扫会动 system prompt 前缀（缓存代价）。
+- [ ] 四个预算常量全部未实测校准（25 遗留 3）：目录每条 500 字符（取 dsh 默认）/
+      总 8000 字节（取 CC 兜底值）、重挂单篇 2 万字符 / 总 10 万字符
+      （CC 5k/25k token × 4 换算）。与 reserve_tokens 同类「借来的经验值」，
+      来源已写在 `core/skills.py` 常量旁，等真实使用数据回来定。
+      追记（25 复盘质疑二）：重挂总预算装不下时「整条丢弃」抄了 CC 连静默一起抄——
+      与「静默失败是 bug」相冲，校准时顺带加一行「另有 N 个未重挂」提示。
+- [ ] frontmatter 扩展字段与参数替换未做（25 遗留 4，spec 非目标）：
+      `allowed-tools` / `model` / `context: fork` / `hooks` / `paths` /
+      `$ARGUMENTS`。`paths` 条件加载与 memory 那条「`.claude/rules/` 式
+      paths 条件加载」（06 遗留）是同一机制，做时一起。
+- [ ] 嵌套递归发现与外部目录兼容未做（25 遗留 5，spec 非目标）：pi 递归找
+      `**/SKILL.md`、pi/CC 都能挂 `~/.claude/skills` 这类外部目录（settings
+      配置项）。pai 只扫两级根的直接子项。等真实需要。
+- [ ] `~/.pai/skills/` 整目录读免问是刻意代价（25 遗留 6，记录非待办）：
+      用户级 skills 根进了 WorkingDirs.additional，read_file 读该目录下任何
+      文件不再询问。不加就是 once 下用户级 skill 结构性不可用（spec 第 3 节）。
+
 ### feature 21（输入行折行）遗留 —— 2026-08-22
 
 - [ ] 折行续排行上的鼠标点击定位不对（21 遗留 1）：`app._input_click` 按
@@ -279,10 +305,12 @@
 ### 第三参照源 deepseek-harness 接进流程 —— 2026-08-13（D#69 衍生）
 
 - [ ] roadmap 剩余阶段的「参照」栏与「前置精读」清单补 dsh 条目（出处：D#69）。
-      至少三处对得上：阶段 6 skills → dsh `docs/capability-seams.zh.md` 与 `tool-catalog.zh.md`；
-      阶段 7 mcp_client → dsh `docs/api-gateway.zh.md`、`subsystems/`；
-      阶段 8 evals → dsh `docs/testing.zh.md`。动工那天再补，不预先囤
-      （knowledge 规约 1）——本条只是别忘了这件事。
+      至少三处对得上：~~阶段 6 skills → dsh `docs/capability-seams.zh.md` 与 `tool-catalog.zh.md`~~
+      已补 2026-08-22（feature 25 动工日：参照栏三家全补，笔记
+      K skills/dsh-skills.md，另发现 R4#A4 引的 "skills.zh.md" 实际路径是
+      `docs/subsystems/skills.zh.md`）；剩两处照旧动工那天再补：
+      mcp_client 子阶段 → dsh `docs/api-gateway.zh.md`、`subsystems/`
+      （roadmap 阶段 6 已留了指针行）；evals 阶段 → dsh `docs/testing.zh.md`。
 - [x] ~~第一篇 `dsh-` 笔记写哪块，动工前定（出处：D#69）~~ 已完成 2026-08-13：
       写了 K [loop/dsh-loop.md](../../knowledge/loop/dsh-loop.md)（loop 与队列，
       补齐 `pi-loop.md` / `cc-loop.md` 的第三家）。顺带更正了 `pi-loop.md` 一处量词错误

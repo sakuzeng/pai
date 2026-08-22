@@ -199,16 +199,39 @@ feature 12 又撞出六条，其中一条改写了一条已登记遗留的定性
   三条升格的取舍见 [D#57](decisions.md)（一次响应一条消息）、[D#58](decisions.md)（usage 每块都看）、
   [D#59](decisions.md)（权限按批前置）。
 
-## 阶段 6 · skills / MCP client
+## 阶段 6 · skills / MCP client（skills 子阶段已交付 2026-08-22，档案 [features/25](features/25-20260822-skills/README.md)；MCP 子阶段未动）
 
 - 目标：按需加载的能力扩展。两个子阶段，skills 先行。
-- 参照：CC `src/skills/`；官方 skills / MCP 章节。
-- 前置精读：
-  - [ ] 官方 skills 章节（https://code.claude.com/docs/zh-CN/skills）
-  - [ ] 官方 MCP 章节（https://code.claude.com/docs/zh-CN/mcp）
-  - [ ] 反向对照：拿 N 个真实场景跑一遍，把与文档/源码不符的地方记进 evidence
+- 参照（2026-08-22 补 dsh 条目，D#69 衍生 TODO 销账·阶段 6 部分）：
+  skills——pi `packages/coding-agent/src/core/skills.ts` + `packages/agent/src/harness/skills.ts`
+  （R4#A4 点名的最小形态原型）；CC `src/tools/SkillTool/` + `src/skills/loadSkillsDir.ts` +
+  `src/services/compact/compact.ts` 的压缩重挂（反编译 2.1.88，⚠️ 官方文档基线是
+  2.1.196+，引用必须带版本）；dsh `docs/capability-seams.zh.md`、`docs/tool-catalog.zh.md`、
+  `docs/subsystems/skills.zh.md`（pin `47f9438`）。
+  MCP——dsh `docs/api-gateway.zh.md`、`docs/subsystems/`（该子阶段动工时定细目）。
+- 前置精读（skills 子阶段四篇已落 2026-08-22；MCP 子阶段动工那天再补，不预先囤）：
+  - [x] 官方 skills 章节 → [knowledge/skills/claude-skills.md](../../knowledge/skills/claude-skills.md)
+        （渐进式披露、列表预算窗口 1%、压缩重挂 5k/25k；含 2.1.239 真实探针两条出入）
+  - [x] pi skills 源码走读 → [knowledge/skills/pi-skills.md](../../knowledge/skills/pi-skills.md)
+        （最小形态四步；⚠️ 无列表预算、压缩后不重挂——两条 pai 必须补的偏离）
+  - [x] CC skills 源码走读 → [knowledge/skills/cc-skills.md](../../knowledge/skills/cc-skills.md)
+        （Skill 工具两路执行、system-reminder 增量注入、压缩重挂数字与官方交叉验证一致）
+  - [x] dsh skills 三篇 → [knowledge/skills/dsh-skills.md](../../knowledge/skills/dsh-skills.md)
+        （registry/provider/consumer 切分、三层数据结构、digest 目录替换；
+        ⚠️「零新增工具」只是 pi 形态，加载动作三家三分）
+  - [x] 反向对照（动工前）→ [features/25 evidence](features/25-20260822-skills/evidence/20260822-skills动工前反向对照/说明.md)
+        （claude 2.1.239 三探针 + 三家源码级对照：frontmatter name 也能调起（与文档不符，
+        机制未查明）、坏 YAML 时正文首段顶掉 description（排障文档的前提被回退规则吞掉）、
+        CC 每条描述上限 250 vs 文档 1536（版本漂移））
+  - [x] 反向对照（交付前）→ [features/25 evidence](features/25-20260822-skills/evidence/20260822-skills交付前反向对照/说明.md)
+        （真 DeepSeek 回合：不点名也自主调了 `skill({"name":"release-note"})`，
+        回答遵守 skill 全部规范；两次废跑各有一条教训——项目 skill 认 git 根，
+        子目录不 init 就静默扫不到）
+  - [ ] 官方 MCP 章节（https://code.claude.com/docs/zh-CN/mcp）（MCP 子阶段）
+  - [ ] MCP 子阶段的反向对照（动工前）：拿 N 个真实场景跑一遍，不符处记进 evidence
 - 顺带工具：ToolSearch（工具多了才需要延迟加载与检索——在此之前是过度设计）。
-- 流程：superpowers 全链路，两个子阶段各一轮。
+- 流程：superpowers 全链路，两个子阶段各一轮。skills 档案：
+  [features/25-20260822-skills/](features/25-20260822-skills/README.md)。
 
 ## 阶段 7 · evals
 
