@@ -263,3 +263,74 @@ def test_typing_while_busy_lands_in_the_queue(session):
     assert "第一轮答完" in screen
     assert "第二轮答完" in screen, "排队的那条没被发出去"
     assert len(provider.requests) >= 2
+
+
+def test_idle_ctrl_c_actually_clears_the_input(session, tmp_path):
+    """R4#24：空闲态 Ctrl+C 打出「(输入已清空，再按一次 Ctrl+C 退出)」，
+    却从没调 `editor.clear()`——文本原样还在，文案说谎。
+    钉的是**屏幕上输入真的没了**：`abc` 从未提交进 scrollback，
+    清掉之后它就该从整个屏幕上消失。"""
+    s, _ = session([turn("用不到")])
+    s.send("", until="/help 看命令")            # 等开场动画放完、主循环开始读键盘
+    s.send("abc", until="abc")                  # 前置：打的字先出现在输入行
+    s.send("\x03", until="输入已清空")
+    assert "abc" not in s.screen_text(), "说了「输入已清空」就得真的清"
+
+
+def test_tui_shell_command_lands_in_history(session, tmp_path):
+    """R4#17：`!命令` 历史——REPL 记（`_append_history` 在 `!` 分支之前）、
+    TUI 不记（COMMAND 分支直接 dispatch），两处语义漂移。按 REPL 对齐：
+    `!` 记、`/` 不记。同步点用 `$((40+2))` 的**展开值**——拿输入回显当
+    「执行完成」会抢跑。"""
+    from pai.modes.interactive import history_path_for
+
+    s, _ = session([turn("用不到")])
+    s.send("", until="/help 看命令")
+    s.send("!echo pRoBe_$((40+2))\r", until="pRoBe_42")
+    s.send("/help\r", until="/permissions")
+    text = history_path_for(cwd=REPO).read_text(encoding="utf-8")
+    assert "!echo pRoBe_$((40+2))" in text, "TUI 的 !命令 必须与 REPL 一样进历史"
+    assert "/help" not in text, "`/` 命令不进历史——REPL 语义如此，别顺手扩大"
+
+
+def test_main_screen_exit_leaves_no_dock_residue(session, tmp_path):
+    """R4#18：main-screen 退出顺序——先 print 会话路径、再 `renderer.clear()`。
+    DockRenderer 靠相对光标移动找自己的行，print 已把光标推走，清的就是别人的行：
+    dock 残影留给 shell，退出提示反而可能被抹掉。
+
+    退出 print 不进录制（走普通 print），所以这条喂的是 `s.raw`——pty 上的
+    **全部字节**，正是真实终端拿到的那一份。"""
+    from pai.tui.screen import VirtualScreen
+
+    work = tmp_path / "ms"
+    (work / ".pai").mkdir(parents=True)
+    (work / ".pai" / "settings.json").write_text(
+        json.dumps({"tui": {"altScreen": False}}), encoding="utf-8")
+    s, _ = session([turn("用不到")], cwd=str(work))
+    s.send("", until="/help 看命令")
+    s.send("\x04")                                # Ctrl+D 退出
+    s.drain(1.2)
+
+    screen = VirtualScreen(cols=COLS, rows=ROWS)
+    screen.write(s.raw.decode("utf-8", errors="replace"))
+    text = to_text(screen)
+    assert "会话已存" in text, "退出提示必须活着——被错位的清行抹掉就是 R4#18 的另一半"
+    assert "再见" in text
+    assert "›" not in text, "输入行是 dock 的，退出后必须被清干净"
+    assert "─────" not in text, "分隔线是 dock 的，留在 shell 里就是残影"
+
+
+def test_mode_cycle_works_during_dialogs_and_busy(session, tmp_path):
+    """R4#25 拍板「放行安全三键」（2026-08-22）：CYCLE_MODE/EXPAND/REDRAW 在
+    busy 期与对话框期不再被静默丢弃——连环权限申请时恰是最想 shift+tab 切
+    acceptEdits 的时刻。EOF 仍刻意忽略（误触即退代价太大，退出走 Ctrl+C 两级）。"""
+    work = tmp_path / "busy"
+    work.mkdir()
+    s, _ = session([turn(tool_calls=[{"name": "bash",
+                                      "arguments": {"command": "sleep 0.8; echo slept"}}]),
+                    turn("睡完了。")], cwd=str(work))
+    s.send("跑\r", until="是否允许")
+    s.send("\x1b[Z", until="模式 → acceptEdits", timeout=4.0)   # 对话框期切
+    s.send("1", wait=0.2)                                       # 允许，进入 busy
+    s.send("\x1b[Z", until="模式 → bypassPermissions")          # busy 期再切
+    s.send("", until="睡完了")

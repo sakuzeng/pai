@@ -157,3 +157,24 @@ def test_out_of_range_rows_clamp_instead_of_raising():
     sel.start(50, 0)
     sel.update(60, 3)
     assert sel.text(doc, 40) == ""
+
+
+def test_resize_clears_the_selection():
+    """R4#20：头注原先的说法「锚在逻辑行故免疫 resize」不成立——逻辑行本身是
+    按宽度折行的产物，resize 后同一个 (row,col) 指向**别的文字**，复制出来的
+    是用户没选过的内容。修法照评审：resize 即 clear（选区失效清单里
+    压缩 / `/clear` 之外补上第三项）。"""
+    from pai.tui.app import TuiApp
+    from pai.tui.renderer import DockRenderer
+    from pai.tui.screen import VirtualScreen
+
+    screen = VirtualScreen(cols=40, rows=10)
+    app = TuiApp(renderer=DockRenderer(write=screen.write, width=lambda: screen.cols))
+    app.commit("可以被选中的一行内容")
+    app.selection.start(0, 0)
+    app.selection.update(0, 4)
+    app.selection.finish()
+    assert app.selection.has_selection
+
+    app.handle_resize()
+    assert not app.selection.has_selection

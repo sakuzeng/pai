@@ -69,6 +69,28 @@ def test_display_width_counts_east_asian_wide_as_two():
     assert all(unicodedata.east_asian_width(c) in ("W", "F") for c in "中文")
 
 
+def test_combining_marks_take_zero_columns():
+    """R4#19 最小修（2026-08-22 拍板）：组合记号（Mn/Me）与格式字符（Cf，
+    含 ZWJ/零宽空格）计 0 列——终端把它们叠在基字符上或根本不画。
+    此前按 1 列计，粘贴分解形式的「e\u0301」后光标/折行/选区全体偏移。
+    不可见字符一律写 \\u 转义——源码里肉眼分不出组合形式，直接贴字符会被
+    编辑器/工具链悄悄归一化（写本测试时就发生了一次）。"""
+    assert display_width("e\u0301") == 1        # e + 组合尖音 = 屏幕 1 列
+    assert display_width("Vie\u0323\u0302t") == 4   # Việt 的全分解形式
+    assert display_width("\u200d") == 0         # ZWJ（Cf）单独出现
+    assert display_width("\u200b") == 0         # 零宽空格（Cf）
+    assert display_width("\ufe0f") == 0         # VS16（Mn）
+    assert display_width("中\u0301") == 2       # 宽字符带组合记号仍是 2
+
+
+def test_zwj_emoji_sequences_are_still_wrong_and_we_say_so():
+    """诚实边界：ZWJ emoji 序列（女性+ZWJ+电脑=「女程序员」）真实终端画 2 列，
+    最小修算出 4（两个 emoji 各 2、ZWJ 0）——不做 UAX#29 字素归组就算不对。
+    D#63 已禁自家文案用 emoji，只剩外来粘贴一条路。这条测试钉住**当前已知错误**，
+    等做完整 grapheme 分段时它应当红、然后改写。"""
+    assert display_width("\U0001f469\u200d\U0001f4bb") == 4
+
+
 def test_empty_events_render_empty_string():
     assert render_tool_line([], width=80) == ""
 

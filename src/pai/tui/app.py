@@ -169,6 +169,19 @@ class TuiApp:
                               if self.arbiter.is_suppressing() else 0)
         self.renderer.draw(self.root)
 
+    def handle_resize(self) -> None:
+        """SIGWINCH 之后的全套动作（从 interactive 的闭包挪进来，为的是可离线测）。
+
+        终端在 resize 时会自己挪动备用屏的内容（实测），所以不能只重画——
+        要先把「上一帧屏幕上有什么」的记忆作废，逼出一次全量重绘。
+        选区必须清（R4#20）：它锚在逻辑行号上，而逻辑行是**按宽度折行**的产物，
+        resize 后同一个 (row,col) 指向别的文字——「免疫 resize」的旧说法不成立。
+        """
+        if hasattr(self.renderer, "invalidate"):
+            self.renderer.invalidate()
+        self.selection.clear()
+        self.refresh()
+
     def commit(self, payload) -> None:
         """把内容交出去。**两种模式的落点不同，这里是唯一的分叉点**（feature 13）。
 

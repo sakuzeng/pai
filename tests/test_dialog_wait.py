@@ -138,9 +138,29 @@ def test_the_caller_still_sees_commands_typed_during_a_question():
     app.enqueue_dialog(dialog)
 
     seen = []
-    driver = ScriptedDriver(app, [b"!echo hi\r", b"1"])
+    # `1\r` 而非 `1`：R4#16 拍板后提问框判整串（回车才裁决），首键直选只剩权限框
+    driver = ScriptedDriver(app, [b"!echo hi\r", b"1\r"])
     answer = await_dialog_answer(
         driver, app, dialog, lambda kind, payload: seen.append((kind, payload)))
 
     assert seen == [("command", "!echo hi")]
     assert answer == "A"
+
+
+def test_a_quit_command_during_a_question_ends_the_wait_without_a_zombie():
+    """R4#15：dialog 期间敲 `/exit`，dispatch 返回的 quit 被丢弃——静默空操作。
+    REPL 的 asker 同款逃生口是好使的（「/exit 退出」明明白白印在提示里），
+    两处语义漂移。修法：`on_action` 返回 quit 时与 EOF 同款——连框一起撤。"""
+    clock = Clock()
+    app = make(clock)
+    dialog = _permission_dialog()
+    app.enqueue_dialog(dialog)
+
+    driver = ScriptedDriver(app, [b"/exit\r"])
+    answer = await_dialog_answer(
+        driver, app, dialog,
+        lambda kind, payload: kind == "command" and payload == "/exit")
+
+    assert answer == NO_ANSWER, "退出不是作答——不许给 gate 一个像答案的东西"
+    assert app.arbiter.pending_count() == 0, "框必须撤掉，不许留僵尸接管键盘"
+    assert app.arbiter.current() is None

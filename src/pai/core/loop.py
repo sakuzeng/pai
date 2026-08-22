@@ -44,6 +44,7 @@ from pai.core.events import (
     Interrupted,
     MessageDelta,
     PermissionDecided,
+    RecallFailed,
     SteeringInjected,
     ToolEnd,
     ToolStart,
@@ -157,8 +158,11 @@ def run_agent(
     if recall is not None:
         try:
             recalled, r_usage = recall(task)
-        except Exception:      # noqa: BLE001 - 召回失败降级成「没召回」，不该把整轮带走
+        except Exception as exc:   # noqa: BLE001 - 召回失败降级成「没召回」，不该把整轮带走
             recalled, r_usage = "", {}
+            # 降级不等于闭嘴（R4#22）：逃到这里的是包装层自己的 bug，正常失败
+            # 在 make_recall 内已转 on_failure。loop 不持有熔断状态，disabled 说不了真话，恒 False
+            on_event(RecallFailed(reason="crashed", detail=repr(exc), disabled=False))
         # 侧查询的 token 与压缩那次一样计进熔断账，否则预算就有个后门
         spent_tokens += (r_usage or {}).get("total_tokens") or 0
         if recalled.strip():
@@ -260,6 +264,9 @@ def run_agent(
 
         usage = usage_fields(msg)
         if compaction_on and state.awaiting_verify and usage.get("prompt_tokens") is not None:
+            # 已知洞（R4#23，记档备参照）：provider 若从此停返 usage，这个条件
+            # 永远不满足，awaiting_verify 永挂 → 压缩触发块（上面查 not awaiting_verify）
+            # 永久跳过，且无任何提示。DeepSeek 恒回 usage 故不触发；换 provider 时再兜。
             # verify_compaction 返回新对象；这里必须**写回同一个 state**而不是换绑，
             # 否则注入方（REPL 跨轮持有）看不到失败计数，熔断器等于每轮清零
             _adopt(state, verify_compaction(

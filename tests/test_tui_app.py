@@ -117,7 +117,8 @@ def test_answering_a_question_resolves_it():
     app, _ = make()
     dialog = Dialog(question="用哪个？", options=["A", "B"])
     app.enqueue_dialog(dialog)
-    feed(app, b"2")
+    # `2\r` 而非 `2`：R4#16 拍板后提问框判整串（回车才裁决），首键直选只剩权限框
+    feed(app, b"2\r")
     assert dialog.resolved is True
     assert dialog.answer == "B"
     assert app.arbiter.current() is None
