@@ -85,6 +85,28 @@ SYSTEM_PROMPT = (
 )
 
 
+def build_system_prompt(tools: dict) -> str:
+    """按实际工具集生成 system prompt（feature 22，R4#E2；形状照 CC 的
+    `getSystemPrompt(tools, …)`——装配层算好、loop 收成品）。
+
+    只列名字不抄描述：schema 本来就走请求的 tools 参数，prompt 里复述会漂。
+    指导语按「有没有这个工具」条件化（CC 的 enabledTools 同款）；dict 迭代
+    顺序即注册顺序，同一工具集生成结果逐字稳定——护住缓存前缀（CC 用
+    SYSTEM_PROMPT_DYNAMIC_BOUNDARY 防前缀哈希裂成 2^N 的同一课）。
+    不经此函数直接调 run_agent 的老路径仍拿 SYSTEM_PROMPT 常量，逐字不变。
+    """
+    parts = ["你是一个最小化的编码 agent。"]
+    if tools:
+        parts.append("你有这些工具：" + "、".join(tools) + "。工具的用法与参数见各自的说明。")
+    if "edit_file" in tools:
+        parts.append("改代码时优先用 edit_file 做精确修改，而不是用 bash 或整文件覆盖。")
+    if "ask_user_question" in tools:
+        parts.append("拿不准用户的意图、或不理解自己为什么被拒绝时，"
+                     "用 ask_user_question 问真人，不要瞎猜。")
+    parts.append("一步步来，看到工具结果再决定下一步。任务完成后用一句话简短总结。")
+    return "".join(parts)
+
+
 def print_event(event: AgentEvent) -> None:
     """默认事件处理器：渲染成中文一行打印。None 表示这个事件默认不出声。"""
     text = render_text(event)
@@ -112,6 +134,7 @@ def run_agent(
     compaction_state: Optional[CompactionState] = None,
     before_tool_call: Optional[Callable[[str, dict], "Decision"]] = None,
     recall: Optional[Callable[[str], "tuple"]] = None,
+    system_prompt: Optional[str] = None,
 ) -> str:
     """跑一次 agent 任务，返回最终回答。
 
@@ -130,17 +153,16 @@ def run_agent(
     if messages is None:
         messages = []
     if not messages:
-        system_entry = {"role": "system", "content": SYSTEM_PROMPT}
-        messages.append(system_entry)
-        if session:
-            session.append(system_entry)
+        # system_prompt 由装配层生成（build_system_prompt），不传时用常量逐字不变
+        system_entry = {"role": "system",
+                        "content": system_prompt if system_prompt is not None
+                        else SYSTEM_PROMPT}
+        _record(messages, system_entry, session)
     if instructions is not None:
         _inject_instructions(messages, instructions, session)
 
     user_entry = {"role": "user", "content": task}
-    messages.append(user_entry)
-    if session:
-        session.append(user_entry)
+    _record(messages, user_entry, session)
 
     tool_schemas = [t.schema() for t in tools.values()]
     on_event(AgentStart(task=task))
@@ -295,9 +317,7 @@ def run_agent(
                 }
                 for tc in msg.tool_calls
             ]
-        messages.append(assistant_entry)
-        if session:
-            session.append(assistant_entry)
+        _record(messages, assistant_entry, session)
         on_event(AssistantMessage(
             content=msg.content,
             tool_call_names=tuple(tc.function.name for tc in (msg.tool_calls or [])),
@@ -383,10 +403,8 @@ def run_agent(
             #    押在渲染器不出错上。
             for tc, (args, result, is_error) in zip(batch.calls, results):
                 tool_entry = {"role": "tool", "tool_call_id": tc.id, "content": result}
-                messages.append(tool_entry)
+                _record(messages, tool_entry, session)
                 filled.add(tc.id)
-                if session:
-                    session.append(tool_entry)
                 on_event(ToolEnd(tool_call_id=tc.id, name=tc.function.name, args=args,
                                  result=result, is_error=is_error))
 
@@ -401,9 +419,7 @@ def run_agent(
                     continue
                 entry = {"role": "tool", "tool_call_id": tc.id,
                          "content": MISSING_RESULT}
-                messages.append(entry)
-                if session:
-                    session.append(entry)
+                _record(messages, entry, session)
 
         if interrupted:
             on_event(Interrupted(where="tool"))
@@ -426,6 +442,23 @@ def _has_instructions(messages: List[dict]) -> bool:
     return any(m.get("role") == "user"
                and str(m.get("content") or "").startswith(INSTRUCTION_HEADER)
                for m in messages)
+
+
+def _record(messages: List[dict], entry: dict, session: SessionLog | None) -> None:
+    """「模型可见」的唯一入账口（feature 23，R4#E3）。
+
+    进 messages 的模型可见消息必须同时进 session——此前成对 append 散在 5 处，
+    漏一半不会红。对应 CC 的 `recordTranscript`（sessionStorage.ts 唯一收口）；
+    它另有按消息 uuid 的幂等增量，pai 的消息没有身份字段，那半归 R4#A1。
+    仅两类写入不走这里：`type` 旁账记录（本就不是模型可见的），以及
+    `_inject_instructions`（它是 insert 不是 append——插在 system 之后；
+    首次注入时刻早于一切后续追加，落盘顺序与最终列表顺序一致，
+    压缩后的重注入则整个会话已被 replay_messages 拒收）。
+    不变量测试：test_session_replay_equals_the_model_visible_messages。
+    """
+    messages.append(entry)
+    if session:
+        session.append(entry)
 
 
 def _inject_instructions(messages: List[dict], loader: Callable[[], str],
@@ -462,9 +495,7 @@ def _extend(messages: List[dict], extra: List[dict], session: SessionLog | None,
     不该顶着 steering 的名义上屏。
     """
     for m in extra:
-        messages.append(m)
-        if session:
-            session.append(m)
+        _record(messages, m, session)
     if on_event is not None and extra:
         on_event(SteeringInjected(
             texts=tuple(str(m.get("content") or "") for m in extra)))

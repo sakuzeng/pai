@@ -460,3 +460,36 @@ def test_asker_ref_reports_whether_a_human_is_available():
 
     gate = make_before_tool_call(RuleSet.from_lists(ask=["bash(*)"]), asker=AskerRef(None))
     assert gate("bash", {"command": "ls"}).kind == "deny"
+
+
+# ---- feature 22（R4#E2）：装配层传生成的 system prompt ----
+
+
+def test_once_sends_a_prompt_built_from_its_actual_tools(tmp_path, monkeypatch):
+    """once 的工具集没有 ask_user_question（无真人可问），prompt 里也不许有——
+    常量时代它反过来：REPL 明明有这个工具，prompt 却只报四个名字。"""
+    monkeypatch.chdir(tmp_path)
+    client = FakeClient([{"content": "好"}])
+    run_once("x", client=client, model="fake", no_session=True,
+             on_event=lambda _: None, rules=_OPEN)
+    system = client.requests[0]["messages"][0]["content"]
+    assert "bash" in system and "edit_file" in system
+    assert "ask_user_question" not in system
+    # 判别断言：装配必须传**生成的** prompt——上面三条对旧常量恰好也全真
+    from pai.core.loop import SYSTEM_PROMPT
+    assert system != SYSTEM_PROMPT, "once 还在发常量，说明装配没接线"
+
+
+def test_interactive_sends_a_prompt_that_admits_ask_user_question(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    from pai.modes import interactive
+
+    lines = iter(["随便说点", "/exit"])
+    client = FakeClient([{"content": "好"}])
+    interactive.run_interactive(client=client, model="fake",
+                                reader=lambda _p="": next(lines),
+                                out=lambda _s: None, on_event=lambda _e: None,
+                                no_session=True, rules=_OPEN,
+                                history_path=tmp_path / "h")
+    system = client.requests[0]["messages"][0]["content"]
+    assert "ask_user_question" in system, "REPL 真有这个工具，prompt 不许再瞒着"
