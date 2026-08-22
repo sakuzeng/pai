@@ -187,7 +187,7 @@ INTERACTIVE_ONLY = ("ask_user_question",)
 
 def get_tools(names: list[str] | None = None) -> dict[str, Tool]:
     """默认全量（除需真人在场的）；传 names 取子集（受限工具集 / 交互模式加料用）。"""
-    from pai.core.tools import ask, fs, memory_tool, shell  # noqa: F401 - import 即注册
+    from pai.core.tools import ask, fs, memory_tool, shell, skill  # noqa: F401 - import 即注册
 
     if names is None:
         return {n: t for n, t in REGISTRY.items() if n not in INTERACTIVE_ONLY}
@@ -201,7 +201,7 @@ def all_tools() -> dict[str, Tool]:
     而 INTERACTIVE_ONLY 只是「不摆给模型看」，不是「不会被调用」。
     显式 import 子模块而不是直接读 REGISTRY——否则判定结果取决于谁先 import 了谁。
     """
-    from pai.core.tools import ask, fs, memory_tool, shell  # noqa: F401 - import 即注册
+    from pai.core.tools import ask, fs, memory_tool, shell, skill  # noqa: F401 - import 即注册
 
     return dict(REGISTRY)
 

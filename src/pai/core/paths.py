@@ -17,6 +17,7 @@ USER_DIR = ".pai"
 PROJECTS_DIR = "projects"
 MEMORY_SUBDIR = "memory"
 SESSIONS_SUBDIR = "sessions"
+SKILLS_SUBDIR = "skills"
 
 
 def user_dir(home: Optional[Path] = None) -> Path:
@@ -63,3 +64,17 @@ def memory_dir(cwd: Optional[Path] = None, home: Optional[Path] = None) -> Path:
 
 def sessions_dir(cwd: Optional[Path] = None, home: Optional[Path] = None) -> Path:
     return project_dir(cwd, home) / SESSIONS_SUBDIR
+
+
+def user_skills_dir(home: Optional[Path] = None) -> Path:
+    """用户级 skills：`~/.pai/skills/`（feature 25）。不挂在 projects/ 下——
+    skills 跟人走不跟项目走，与 `~/.claude/skills` 的层级对位。"""
+    return user_dir(home) / SKILLS_SUBDIR
+
+
+def project_skills_dir(cwd: Optional[Path] = None) -> Path:
+    """项目级 skills：`<git根 或 cwd>/.pai/skills/`。取 git 根与 `project_slug`
+    的项目定义一致——子目录里启动也拿到仓库根上定义的 skills（CC 同语义）。"""
+    cwd = Path(cwd) if cwd is not None else Path.cwd()
+    root = _git_root(cwd) or cwd
+    return root / USER_DIR / SKILLS_SUBDIR

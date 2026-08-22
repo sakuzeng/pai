@@ -423,7 +423,11 @@ def test_loop_warns_not_compacts_when_no_cut_available(tmp_path, monkeypatch):
         {"content": "done"},
     ]
     client = FakeClient(script)
-    run_agent("x", client=client, model="fake", tools=get_tools(),
+    # 工具集钉成固定四件套：本测试的窗口/阈值数字是按这套 schema 体积配平的，
+    # 全量 get_tools() 会随注册工具增多把估算推过线（feature 25 加 skill 时踩过：
+    # 第 1 步就超线，凭空多出一条 anchors_pending）
+    run_agent("x", client=client, model="fake",
+              tools=get_tools(["bash", "read_file", "write_file", "edit_file"]),
               context_window=1000, compaction=CompactionSettings(reserve_tokens=200),
               on_event=events.append)
     skipped = [e for e in events if isinstance(e, CompactionSkipped)]

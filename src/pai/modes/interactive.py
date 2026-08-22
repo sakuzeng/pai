@@ -49,6 +49,7 @@ from pai.core.events import (
     ToolStart,
     render_text,
 )
+from pai.core.boundary import WorkingDirs
 from pai.core.interrupt import InterruptFlag, set_current
 from pai.core.gate import make_before_tool_call
 from pai.core.hooks import load_hooks
@@ -62,7 +63,7 @@ from pai.core.permissions import (
     load_rules,
     visible_tools,
 )
-from pai.core.paths import sessions_dir
+from pai.core.paths import sessions_dir, user_skills_dir
 from pai.core.memory import (
     LOCAL_FILE,
     MEMORY_INDEX,
@@ -75,9 +76,11 @@ from pai.core.memory import (
 from pai.core.queue import PendingMessageQueue
 from pai.core.recall import RecallState, make_recall
 from pai.core.session import SessionLog
+from pai.core.skills import make_instructions, read_skill_body, render_catalog, scan_skills
 from pai.core.trace import EventTrace, compose
 from pai.core.settings import alt_screen_enabled, load_settings, mouse_enabled
 from pai.core.tools import Tool, ask, get_tools, memory_tool
+from pai.core.tools import skill as skill_tool
 from pai.modes.echo import make_stream_echo
 from pai.modes.statusline import StatusLinePrinter
 from pai.tui.app import (
@@ -107,6 +110,7 @@ HELP = """可用命令：
   /mode     查看/切换权限模式（TUI 里也可按 shift+tab 轮转）
   /permissions  当前生效的权限规则与各自来源
   /compact  手动压缩当前对话
+  /skill    列出可用 skills；`/skill <名> [参数]` 加载并执行
   /clear    清空对话（保留 system）
   /exit     退出（等同 Ctrl+D）
 其他输入直接发给模型；`!命令` 直接跑 shell 且不打模型；行尾 `\\` 续行。"""
@@ -385,8 +389,22 @@ def run_interactive(
     # 模式必须是**可变持有者**：传字符串会被烤进 gate 的闭包，`/mode` 与 shift+tab
     # 就永远改不动了（feature 12 T5 动工前撞见的结构问题）。
     mode_state = PermissionModeState(mode or DEFAULT_MODE)
+    # skills（feature 25）：装配期扫一次；没有任何 skill 时把工具收走（同 once）。
+    # 用户级 skills 根进边界，否则用户级 skill 的正文与附属文件被界外 ask 拦住。
+    skills = scan_skills(warn=out)
+    loaded_skills = skill_tool.LoadedSkills()
+    skill_tool.set_catalog({s.name: s for s in skills} if skills else None)
+    skill_tool.set_tracker(loaded_skills)
+    if not skills:
+        tools = {n: t for n, t in tools.items() if n != "skill"}
+    skills_catalog = render_catalog(skills)
+    instructions = make_instructions(build_context, loaded_skills,
+                                     {s.name: s for s in skills})
+    working_dirs = WorkingDirs.from_startup(
+        None, additional=(str(user_skills_dir()),) if skills else ())
     gate = make_before_tool_call(
-        rules, hooks=hooks, tools=tools, asker=asker_ref, warn=out, mode=mode_state)
+        rules, hooks=hooks, tools=tools, asker=asker_ref, warn=out, mode=mode_state,
+        working_dirs=working_dirs)
     directory = memory_dir()
     memory_tool.set_memory_dir(directory)
     memory_tool.set_notifier(
@@ -408,6 +426,7 @@ def run_interactive(
         context_window=context_window, compaction=compaction, gate=gate,
         recall=recall, rules=rules, hooks=hooks, mode_state=mode_state,
         history=history, asker_state=asker_state, asker_ref=asker_ref, trace=trace,
+        skills_catalog=skills_catalog, instructions=instructions,
     )
     if _use_tui(reader):
         _run_tui(out=out, **common)
@@ -437,6 +456,25 @@ def run_interactive(
             continue
 
         if line.startswith("/"):
+            if line.split()[0] == "/skill":
+                expanded = _expand_skill_line(line, out)
+                if expanded is not None:
+                    _append_history(history, line)      # 历史记原命令，不记展开的大块
+                    with _interruptible(flag):
+                        try:
+                            _run_turn(expanded, client=client, model=model, tools=tools,
+                                      messages=messages, ledger=ledger, anchors=anchors,
+                                      state=state, steering=steering, flag=flag,
+                                      session=session, on_event=on_event, out=out,
+                                      max_steps=max_steps,
+                                      max_total_tokens=max_total_tokens,
+                                      context_window=context_window,
+                                      compaction=compaction, before_tool_call=gate,
+                                      recall=recall, skills_catalog=skills_catalog,
+                                      instructions=instructions)
+                        except KeyboardInterrupt:
+                            out("⛔ 已中断")
+                continue
             if _handle_command(line, out=out, messages=messages, anchors=anchors,
                                state=state, tools=tools, client=client, model=model,
                                compaction=compaction, context_window=context_window,
@@ -454,7 +492,8 @@ def run_interactive(
                 try:
                     _run_shell(line[1:].strip(), messages=messages,
                                session=session, out=out,
-                               system_prompt=build_system_prompt(tools),
+                               system_prompt=build_system_prompt(
+                                   tools, skills_catalog=skills_catalog),
                                ledger=ledger)
                 except KeyboardInterrupt:
                     # 信号可能落在装处理器之前/之后的缝隙里（或非主线程装不上），
@@ -468,7 +507,8 @@ def run_interactive(
                       anchors=anchors, state=state, steering=steering, flag=flag,
                       session=session, on_event=on_event, out=out, max_steps=max_steps,
                       max_total_tokens=max_total_tokens, context_window=context_window,
-                      compaction=compaction, before_tool_call=gate, recall=recall)
+                      compaction=compaction, before_tool_call=gate, recall=recall,
+                      skills_catalog=skills_catalog, instructions=instructions)
         except (EOFError, KeyboardInterrupt):
             raise                       # Ctrl+D / Ctrl+C 是正常控制流，不吞
         except Exception as e:          # noqa: BLE001 - REPL 这一层的价值就是「对话留着」
@@ -501,7 +541,9 @@ def _run_turn(task: str, *, client, model, tools, messages, anchors, state, stee
               flag, session, on_event, out, max_steps, max_total_tokens,
               context_window, compaction, before_tool_call=None, recall=None,
               ledger: Optional[List[Optional[str]]] = None,
-              on_queue_change: Optional[Callable[[int], None]] = None) -> None:
+              on_queue_change: Optional[Callable[[int], None]] = None,
+              skills_catalog: Optional[str] = None,
+              instructions: Optional[Callable[[], str]] = None) -> None:
     with _interruptible(flag):
         answer = _guarded_run(
             out,
@@ -514,9 +556,10 @@ def _run_turn(task: str, *, client, model, tools, messages, anchors, state, stee
             recall=recall,
             # 按实际工具集生成（feature 22）：REPL 有 ask_user_question、
             # visible_tools 可能删过——常量那句「你有这些工具」在这条路上是谎话
-            system_prompt=build_system_prompt(tools),
+            system_prompt=build_system_prompt(tools, skills_catalog=skills_catalog),
             entry_ledger=ledger,
-            instructions=build_context,
+            # 组合 loader（feature 25）：压缩重建后重挂已加载 skills；不传时退回纯记忆
+            instructions=instructions if instructions is not None else build_context,
             # 谓词把 `/`、`!` 滤掉且留在队列里——它们是给客户端执行的，
             # 当文本发给模型是 CC 明文禁止的那件事（feature 18 问 5/7）。
             # 纯 REPL 路径队列恒空（阻塞的 input 拿不到「干活时打字」），
@@ -590,6 +633,43 @@ def _system_prompt() -> str:
     return SYSTEM_PROMPT
 
 
+def _expand_skill_line(line: str, out: Callable[[str], None]) -> Optional[str]:
+    """`/skill [名 [参数]]` → 展开成要发给模型的任务文本（pi 的 /skill:name 形态）。
+
+    返回 None 表示没有可跑的轮次（裸列表 / 未知名 / 读失败），提示已打给用户。
+    目录表从工具模块取（装配层注入的同一份）；用户通道**不看** model_invocable——
+    它只限模型自动加载（拍板问 4）。展开的加载同样计入重挂追踪器：
+    用户显式加载的正文没理由比模型加载的低一等。
+    """
+    catalog = skill_tool.get_catalog()
+    parts = line.split(None, 2)
+    if len(parts) == 1:
+        if not catalog:
+            out("没有可用的 skill。放一个 `<名字>/SKILL.md` 到 ~/.pai/skills/ 或 <项目>/.pai/skills/ 即可。")
+            return None
+        out("可用 skills（`/skill <名> [参数]` 加载并执行）：")
+        for name in sorted(catalog):
+            desc = catalog[name].description
+            out(f"  {name}  {desc[:80]}{'…' if len(desc) > 80 else ''}")
+        return None
+    name, args = parts[1], (parts[2] if len(parts) > 2 else "")
+    entry = catalog.get(name)
+    if entry is None:
+        out(f"未知 skill：{name}。可用：{'、'.join(sorted(catalog)) or '（无）'}")
+        return None
+    try:
+        body = read_skill_body(entry)
+    except (OSError, UnicodeDecodeError) as e:
+        out(f"skill `{name}` 读取失败（{type(e).__name__}: {e}）")
+        return None
+    tracker = skill_tool.get_tracker()
+    if tracker is not None:
+        tracker.record(name)
+    block = (f'<skill name="{name}">\n{body}\n</skill>\n'
+             f"（本 skill 引用的相对路径以 {entry.base_dir} 为基准。）")
+    return f"{block}\n\n{args}" if args else block
+
+
 def _handle_command(line: str, *, out, messages, anchors, state, tools, client, model,
                     compaction, context_window, rules=None, hooks=(),
                     mode_state=None, on_event=None, session=None,
@@ -628,6 +708,12 @@ def _handle_command(line: str, *, out, messages, anchors, state, tools, client, 
         _manual_compact(messages=messages, anchors=anchors, state=state,
                         client=client, model=model, compaction=compaction, out=out,
                         on_event=on_event, session=session, ledger=ledger)
+    elif command == "/skill":
+        # 只有对话框 handoff 这类没有轮次机器的调用方会走到这里：
+        # 列表照常给，「加载并执行」提示去空闲时做
+        _expand_skill_line(line.split()[0], out)      # 裸列表（带名字也只列出提示）
+        if len(line.split()) > 1:
+            out("（提问/忙碌中无法启动 skill 轮次，请空闲时再 /skill <名>）")
     else:
         out(f"未知命令 {command}，/help 看可用命令")
     return False
@@ -759,7 +845,7 @@ def _manual_compact(*, messages, anchors, state, client, model, compaction, out,
 def _run_tui(*, out, client, model, tools, messages, ledger, anchors, state, steering,
              flag, session, max_steps, max_total_tokens, context_window, compaction,
              gate, recall, rules, hooks, mode_state, history, asker_state, asker_ref,
-             trace=None) -> None:
+             trace=None, skills_catalog=None, instructions=None) -> None:
     """scrollback 在上、dock 在下。
 
     与纯 REPL 的**唯一**语义差别在输入层：谁拥有键盘由 `InputArbiter` 算出来，
@@ -840,7 +926,7 @@ def _run_tui(*, out, client, model, tools, messages, ledger, anchors, state, ste
                                           client=client, model=model, compaction=compaction,
                                           context_window=context_window, rules=rules,
                                           hooks=hooks, mode_state=mode_state, session=session,
-                                          flag=flag, app=app, on_event=on_event)
+                                          flag=flag, app=app, steering=steering, skills_catalog=skills_catalog, on_event=on_event)
                 if quit_:
                     # `/exit`：与 REPL asker 的同款逃生口对齐（R4#15）——
                     # 本轮收尾后退出，本框按「未作答」撤掉（撤框在 await_dialog_answer）
@@ -919,6 +1005,17 @@ def _run_tui(*, out, client, model, tools, messages, ledger, anchors, state, ste
                     commit("(输入已清空，再按一次 Ctrl+C 退出)")
                     continue
                 pending_exit = False
+                if kind == COMMAND and payload.split()[0] == "/skill":
+                    # /skill 在空闲态等价于「提交一条展开后的消息」：转成 SUBMIT
+                    # 复用同一套轮次机器。历史记原命令（展开块不进历史）。
+                    _append_history(history, payload)
+                    expanded = _expand_skill_line(payload, commit)
+                    app.refresh()
+                    if expanded is None:
+                        continue
+                    kind, payload, from_skill = SUBMIT, expanded, True
+                else:
+                    from_skill = False
                 if kind == REDRAW:
                     app.refresh()
                 elif kind == EXPAND:
@@ -936,11 +1033,12 @@ def _run_tui(*, out, client, model, tools, messages, ledger, anchors, state, ste
                                          model=model, compaction=compaction,
                                          context_window=context_window, rules=rules,
                                          hooks=hooks, mode_state=mode_state,
-                                         session=session, flag=flag, app=app,
-                                         on_event=on_event):
+                                         session=session, flag=flag, app=app, steering=steering,
+                                         skills_catalog=skills_catalog, on_event=on_event):
                         return
                 elif kind == SUBMIT:
-                    _append_history(history, payload)
+                    if not from_skill:
+                        _append_history(history, payload)
                     app.busy = True
 
                     def turn(task: str) -> None:
@@ -952,6 +1050,8 @@ def _run_tui(*, out, client, model, tools, messages, ledger, anchors, state, ste
                                   max_total_tokens=max_total_tokens,
                                   context_window=context_window, compaction=compaction,
                                   before_tool_call=gate, recall=recall,
+                                  skills_catalog=skills_catalog,
+                                  instructions=instructions,
                                   # 补 2：本轮内 drain 掉多少，dock 的待决数就跟着减多少
                                   on_queue_change=app.dock.set_queued)
 
@@ -964,7 +1064,7 @@ def _run_tui(*, out, client, model, tools, messages, ledger, anchors, state, ste
                                 model=model, compaction=compaction,
                                 context_window=context_window, rules=rules, hooks=hooks,
                                 mode_state=mode_state, session=session, flag=flag,
-                                app=app, on_event=on_event):
+                                app=app, steering=steering, skills_catalog=skills_catalog, on_event=on_event):
                             exiting["v"] = True
                         return exiting["v"]
 
@@ -1012,11 +1112,20 @@ def _dispatch_command(line: str, *, commit, app, session, flag, on_event, **kw) 
             try:
                 _run_shell(line[1:].strip(), messages=kw["messages"],
                            session=session, out=commit,
-                           system_prompt=build_system_prompt(kw["tools"]),
+                           system_prompt=build_system_prompt(
+                               kw["tools"], skills_catalog=kw.get("skills_catalog")),
                            ledger=kw.get("ledger"))
             except KeyboardInterrupt:
                 commit("⛔ 已中断")
         app.refresh()
+        return False
+    if line.split()[0] == "/skill" and len(line.split()) > 1:
+        # 忙碌/对话框期敲的 /skill：展开后进 steering 队列——正在跑的轮次会把它
+        # 当用户消息注入（feature 18 的两个出口），轮末残余由队列处理兜住
+        steering = kw.get("steering")
+        expanded = _expand_skill_line(line, commit)
+        if expanded is not None and steering is not None:
+            steering.enqueue({"role": "user", "content": expanded})
         return False
     return _handle_command(line, out=commit, messages=kw["messages"],
                            anchors=kw["anchors"], state=kw["state"], tools=kw["tools"],

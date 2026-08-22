@@ -85,7 +85,7 @@ SYSTEM_PROMPT = (
 )
 
 
-def build_system_prompt(tools: dict) -> str:
+def build_system_prompt(tools: dict, skills_catalog: str | None = None) -> str:
     """按实际工具集生成 system prompt（feature 22，R4#E2；形状照 CC 的
     `getSystemPrompt(tools, …)`——装配层算好、loop 收成品）。
 
@@ -104,6 +104,12 @@ def build_system_prompt(tools: dict) -> str:
         parts.append("拿不准用户的意图、或不理解自己为什么被拒绝时，"
                      "用 ask_user_question 问真人，不要瞎猜。")
     parts.append("一步步来，看到工具结果再决定下一步。任务完成后用一句话简短总结。")
+    if skills_catalog and "skill" in tools:
+        # skills 目录（feature 25）：跟着 skill 工具走——没有工具的装配（受限工具集）
+        # 不摆调不动的目录；空目录不加段，输出与老路径逐字节一致（护缓存前缀）
+        parts.append("\n\n下面是可用的 skills（专项任务的操作指引）。当任务与某条"
+                     " description 匹配时，先用 skill 工具加载完整说明再动手；"
+                     "不匹配就别加载。\n" + skills_catalog)
     return "".join(parts)
 
 
