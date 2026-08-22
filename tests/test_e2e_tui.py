@@ -63,7 +63,7 @@ def reap_pty_child(pid: int, fd: int, timeout: float = 5.0) -> None:
 class Session:
     """在真 pty 里跑一个 pai 进程，并把它写出来的东西录下来。"""
 
-    def __init__(self, provider, tmp_path, cwd=None):
+    def __init__(self, provider, tmp_path, cwd=None, argv=None):
         self.record = str(tmp_path / "rec.jsonl")
         env = dict(os.environ)
         env.update(
@@ -79,8 +79,9 @@ class Session:
         if self.pid == 0:                        # 子进程：变成 pai
             os.chdir(cwd or REPO)
             os.environ.update(env)
-            os.execv(sys.executable, [sys.executable, "-c",
-                                      "from pai.cli import main; main()"])
+            code = ("import sys; sys.argv = %r; "
+                    "from pai.cli import main; main()" % (argv or ["pai"],))
+            os.execv(sys.executable, [sys.executable, "-c", code])
         import fcntl
         import struct
         import termios
@@ -376,3 +377,37 @@ def test_overwide_input_does_not_break_the_main_screen_dock(session, tmp_path):
     assert lines[rows[0]].lstrip().startswith("›"), "输入首行带提示符"
     for i in rows[1:]:
         assert lines[i].startswith("  "), f"折行续排行该带两格缩进：{lines[i]!r}"
+
+
+# ---- feature 24：--resume 真 pty e2e ----
+
+
+def test_resume_carries_the_conversation_into_a_new_process(session, tmp_path):
+    """两个真进程接力：第一个聊完退出，第二个 `--resume` 起来后，
+    发给 provider 的请求里必须带着第一段对话——这是 resume 的全部意义。
+    顺带钉退出提示改真话（13 号那笔债：此前不敢提不存在的命令）。"""
+    work = tmp_path / "resume-e2e"
+    work.mkdir()
+    s1, _ = session([turn("好的，记住了小明。")], cwd=str(work))
+    s1.send("记住我叫小明\r", until="记住了小明")
+    s1.send("\x04")                              # Ctrl+D 退出
+    s1.drain(1.0)
+    assert "pai --resume 可继续".encode() in s1.raw or \
+        "pai --resume".encode() in s1.raw, "退出提示必须说出 --resume"
+
+    (tmp_path / "s2").mkdir()
+    provider2 = FakeProvider([turn("你叫小明。")]).start()
+    s2 = Session(provider2, tmp_path / "s2", cwd=str(work), argv=["pai", "--resume"])
+    try:
+        end = time.time() + 8.0
+        while time.time() < end:                 # 等 TUI 起来（恢复提示走普通 print）
+            s2.drain(0.15)
+            if "/help 看命令" in s2.screen_text():
+                break
+        assert "已恢复会话".encode() in s2.raw, "恢复提示要说出来"
+        s2.send("我叫什么\r", until="你叫小明")
+        sent = json.dumps(provider2.requests[0]["messages"], ensure_ascii=False)
+        assert "记住我叫小明" in sent and "记住了小明" in sent,             "第一段对话必须在第二个进程发出的请求里"
+    finally:
+        s2.close()
+        provider2.stop()

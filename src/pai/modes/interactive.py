@@ -314,6 +314,7 @@ def run_interactive(
     history_path: Optional[Path] = None,
     rules: Optional[RuleSet] = None,
     mode: Optional[str] = None,
+    resume: Optional[str] = None,
 ) -> None:
     on_event = on_event if on_event is not None else make_event_handler()
     client = client or make_client()
@@ -324,7 +325,24 @@ def run_interactive(
     # ask_user_question 不在默认工具集里（once 没真人可问），交互模式显式加回来
     tools = tools if tools is not None else get_tools(
         list(get_tools()) + ["ask_user_question"])
-    session = None if no_session else SessionLog()
+    # resume（feature 24）：先解析并重建旧会话，再开新会话文件（parentSession
+    # 指旧会话）。旧文件只读不改；错误（找不到/旧格式/更新版本）原样上抛，
+    # cli 负责把它变成人话——静默兜底成「新会话」比报错更糟。
+    resumed_messages: List[dict] = []
+    resumed_ledger: List[Optional[str]] = []
+    parent_id: Optional[str] = None
+    resume_note: Optional[str] = None
+    if resume is not None:
+        from pai.core.session import (build_messages, load_session,
+                                      resolve_resume_target, trim_unfinished)
+        target = resolve_resume_target(resume or None)
+        header, entries = load_session(target)
+        r_msgs, r_led = build_messages(entries)
+        resumed_messages, resumed_ledger = trim_unfinished(r_msgs, r_led)
+        parent_id = str(header.get("id") or "")
+        resume_note = (f"↩️ 已恢复会话 {parent_id[:8]}"
+                       f"（{len(resumed_messages)} 条消息，来自 {target.name}）")
+    session = None if no_session else SessionLog(parent_session=parent_id or None)
     # 观测流落盘（feature 17）。**只在这里包一次**:session 整个 REPL 生命周期只建一次,
     # 下游三处 run_agent 调用共用同一个 on_event；`/clear` 只截断 messages 不换会话,
     # 所以不存在「换了会话事件还写旧文件」的问题(动工前专门核对过,plan 里认账的
@@ -339,6 +357,16 @@ def run_interactive(
     history = history_path if history_path is not None else history_path_for()
 
     messages: List[dict] = []
+    ledger: List[Optional[str]] = []       # 与 messages 平行的 entry id 台账（feature 24）
+    for m, mid in zip(resumed_messages, resumed_ledger):
+        # 按原 id 重录进新文件（自包含，单文件永远够用）；配平掉的半截回合
+        # 不重录。CC 反教材：resume 路径造新身份 → 转录每次恢复指数增长
+        messages.append(m)
+        ledger.append(session.append(m, record_id=mid) if session is not None else None)
+    if resume_note is not None:
+        out(resume_note)
+    # 锚点簿与熔断状态**必须从零**（CC 同款告警）：旧锚指向的消息位置在重建后
+    # 已不成立，带着旧锚 resume 首步就可能误判超线触发压缩死循环
     anchors = AnchorBook()
     state = CompactionState()
     # 一条队列装两种东西：要发给模型的话，与 `/`、`!` 这类要交给客户端执行的命令。
@@ -373,7 +401,8 @@ def run_interactive(
                          on_selected=lambda names: on_event(RecallInjected(names=names)))
 
     common = dict(
-        client=client, model=model, tools=tools, messages=messages, anchors=anchors,
+        client=client, model=model, tools=tools, messages=messages, ledger=ledger,
+        anchors=anchors,
         state=state, steering=steering, flag=flag, session=session,
         max_steps=max_steps, max_total_tokens=max_total_tokens,
         context_window=context_window, compaction=compaction, gate=gate,
@@ -412,7 +441,7 @@ def run_interactive(
                                state=state, tools=tools, client=client, model=model,
                                compaction=compaction, context_window=context_window,
                                rules=rules, hooks=hooks, mode_state=mode_state,
-                               on_event=on_event):
+                               on_event=on_event, session=session, ledger=ledger):
                 break
             continue
 
@@ -425,7 +454,8 @@ def run_interactive(
                 try:
                     _run_shell(line[1:].strip(), messages=messages,
                                session=session, out=out,
-                               system_prompt=build_system_prompt(tools))
+                               system_prompt=build_system_prompt(tools),
+                               ledger=ledger)
                 except KeyboardInterrupt:
                     # 信号可能落在装处理器之前/之后的缝隙里（或非主线程装不上），
                     # 这是最后一道：宁可少收一条输出，也不能让 REPL 死掉
@@ -434,6 +464,7 @@ def run_interactive(
 
         try:
             _run_turn(line, client=client, model=model, tools=tools, messages=messages,
+                      ledger=ledger,
                       anchors=anchors, state=state, steering=steering, flag=flag,
                       session=session, on_event=on_event, out=out, max_steps=max_steps,
                       max_total_tokens=max_total_tokens, context_window=context_window,
@@ -469,6 +500,7 @@ def _interruptible(flag: InterruptFlag):
 def _run_turn(task: str, *, client, model, tools, messages, anchors, state, steering,
               flag, session, on_event, out, max_steps, max_total_tokens,
               context_window, compaction, before_tool_call=None, recall=None,
+              ledger: Optional[List[Optional[str]]] = None,
               on_queue_change: Optional[Callable[[int], None]] = None) -> None:
     with _interruptible(flag):
         answer = _guarded_run(
@@ -483,6 +515,7 @@ def _run_turn(task: str, *, client, model, tools, messages, anchors, state, stee
             # 按实际工具集生成（feature 22）：REPL 有 ask_user_question、
             # visible_tools 可能删过——常量那句「你有这些工具」在这条路上是谎话
             system_prompt=build_system_prompt(tools),
+            entry_ledger=ledger,
             instructions=build_context,
             # 谓词把 `/`、`!` 滤掉且留在队列里——它们是给客户端执行的，
             # 当文本发给模型是 CC 明文禁止的那件事（feature 18 问 5/7）。
@@ -522,7 +555,8 @@ def _restore_sigint(previous) -> None:
 
 
 def _run_shell(command: str, *, messages: List[dict], session, out,
-               system_prompt: Optional[str] = None) -> None:
+               system_prompt: Optional[str] = None,
+               ledger: Optional[List[Optional[str]]] = None) -> None:
     """`!命令`：不经模型直接跑，命令与输出都进上下文。
 
     官方 v2.1.186 起会在输出进上下文后**自动接话**，pai 默认不接——每次 `!` 都自动接话
@@ -537,17 +571,17 @@ def _run_shell(command: str, *, messages: List[dict], session, out,
     # **下面进 messages 的仍是原文**——命令真打印了什么，模型就该看见什么。
     out(sanitize_terminal_text(output))
     entry = {"role": "user", "content": f"我执行了命令 `{command}`，输出：\n{output}"}
+    # 入账走 loop._record（feature 24 关掉 23 的遗留：REPL 侧不再有自己的成对
+    # append）；ledger 不传时用哑表——对齐语义由调用方负责
+    from pai.core.loop import _record
+    book = ledger if ledger is not None else []
     if not messages:
         # 首个动作就是 `!命令` 时由这里建 system：优先用装配层生成的（feature 22），
         # 不接线会建出常量、之后整个会话都换不掉
-        messages.append({"role": "system",
-                         "content": system_prompt if system_prompt is not None
-                         else _system_prompt()})
-        if session:
-            session.append(messages[0])
-    messages.append(entry)
-    if session:
-        session.append(entry)
+        _record(messages, {"role": "system",
+                           "content": system_prompt if system_prompt is not None
+                           else _system_prompt()}, session, book)
+    _record(messages, entry, session, book)
 
 
 def _system_prompt() -> str:
@@ -558,7 +592,8 @@ def _system_prompt() -> str:
 
 def _handle_command(line: str, *, out, messages, anchors, state, tools, client, model,
                     compaction, context_window, rules=None, hooks=(),
-                    mode_state=None, on_event=None) -> bool:
+                    mode_state=None, on_event=None, session=None,
+                    ledger: Optional[List[Optional[str]]] = None) -> bool:
     """返回 True 表示要退出 REPL。"""
     command = line.split()[0]
     if command in ("/exit", "/quit"):
@@ -567,6 +602,8 @@ def _handle_command(line: str, *, out, messages, anchors, state, tools, client, 
         out(HELP)
     elif command == "/clear":
         del messages[1:]         # 保留 system；整段清掉会让下一轮重建，等价但更难解释
+        if ledger is not None:
+            del ledger[1:]       # 台账同步裁（feature 24）：不裁下次压缩 ledger[cut] 指错条目
         anchors.reset()
         state.failures, state.awaiting_verify, state.tripped = 0, False, False
         # 观测流里必须留痕（feature 17）：清空前后是两段互不记得的对话，
@@ -590,7 +627,7 @@ def _handle_command(line: str, *, out, messages, anchors, state, tools, client, 
     elif command == "/compact":
         _manual_compact(messages=messages, anchors=anchors, state=state,
                         client=client, model=model, compaction=compaction, out=out,
-                        on_event=on_event)
+                        on_event=on_event, session=session, ledger=ledger)
     else:
         out(f"未知命令 {command}，/help 看可用命令")
     return False
@@ -674,7 +711,8 @@ def _show_memory(out: Callable[[str], None]) -> None:
 
 
 def _manual_compact(*, messages, anchors, state, client, model, compaction, out,
-                    on_event=None) -> None:
+                    on_event=None, session=None,
+                    ledger: Optional[List[Optional[str]]] = None) -> None:
     cut = find_cut_point(messages, anchors.entries,
                          keep_recent_tokens=compaction.keep_recent_tokens)
     if cut <= 1:
@@ -684,6 +722,8 @@ def _manual_compact(*, messages, anchors, state, client, model, compaction, out,
             out("⚠️ 无可压：保留预算已吞下全部历史（或只剩一个超长轮次）。")
         return
     before = len(messages)
+    # firstKeptEntryId 要在 messages 被替换之前取（cut 是旧列表下标，feature 24）
+    first_kept = ledger[cut] if ledger is not None and cut < len(ledger) else None
     try:
         messages[:], summary, usage = compact(messages, cut=cut, client=client,
                                               model=model)
@@ -696,6 +736,15 @@ def _manual_compact(*, messages, anchors, state, client, model, compaction, out,
         return
     anchors.reset()                        # 历史被改写，旧锚全部作废（D#18/32）
     state.awaiting_verify = True           # 成败仍只认压缩后首次真实 usage（D#34）
+    # 落盘与台账重建与自动压缩同款（feature 24）：/compact 此前根本不落盘，
+    # resume 这类读盘重建的消费者一到就露馅
+    comp_id = None
+    if session is not None:
+        comp_id = session.append({"type": "compaction", "step": 0, "cut": cut,
+                                  "firstKeptEntryId": first_kept,
+                                  "summary": summary, "usage": usage})
+    if ledger is not None:
+        ledger[:] = [ledger[0] if ledger else None, comp_id] + ledger[cut:]
     # 与自动压缩发同一个事件:上下文被换掉这件事,不该因为「是人手动按的」就在观测流里消失
     if on_event is not None:
         on_event(Compacted(cut=cut, before=before, after=len(messages)))
@@ -707,9 +756,9 @@ def _manual_compact(*, messages, anchors, state, client, model, compaction, out,
 # TUI 主循环（feature 12）。非 tty / 注入 reader 时走不到这里——上面那条闸门挡着。
 # ---------------------------------------------------------------------------
 
-def _run_tui(*, out, client, model, tools, messages, anchors, state, steering, flag,
-             session, max_steps, max_total_tokens, context_window, compaction, gate,
-             recall, rules, hooks, mode_state, history, asker_state, asker_ref,
+def _run_tui(*, out, client, model, tools, messages, ledger, anchors, state, steering,
+             flag, session, max_steps, max_total_tokens, context_window, compaction,
+             gate, recall, rules, hooks, mode_state, history, asker_state, asker_ref,
              trace=None) -> None:
     """scrollback 在上、dock 在下。
 
@@ -786,7 +835,7 @@ def _run_tui(*, out, client, model, tools, messages, anchors, state, steering, f
         def on_action(kind, payload):
             if kind == COMMAND:
                 quit_ = _dispatch_command(payload, commit=commit, out=commit,
-                                          messages=messages,
+                                          messages=messages, ledger=ledger,
                                           anchors=anchors, state=state, tools=tools,
                                           client=client, model=model, compaction=compaction,
                                           context_window=context_window, rules=rules,
@@ -882,7 +931,7 @@ def _run_tui(*, out, client, model, tools, messages, anchors, state, steering, f
                     if payload.startswith("!"):
                         _append_history(history, payload)
                     if _dispatch_command(payload, commit=commit, out=commit,
-                                         messages=messages, anchors=anchors,
+                                         messages=messages, ledger=ledger, anchors=anchors,
                                          state=state, tools=tools, client=client,
                                          model=model, compaction=compaction,
                                          context_window=context_window, rules=rules,
@@ -896,7 +945,8 @@ def _run_tui(*, out, client, model, tools, messages, anchors, state, steering, f
 
                     def turn(task: str) -> None:
                         _run_turn(task, client=client, model=model, tools=tools,
-                                  messages=messages, anchors=anchors, state=state,
+                                  messages=messages, ledger=ledger,
+                                  anchors=anchors, state=state,
                                   steering=steering, flag=flag, session=session,
                                   on_event=on_event, out=commit, max_steps=max_steps,
                                   max_total_tokens=max_total_tokens,
@@ -909,6 +959,7 @@ def _run_tui(*, out, client, model, tools, messages, anchors, state, steering, f
                         """返回真 = 该退出（`/exit`）；`_process_queue_after_turn` 据此停手。"""
                         if _dispatch_command(
                                 line, commit=commit, out=commit, messages=messages,
+                                ledger=ledger,
                                 anchors=anchors, state=state, tools=tools, client=client,
                                 model=model, compaction=compaction,
                                 context_window=context_window, rules=rules, hooks=hooks,
@@ -946,10 +997,9 @@ def _run_tui(*, out, client, model, tools, messages, anchors, state, steering, f
         app.renderer.clear()
         # `term.stop()` 之后才打——`?1049l` 之前写的东西留在备用屏上，跟着屏幕一起没了。
         # 形态对齐 CC 的 `printResumeHint()`（它也是先退 alt 再打）。
-        # **不提示 `--resume`**：pai 还没有这个入口，提示不存在的命令比不提示更糟
-        # （已登记 TODO，紧接着单独立项）。
+        # feature 24 起 `--resume` 真的存在了，这句提示终于能说全（13 号那笔债）。
         if session is not None:
-            out(f"会话已存 {session.path}")
+            out(f"会话已存 {session.path}（pai --resume 可继续）")
         if recorder is not None:
             recorder.close()
         out("再见。")
@@ -962,7 +1012,8 @@ def _dispatch_command(line: str, *, commit, app, session, flag, on_event, **kw) 
             try:
                 _run_shell(line[1:].strip(), messages=kw["messages"],
                            session=session, out=commit,
-                           system_prompt=build_system_prompt(kw["tools"]))
+                           system_prompt=build_system_prompt(kw["tools"]),
+                           ledger=kw.get("ledger"))
             except KeyboardInterrupt:
                 commit("⛔ 已中断")
         app.refresh()
@@ -973,7 +1024,8 @@ def _dispatch_command(line: str, *, commit, app, session, flag, on_event, **kw) 
                            compaction=kw["compaction"],
                            context_window=kw["context_window"], rules=kw["rules"],
                            hooks=kw["hooks"], mode_state=kw["mode_state"],
-                           on_event=on_event)
+                           on_event=on_event, session=session,
+                           ledger=kw.get("ledger"))
 
 
 MAX_QUEUE_ROUNDS = 8

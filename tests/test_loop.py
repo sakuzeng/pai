@@ -1228,9 +1228,12 @@ def test_streaming_keeps_messages_and_session_records_identical(tmp_path):
 
     records = [json.loads(line) for line in
                session.path.read_text(encoding="utf-8").splitlines()]
-    kinds = [r.get("type", r.get("role")) for r in records]
+    # v1（feature 24）：首行 header，之后统一信封——消息类型看嵌套 message.role
+    assert records[0]["type"] == "session"
+    kinds = [r["message"]["role"] if r["type"] == "message" else r["type"]
+             for r in records[1:]]
     assert kinds == ["system", "user", "usage", "assistant", "tool", "usage", "assistant"]
-    assert [r["total_tokens"] for r in records if r.get("type") == "usage"] == [100, 100]
+    assert [r["total_tokens"] for r in records[1:] if r["type"] == "usage"] == [100, 100]
 
 
 def test_message_delta_events_are_emitted_in_order():
@@ -1482,7 +1485,7 @@ def test_session_append_is_thread_safe(tmp_path):
         t.join()
 
     lines = session.path.read_text(encoding="utf-8").splitlines()
-    assert len(lines) == 180
+    assert len(lines) == 181      # 180 条记录 + 1 行 header（v1，feature 24）
     for line in lines:
         json.loads(line)          # 有半行交织的话这里会抛
 
@@ -1802,18 +1805,21 @@ def test_replay_messages_rebuilds_the_conversation_from_a_real_trajectory(tmp_pa
     assert replay_messages(log.path) == REAL_TRAJECTORY
 
 
-def test_replay_refuses_compacted_sessions(tmp_path):
-    """压缩改写历史（切 + 摘 + 重建），而重放是按落盘顺序拼的——两者对不上。
-    完整回放语义归 R4#A1 会话格式立项；在那之前宁可炸，
-    也不给一份看似完整实则错序的对话（CC 的 recordTranscript 靠 uuid 链
-    处理这个，pai 的消息还没有身份字段）。"""
+def test_replay_now_rebuilds_compacted_sessions(tmp_path):
+    """feature 23 时这里断言「拒收压缩会话」——那是消息没有身份字段时的
+    诚实下策。feature 24 之后压缩是带 firstKeptEntryId 的条目，按条目重建
+    （详细形状测试在 test_session_format.py），拒收的历史使命结束。"""
     from pai.core.session import SessionLog, replay_messages
 
     log = SessionLog(tmp_path)
-    log.append({"role": "user", "content": "x"})
-    log.append({"type": "compaction", "step": 3, "cut": 2})
-    with pytest.raises(ValueError):
-        replay_messages(log.path)
+    log.append({"role": "system", "content": "s"})
+    kept = log.append({"role": "user", "content": "留着的问题"})
+    log.append({"type": "compaction", "step": 3, "cut": 1,
+                "firstKeptEntryId": kept, "summary": "早前的事"})
+    rebuilt = replay_messages(log.path)
+    assert rebuilt[0] == {"role": "system", "content": "s"}
+    assert "早前的事" in rebuilt[1]["content"]
+    assert rebuilt[2] == {"role": "user", "content": "留着的问题"}
 
 
 def test_session_replay_equals_the_model_visible_messages(tmp_path):
@@ -1835,3 +1841,36 @@ def test_session_replay_equals_the_model_visible_messages(tmp_path):
     assert replay_messages(session.path) == messages
     assert messages == client.requests[-1]["messages"] + [messages[-1]], \
         "内存里的对话必须恰好是「模型最后看到的 + 收尾 assistant」"
+
+
+def test_auto_compaction_records_first_kept_entry_and_replay_still_matches(tmp_path):
+    """feature 24 T4：压缩落盘带 firstKeptEntryId（= 首条保留消息的 entry id），
+    于是「重放 == 内存对话」这条不变量的适用范围从无压缩会话扩到**全部**——
+    feature 23 那句「完整回放要等 A1」在这里兑现。"""
+    from pai.core.compaction import CompactionSettings
+    from pai.core.session import SessionLog, load_session, replay_messages
+
+    tool_turn = {"tool_calls": [("bash", json.dumps({"command": "true"}))]}
+    script = [
+        {**tool_turn, "usage": _usage(100)},   # 锚 A
+        {**tool_turn, "usage": _usage(850)},   # 锚 B → 第 3 次请求前触发压缩
+        {"content": "这是摘要"},
+        {"content": "done", "usage": _usage(500)},
+    ]
+    session = SessionLog(tmp_path)
+    messages: list = []
+    answer = run_agent("压缩我", client=FakeClient(script), model="fake",
+                       tools=get_tools(), messages=messages, session=session,
+                       context_window=1000, max_steps=10,
+                       compaction=CompactionSettings(reserve_tokens=200,
+                                                     keep_recent_tokens=1),
+                       on_event=lambda _: None)
+    assert answer == "done"
+    _, entries = load_session(session.path)
+    comps = [e for e in entries if e["type"] == "compaction"]
+    assert len(comps) == 1
+    message_ids = [e["id"] for e in entries if e["type"] == "message"]
+    assert comps[0]["firstKeptEntryId"] in message_ids, \
+        "firstKeptEntryId 必须指向一条真实存在的消息条目"
+    assert replay_messages(session.path) == messages, \
+        "压缩之后重放仍须与内存对话逐字相等——这是本次换格式的核心收益"
