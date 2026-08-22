@@ -1,6 +1,11 @@
 # 当前状态快照
 
-最后更新：2026-08-22（R4 清账日：低批 11 条 + 拍板四条（#16/19/25/27，
+最后更新：2026-08-22（晚：feature 24 交付——会话格式 v1（三家收敛形：header
+首行 / 统一信封 / 消息嵌套 / 压缩即条目带 firstKeptEntryId）+ 全量 `pai --resume`
+（配平 + 状态从零 + 按原 id 重录，两进程接力 e2e 钉死），13 号「退出即失联」
+与 23 号「拒收压缩会话」两笔债一并关掉，档案
+[features/24](features/24-20260822-session-format-and-resume/README.md)。
+同日早些：R4 清账日：低批 11 条 + 拍板四条（#16/19/25/27，
 #27 立 [features/21](features/21-20260822-input-line-overflow/README.md) 交付
 输入行折行）——R4#15~28 全清；随后 E 系列前三条交付：E1 扩展点地图
 （[docs/dev/扩展点.md](扩展点.md)）、E2 system prompt 装配
@@ -69,7 +74,7 @@ feature 12 被用户打回的三条 bug 各钉了一条 e2e。
 | `modes/statusline.py` | 可用 | `render_tool_line(events, width)` 纯函数（按终端列宽算中文宽度）+ `\r` 原地刷新；真 tty 才启用，非 tty 退回滚动行 |
 | `core/tools/ask.py` | 可用 | AskUserQuestion，asker 装配期注入；默认工具集不含它（once 无真人可问） |
 | `core/paths.py` | 可用 | pai 用户级路径唯一事实源：`~/.pai/projects/<可读 slug>/{memory,sessions}/`，slug 用全路径连字符（D#44，对齐 CC） |
-| `core/session.py` | 可用 | append-only JSONL，落用户目录不再写当前工作目录；每条带 `sessionId`/`cwd`；文件名带短 id（D#45，关掉 R#15）；`append` 加锁（并发批同时回填会把 JSONL 写成半行） |
+| `core/session.py` | 可用 | 格式 v1（feature 24，三家收敛形）：首行 header（version/id/cwd/parentSession）、统一信封 `{type,id,parentId,ts}`、消息嵌套 `message`、压缩即条目带 `firstKeptEntryId`；`load_session`（版本拒绝语义分方向、词汇表外类型拒收）、`build_messages`（压缩重建 + 指令归位）、`replay_messages`（压缩会话不再拒收）、`trim_unfinished` 配平、`resolve_resume_target`；`append` 加锁返 id、支持 `record_id`（resume 不造新身份）。旧 v0 文件按拍板不读（如实报错，不动不删） |
 | `core/memory.py` | 可用 | 分层指令发现（用户级→根→cwd，local 在后，不读 AGENTS.md D#43）、`@path` 导入（相对基准/4 跳/环检测/代码块内不算）、记忆扫描（每文件前 30 行取 frontmatter、mtime 新→旧、截 200）、索引投影（`render_index`，200 行 + 25KB 双上限，截断留提示）、相对时间与陈旧警告（`memory_age` / `freshness_note`） |
 | `core/recall.py` | 可用 | 按查询召回：manifest → 侧查询（`max_tokens=4096`——推理模型的 reasoning 计进该上限，实测 256 会静默截断）→ 防御式 JSON 解析（分得清「没说话」与「明确不选」）→ 白名单（容忍 `[type]` 装饰、取最长匹配）→ ≤5 篇 → `<system-reminder>` 注入块；空目录短路、`alreadySurfaced` 去重、连续 3 次失败停用并发 `RecallFailed` |
 | `core/tools/memory_tool.py` | 可用 | `remember(name, description, fact, type)` 一事一文件带 frontmatter，同名即更新；写完重建 `MEMORY.md`（原子写）；name 白名单校验挡路径穿越；目录/通知/会话 id 走注入点 |
@@ -133,7 +138,7 @@ feature 12 被用户打回的三条 bug 各钉了一条 e2e。
 + feature 13 alt-screen task 1-7 + feature 16 鼠标与选区 task 1-9
 + feature 17 viz-flow task 1-3.5（事件落盘 + RecallInjected/ConversationCleared + 装配））：
 
-- `./test.sh` → 1214 passed, 3 deselected，全部离线，约 2 分钟。这是默认路径。
+- `./test.sh` → 1242 passed, 3 deselected，全部离线，约 2 分钟。这是默认路径。
   R4#26 已修（2026-08-22）：Pillow 进 dev 依赖并已装，此前常驻的那条 skip 归零；
   今后 Pillow 缺席相关测试直接红（带修法提示），不再静默 skip。
   两套假 provider 分工是硬的：`tests/fake_llm.py` 注入的假客户端测装配与逻辑；

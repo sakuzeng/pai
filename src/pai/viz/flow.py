@@ -86,10 +86,27 @@ def _tool_calls_of(record: dict) -> list:
     return out
 
 
+def _normalize_v1(rows: list) -> list:
+    """v1 会话（feature 24：首行 header + 信封 + 消息嵌套）归一化回扁平形状——
+    分组逻辑不用知道格式换过。扁平旧行原样透传（历史文件与手写夹具都还是它）。"""
+    out = []
+    for r in rows:
+        if r.get("type") == "session":
+            continue                       # header 不是时间线的一步
+        if r.get("type") == "message" and isinstance(r.get("message"), dict):
+            flat = dict(r["message"])
+            flat["ts"] = r.get("ts")
+            out.append(flat)
+        else:
+            out.append(r)
+    return out
+
+
 def load_flow(session_path: Path) -> dict:
     """一次会话的完整时间线。文件不存在/为空都不是错误——返回空 turns。"""
     session_path = Path(session_path)
     rows, skipped = _read_jsonl(session_path)
+    rows = _normalize_v1(rows)
     events, ev_skipped = _read_jsonl(events_path_for(session_path))
     has_events = events_path_for(session_path).exists()
 

@@ -344,7 +344,10 @@ def compact(
     summary, usage = summarize(
         messages[:cut], client=client, model=model, style=style, instructions=instructions
     )
+    from pai.core.session import _summary_message
+
     rebuilt: list[dict] = [dict(messages[0])]
-    rebuilt.append({"role": "user", "content": f"[早前对话的摘要，供延续任务用]\n{summary}"})
+    # 包装文本的唯一出处在 session._summary_message——resume 重建要逐字一致
+    rebuilt.append(_summary_message(summary))
     rebuilt.extend(dict(m) for m in messages[cut:])
     return rebuilt, summary, usage

@@ -135,6 +135,7 @@ def run_agent(
     before_tool_call: Optional[Callable[[str, dict], "Decision"]] = None,
     recall: Optional[Callable[[str], "tuple"]] = None,
     system_prompt: Optional[str] = None,
+    entry_ledger: Optional[List[Optional[str]]] = None,
 ) -> str:
     """跑一次 agent 任务，返回最终回答。
 
@@ -152,17 +153,25 @@ def run_agent(
 
     if messages is None:
         messages = []
+    # entry_ledger：与 messages 平行的 entry id 表（feature 24）。REPL 跨轮持有
+    # （同 anchors）；不传就本轮新建。压缩要用 ledger[cut] 定 firstKeptEntryId。
+    # 调用方传了预存在的 messages 却没传 ledger 时补 None 对齐——那些消息的
+    # 落盘 id 已不可考，压缩记录会如实缺 firstKeptEntryId（重建时退化为
+    # 摘要 + 压缩后段，保留段丢失），这是错用 API 的代价不是静默错账。
+    ledger: List[Optional[str]] = entry_ledger if entry_ledger is not None else []
+    while len(ledger) < len(messages):
+        ledger.append(None)
     if not messages:
         # system_prompt 由装配层生成（build_system_prompt），不传时用常量逐字不变
         system_entry = {"role": "system",
                         "content": system_prompt if system_prompt is not None
                         else SYSTEM_PROMPT}
-        _record(messages, system_entry, session)
+        _record(messages, system_entry, session, ledger)
     if instructions is not None:
-        _inject_instructions(messages, instructions, session)
+        _inject_instructions(messages, instructions, session, ledger)
 
     user_entry = {"role": "user", "content": task}
-    _record(messages, user_entry, session)
+    _record(messages, user_entry, session, ledger)
 
     tool_schemas = [t.schema() for t in tools.values()]
     on_event(AgentStart(task=task))
@@ -188,7 +197,7 @@ def run_agent(
         # 侧查询的 token 与压缩那次一样计进熔断账，否则预算就有个后门
         spent_tokens += (r_usage or {}).get("total_tokens") or 0
         if recalled.strip():
-            _extend(messages, [{"role": "user", "content": recalled}], session)
+            _extend(messages, [{"role": "user", "content": recalled}], session, ledger)
 
     def finish(reason: str, text: str) -> str:
         on_event(AgentEnd(reason=reason, text=text))
@@ -226,6 +235,8 @@ def run_agent(
                 else:
                     on_event(CompactionSkipped(reason="nothing_to_cut", estimated=estimated))
             else:
+                # firstKeptEntryId 必须在 messages 被替换**之前**取（cut 是旧列表下标）
+                first_kept = ledger[cut] if cut < len(ledger) else None
                 try:
                     messages[:], summary, s_usage = _compacted(
                         messages, cut=cut, client=client, model=model)
@@ -246,21 +257,31 @@ def run_agent(
                 else:
                     anchors.reset()                  # 历史被改写，旧锚全部作废（D#18/32）
                     state.awaiting_verify = True     # 成败等首次真实 usage（D#34）
+                    # 压缩条目先落盘、指令重注入在后（feature 24）：重建算法把
+                    # 「压缩条目之后的消息」整段保留，指令条目落在它前面就会被
+                    # 归进已摘掉的旧段、恢复时丢失
+                    comp_id = None
+                    if session:
+                        comp_id = session.append(
+                            {"type": "compaction", "step": step, "cut": cut,
+                             "firstKeptEntryId": first_kept,
+                             "summary": summary, "estimated_before": estimated,
+                             "usage": s_usage})
+                    # ledger 与 compact() 的重建 [messages[0], 摘要, messages[cut:]]
+                    # 对齐：摘要消息的 id 取压缩条目自己的 id（pi 同款——条目在
+                    # 上下文里就化身为摘要消息）
+                    ledger[:] = [ledger[0] if ledger else None, comp_id] + ledger[cut:]
                     if instructions is not None:
                         # 压缩重建的是 [system]+[摘要]+[保留尾部]，指令消息在第一条
                         # user 位置必然被摘掉——不重注入就是长会话里 PAI.md 静默失效
                         # （D#42）。重新调用 loader = 从磁盘重读（官方原话），
                         # 顺带让中途改的文件生效。
-                        _inject_instructions(messages, instructions, session)
+                        _inject_instructions(messages, instructions, session, ledger)
                     # 摘要请求拍平重发近全窗口，是全系统最贵的单次请求，
                     # 必须计入预算熔断账
                     spent_tokens += s_usage.get("total_tokens") or 0
                     after = context_tokens(messages, tool_schemas)
                     on_event(Compacted(cut=cut, before=estimated, after=after))
-                    if session:
-                        session.append({"type": "compaction", "step": step, "cut": cut,
-                                        "summary": summary, "estimated_before": estimated,
-                                        "estimated_after": after, "usage": s_usage})
                     estimated = after
 
         # 主循环走流式（feature 11）。**侧查询不走**——摘要（compaction.summarize）与
@@ -317,7 +338,7 @@ def run_agent(
                 }
                 for tc in msg.tool_calls
             ]
-        _record(messages, assistant_entry, session)
+        _record(messages, assistant_entry, session, ledger)
         on_event(AssistantMessage(
             content=msg.content,
             tool_call_names=tuple(tc.function.name for tc in (msg.tool_calls or [])),
@@ -338,7 +359,7 @@ def run_agent(
             steering = get_steering_messages() if get_steering_messages else []
             if steering:
                 # agent 本该停下，但用户排了队——继续跑，而不是让他重开一轮
-                _extend(messages, steering, session, on_event)
+                _extend(messages, steering, session, ledger, on_event)
                 continue
             return finish("final", msg.content or "")
 
@@ -403,7 +424,7 @@ def run_agent(
             #    押在渲染器不出错上。
             for tc, (args, result, is_error) in zip(batch.calls, results):
                 tool_entry = {"role": "tool", "tool_call_id": tc.id, "content": result}
-                _record(messages, tool_entry, session)
+                _record(messages, tool_entry, session, ledger)
                 filled.add(tc.id)
                 on_event(ToolEnd(tool_call_id=tc.id, name=tc.function.name, args=args,
                                  result=result, is_error=is_error))
@@ -419,7 +440,7 @@ def run_agent(
                     continue
                 entry = {"role": "tool", "tool_call_id": tc.id,
                          "content": MISSING_RESULT}
-                _record(messages, entry, session)
+                _record(messages, entry, session, ledger)
 
         if interrupted:
             on_event(Interrupted(where="tool"))
@@ -429,7 +450,7 @@ def run_agent(
         if get_steering_messages:
             # 注入点在**本轮所有工具结果都回填之后**：插在中间会劈开 tool_calls 与
             # 它的结果，配对当场断裂
-            _extend(messages, get_steering_messages(), session, on_event)
+            _extend(messages, get_steering_messages(), session, ledger, on_event)
 
     return finish("max_steps", f"达到最大步数（{max_steps}），任务可能未完成。")
 
@@ -444,7 +465,8 @@ def _has_instructions(messages: List[dict]) -> bool:
                for m in messages)
 
 
-def _record(messages: List[dict], entry: dict, session: SessionLog | None) -> None:
+def _record(messages: List[dict], entry: dict, session: SessionLog | None,
+            ledger: List[Optional[str]]) -> None:
     """「模型可见」的唯一入账口（feature 23，R4#E3）。
 
     进 messages 的模型可见消息必须同时进 session——此前成对 append 散在 5 处，
@@ -457,12 +479,12 @@ def _record(messages: List[dict], entry: dict, session: SessionLog | None) -> No
     不变量测试：test_session_replay_equals_the_model_visible_messages。
     """
     messages.append(entry)
-    if session:
-        session.append(entry)
+    ledger.append(session.append(entry) if session else None)
 
 
 def _inject_instructions(messages: List[dict], loader: Callable[[], str],
-                         session: SessionLog | None) -> None:
+                         session: SessionLog | None,
+                         ledger: List[Optional[str]]) -> None:
     """插在 system 之后。空指令不插——塞一条空 user 消息是白烧 token 且让模型困惑。
 
     续用同一份 messages（REPL 多轮）时不重复插：靠 INSTRUCTION_HEADER 前缀识别。
@@ -475,8 +497,7 @@ def _inject_instructions(messages: List[dict], loader: Callable[[], str],
     entry = _instruction_message(text)
     at = 1 if messages and messages[0].get("role") == "system" else 0
     messages.insert(at, entry)
-    if session:
-        session.append(entry)
+    ledger.insert(at, session.append(entry) if session else None)
 
 
 def _adopt(state: CompactionState, updated: CompactionState) -> None:
@@ -487,6 +508,7 @@ def _adopt(state: CompactionState, updated: CompactionState) -> None:
 
 
 def _extend(messages: List[dict], extra: List[dict], session: SessionLog | None,
+            ledger: List[Optional[str]],
             on_event: Optional[Callable[[AgentEvent], None]] = None) -> None:
     """追加消息，**并在追加完成之后**发一条 SteeringInjected（feature 18 T2.5）。
 
@@ -495,7 +517,7 @@ def _extend(messages: List[dict], extra: List[dict], session: SessionLog | None,
     不该顶着 steering 的名义上屏。
     """
     for m in extra:
-        _record(messages, m, session)
+        _record(messages, m, session, ledger)
     if on_event is not None and extra:
         on_event(SteeringInjected(
             texts=tuple(str(m.get("content") or "") for m in extra)))

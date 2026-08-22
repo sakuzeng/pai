@@ -90,9 +90,10 @@ def test_session_directory_param_still_works(tmp_path):
     assert log.path.parent == tmp_path / "custom"
 
 
-def test_every_record_carries_session_id_and_cwd(tmp_path, monkeypatch):
+def test_the_header_carries_session_id_and_cwd(tmp_path, monkeypatch):
     """08 把会话集中存放之后，不记 cwd 就是净信息丢失——
-    同一仓库的不同子目录会写进同一个目录，再也分不出这次是在哪跑的。"""
+    同一仓库的不同子目录会写进同一个目录，再也分不出这次是在哪跑的。
+    v1（feature 24）后身份归 header 一次说清，不再每条记录重复。"""
     import json
 
     from pai.core.session import SessionLog
@@ -100,11 +101,14 @@ def test_every_record_carries_session_id_and_cwd(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     log = SessionLog(tmp_path / "s")
     log.append({"role": "user", "content": "x"})
-    record = json.loads(log.path.read_text(encoding="utf-8").splitlines()[0])
+    lines = log.path.read_text(encoding="utf-8").splitlines()
+    header, entry = json.loads(lines[0]), json.loads(lines[1])
 
-    assert record["cwd"] == str(tmp_path.absolute())
-    assert record["sessionId"] == log.session_id
-    assert record["ts"]
+    assert header["cwd"] == str(tmp_path.absolute())
+    assert header["id"] == log.session_id
+    assert entry["ts"]
+    assert "cwd" not in entry and "sessionId" not in entry, \
+        "身份信息不再每条重复——header 一次说清（v1）"
 
 
 def test_same_second_sessions_do_not_collide(tmp_path):

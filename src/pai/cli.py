@@ -9,6 +9,7 @@ import argparse
 
 from pai.core.tools import shell
 from pai.core.permissions import BYPASS, MODES
+from pai.core.session import SessionFormatError
 from pai.modes.interactive import run_interactive
 from pai.modes.once import run_once
 
@@ -25,6 +26,11 @@ def main() -> None:
         help="本次任务的累计 token 预算，超过即停（默认 200000，0 = 不限）",
     )
     parser.add_argument("--no-session", action="store_true", help="不落盘会话 JSONL")
+    parser.add_argument(
+        "--resume", nargs="?", const="", default=None, metavar="ID或路径",
+        help="恢复会话接着聊（进交互模式）：不带参数 = 本项目最近一次；"
+             "也可给会话 id 前缀或会话文件路径",
+    )
     parser.add_argument(
         "--permission-mode", choices=MODES, default=None,
         help=f"权限模式（默认读 settings.json 的 defaultMode）：{'/'.join(MODES)}",
@@ -43,15 +49,22 @@ def main() -> None:
         parser.error(
             f"--dangerously-skip-permissions 与 --permission-mode={args.permission_mode} 冲突")
     mode = BYPASS if args.dangerously_skip_permissions else args.permission_mode
+    if args.resume is not None and args.task is not None:
+        parser.error("--resume 是恢复会话接着聊（交互模式），不能与任务参数同时给")
 
     try:
         if args.task is None:
-            run_interactive(
-                max_steps=args.max_steps,
-                max_total_tokens=args.max_tokens or None,
-                no_session=args.no_session,
-                mode=mode,
-            )
+            try:
+                run_interactive(
+                    max_steps=args.max_steps,
+                    max_total_tokens=args.max_tokens or None,
+                    no_session=args.no_session,
+                    mode=mode,
+                    resume=args.resume,
+                )
+            except (FileNotFoundError, SessionFormatError) as e:
+                # resume 的两类可预期错误变人话：找不到会话 / 旧格式（拍板问 2 = B）
+                parser.error(str(e))
             return
 
         # 不在这里打答案：流式已经逐字打过了（feature 11）。

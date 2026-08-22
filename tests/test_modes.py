@@ -493,3 +493,176 @@ def test_interactive_sends_a_prompt_that_admits_ask_user_question(tmp_path, monk
                                 history_path=tmp_path / "h")
     system = client.requests[0]["messages"][0]["content"]
     assert "ask_user_question" in system, "REPL 真有这个工具，prompt 不许再瞒着"
+
+
+# ---- feature 24 T4b：REPL 侧的会话台账 ----
+
+
+def test_manual_compact_records_the_entry_and_replay_rebuilds(tmp_path, monkeypatch):
+    """`/compact` 此前**根本不落盘**（只改内存 + 发事件）——resume 这类
+    读盘重建的消费者一到就露馅。修法与自动压缩同款：带 firstKeptEntryId 的
+    compaction 条目。"""
+    monkeypatch.chdir(tmp_path)
+    from pai.core.compaction import CompactionSettings
+    from pai.core.paths import sessions_dir
+    from pai.core.session import load_session, replay_messages
+    from pai.modes import interactive
+
+    script = [
+        {"content": "一", "usage": {"prompt_tokens": 100, "completion_tokens": 10,
+                                    "total_tokens": 110}},
+        {"content": "二", "usage": {"prompt_tokens": 300, "completion_tokens": 10,
+                                    "total_tokens": 310}},
+        {"content": "这是摘要"},
+    ]
+    lines = iter(["第一问", "第二问", "/compact", "/exit"])
+    interactive.run_interactive(client=FakeClient(script), model="fake",
+                                reader=lambda _p="": next(lines),
+                                out=lambda _s: None, on_event=lambda _e: None,
+                                rules=_OPEN,
+                                compaction=CompactionSettings(keep_recent_tokens=1),
+                                history_path=tmp_path / "h")
+    files = [p for p in sessions_dir().glob("*.jsonl")
+             if not p.name.endswith(".events.jsonl")]
+    assert len(files) == 1
+    _, entries = load_session(files[0])
+    comps = [e for e in entries if e["type"] == "compaction"]
+    assert len(comps) == 1
+    assert comps[0]["firstKeptEntryId"], "手动压缩也必须带保留段指针"
+    rebuilt = replay_messages(files[0])
+    assert any("这是摘要" in str(m.get("content", "")) for m in rebuilt)
+
+
+def test_slash_clear_trims_the_ledger_with_the_messages():
+    """/clear 只留 system——台账必须同步裁，不然下次压缩 ledger[cut] 指错条目。"""
+    from pai.core.compaction import AnchorBook, CompactionState
+    from pai.modes.interactive import _handle_command
+
+    messages = [{"role": "system", "content": "s"},
+                {"role": "user", "content": "u"},
+                {"role": "assistant", "content": "a"}]
+    ledger = ["id-s", "id-u", "id-a"]
+    _handle_command("/clear", out=lambda _s: None, messages=messages,
+                    anchors=AnchorBook(), state=CompactionState(), tools={},
+                    client=None, model="m", compaction=None, context_window=1000,
+                    ledger=ledger)
+    assert messages == [{"role": "system", "content": "s"}]
+    assert ledger == ["id-s"]
+
+
+def test_resume_continues_the_previous_conversation(tmp_path, monkeypatch):
+    """feature 24 T5：`--resume` 恢复最近一次会话接着聊。
+    三条硬约束一起钉：模型看得见旧对话；新文件 parentSession 指旧会话；
+    历史按**原 id** 重录（CC 反教材：resume 造新身份 → 转录每次恢复指数增长）。"""
+    import time as _t
+
+    monkeypatch.chdir(tmp_path)
+    from pai.core.paths import sessions_dir
+    from pai.core.session import load_session
+    from pai.modes import interactive
+
+    lines1 = iter(["记住我叫小明", "/exit"])
+    interactive.run_interactive(client=FakeClient([{"content": "好的小明"}]),
+                                model="fake", reader=lambda _p="": next(lines1),
+                                out=lambda _s: None, on_event=lambda _e: None,
+                                rules=_OPEN, history_path=tmp_path / "h")
+    _t.sleep(0.02)
+    lines2 = iter(["我叫什么", "/exit"])
+    client2 = FakeClient([{"content": "小明"}])
+    interactive.run_interactive(client=client2, model="fake",
+                                reader=lambda _p="": next(lines2),
+                                out=lambda _s: None, on_event=lambda _e: None,
+                                rules=_OPEN, history_path=tmp_path / "h",
+                                resume="")
+    texts = [str(m.get("content")) for m in client2.requests[0]["messages"]]
+    assert any("记住我叫小明" in t for t in texts), "旧对话必须进新一轮的上下文"
+    assert any("好的小明" in t for t in texts)
+
+    files = sorted((p for p in sessions_dir().glob("*.jsonl")
+                    if not p.name.endswith(".events.jsonl")),
+                   key=lambda f: f.stat().st_mtime)
+    assert len(files) == 2
+    h1, e1 = load_session(files[0])
+    h2, e2 = load_session(files[1])
+    assert h2["parentSession"] == h1["id"]
+    ids1 = {e["id"] for e in e1 if e["type"] == "message"}
+    ids2 = {e["id"] for e in e2 if e["type"] == "message"}
+    assert ids1 <= ids2, "重录必须保留原 id"
+
+
+def test_resume_trims_a_torn_tail_before_continuing(tmp_path, monkeypatch):
+    """崩溃留下的半截回合（assistant 声明了 tool_calls、结果没落盘）要在
+    恢复时配平掉——原样带上下一次请求就是 400。"""
+    monkeypatch.chdir(tmp_path)
+    from pai.core.paths import sessions_dir
+    from pai.core.session import SessionLog
+    from pai.modes import interactive
+
+    log = SessionLog(sessions_dir())
+    log.append({"role": "system", "content": "s"})
+    log.append({"role": "user", "content": "问"})
+    log.append({"role": "assistant", "content": None,
+                "tool_calls": [{"id": "c9", "type": "function",
+                                "function": {"name": "bash", "arguments": "{}"}}]})
+    lines = iter(["继续", "/exit"])
+    client = FakeClient([{"content": "好"}])
+    interactive.run_interactive(client=client, model="fake",
+                                reader=lambda _p="": next(lines),
+                                out=lambda _s: None, on_event=lambda _e: None,
+                                rules=_OPEN, history_path=tmp_path / "h",
+                                resume="")
+    sent = client.requests[0]["messages"]
+    # 判别断言在前：旧对话真的被恢复了（没有它，「根本没 resume」也能让下一条绿）
+    assert any(m.get("content") == "问" for m in sent), "恢复的历史必须在上下文里"
+    assert not any(m.get("tool_calls") for m in sent), "半截回合必须被配平掉"
+
+
+def test_cli_resume_flag_reaches_run_interactive(monkeypatch):
+    """`--resume`（无参 = 最近一次）与 `--resume <id>` 都要原样递进交互模式。"""
+    import sys
+
+    import pai.cli as cli
+
+    seen = {}
+    monkeypatch.setattr(cli, "run_interactive", lambda **kw: seen.update(kw))
+    monkeypatch.setattr(sys, "argv", ["pai", "--resume"])
+    cli.main()
+    assert seen["resume"] == ""
+
+    monkeypatch.setattr(sys, "argv", ["pai", "--resume", "abc12345"])
+    cli.main()
+    assert seen["resume"] == "abc12345"
+
+    monkeypatch.setattr(sys, "argv", ["pai"])
+    cli.main()
+    assert seen["resume"] is None
+
+
+def test_cli_resume_conflicts_with_a_task(monkeypatch):
+    import sys
+
+    import pytest
+
+    import pai.cli as cli
+
+    monkeypatch.setattr(sys, "argv", ["pai", "跑个任务", "--resume"])
+    with pytest.raises(SystemExit):
+        cli.main()
+
+
+def test_cli_turns_resume_errors_into_plain_words(monkeypatch, capsys):
+    """找不到会话 / 旧格式：报人话并退出，不吐 traceback。"""
+    import sys
+
+    import pytest
+
+    import pai.cli as cli
+
+    def boom(**kw):
+        raise FileNotFoundError("这里没有任何会话可恢复")
+
+    monkeypatch.setattr(cli, "run_interactive", boom)
+    monkeypatch.setattr(sys, "argv", ["pai", "--resume"])
+    with pytest.raises(SystemExit):
+        cli.main()
+    assert "没有任何会话可恢复" in capsys.readouterr().err

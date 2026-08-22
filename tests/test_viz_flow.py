@@ -391,3 +391,20 @@ def test_miss_falls_back_when_the_provider_omits_it(tmp_path):
     turn = load_flow(path)["turns"][0]
 
     assert turn["miss"] == 744
+
+
+def test_v1_session_files_are_normalized_before_grouping(tmp_path):
+    """feature 24 换了会话格式（首行 header + 信封 + 消息嵌套），viz 的读边
+    要归一化回扁平形状——不然真实 pai 写出的新会话在页面上一片空白，
+    而手写扁平夹具的既有测试全绿（夹具绕过了 SessionLog，测不出这层）。"""
+    from pai.core.session import SessionLog
+
+    log = SessionLog(tmp_path)
+    log.append({"role": "system", "content": "s"})
+    log.append({"role": "user", "content": "真格式的问题"})
+    log.append({"role": "assistant", "content": "真格式的回答"})
+    log.append({"type": "usage", "step": 1, "prompt_tokens": 5,
+                "completion_tokens": 2, "total_tokens": 7})
+    flow = load_flow(log.path)
+    assert len(flow["turns"]) == 1
+    assert flow["turns"][0]["user"] == "真格式的问题"
