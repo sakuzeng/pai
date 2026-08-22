@@ -83,7 +83,11 @@ def test_wheel_does_nothing_in_dock_mode_and_does_not_crash():
 
 
 def test_wheel_line_count_is_documented_as_a_guess():
-    """AGENTS 的照抄常数纪律：这个数从哪来必须写在旁边。"""
+    """AGENTS 的照抄常数纪律：这个数从哪来必须写在旁边。
+
+    保留源码断言（R4#T3 逐条处理时的裁决）：钉的对象是**注释本身**——
+    「这个数没实测」这句话在不在源码里。行为测不出注释，扫源码是唯一手段。
+    """
     import inspect
 
     import pai.tui.app as app_module

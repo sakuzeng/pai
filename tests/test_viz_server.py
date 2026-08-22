@@ -294,22 +294,27 @@ def test_page_has_the_timeline_and_session_picker():
         assert anchor in html, f"页面缺 {anchor}"
 
 
-def test_every_api_the_page_calls_actually_has_a_route():
+def test_every_api_the_page_calls_actually_has_a_route(viz_server):
     """前端引用的每个 `/api/` 路径必须真有路由——端点改名而前端没跟，
-    页面会静默瞎掉（fetch 拿 404，catch 吞掉，什么都不显示）。"""
+    页面会静默瞎掉（fetch 拿 404，catch 吞掉，什么都不显示）。
+
+    改为行为断言（R4#T3）：对着真 server 逐个打。判据只认 404——
+    参数不齐的 400/500 说明路由**在**，只是没喂参数，不算失联。
+    第一版查 `getsource(do_GET)` 里的字符串，路由抽成分发表就假红。
+    """
     import re
+    import urllib.error
 
     html = index_source()
     called = set(re.findall(r"['\"`(]/api/([a-z]+)", html))
-    handler = inspect_source_of_do_get()
+    assert called, "页面一个 /api/ 都没调到？提取正则大概率坏了，这条测试成了空转"
     for name in called:
-        assert f'"/api/{name}"' in handler, f"页面调了 /api/{name}，但 server 没有这条路由"
-
-
-def inspect_source_of_do_get() -> str:
-    import inspect
-
-    return inspect.getsource(server_module.VizHandler.do_GET)
+        try:
+            with urllib.request.urlopen(f"{viz_server}/api/{name}") as r:
+                code = r.status
+        except urllib.error.HTTPError as e:
+            code = e.code
+        assert code != 404, f"页面调了 /api/{name}，但 server 没有这条路由"
 
 
 def test_animation_map_only_references_real_pipeline_nodes():

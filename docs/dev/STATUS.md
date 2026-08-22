@@ -125,7 +125,7 @@ feature 12 被用户打回的三条 bug 各钉了一条 e2e。
 + feature 13 alt-screen task 1-7 + feature 16 鼠标与选区 task 1-9
 + feature 17 viz-flow task 1-3.5（事件落盘 + RecallInjected/ConversationCleared + 装配））：
 
-- `./test.sh` → 1181 passed, 3 deselected，全部离线，约 112s。这是默认路径。
+- `./test.sh` → 1182 passed, 3 deselected，全部离线，约 112s。这是默认路径。
   两套假 provider 分工是硬的：`tests/fake_llm.py` 注入的假客户端测装配与逻辑；
   `tests/fake_provider.py` 起一个真 HTTP 服务，让真 pai 进程经 `PAI_BASE_URL` 打进来——
   于是 `tests/test_e2e_tui.py` 能在真 pty 里跑完整回合（真 SSE、真 gate、真 TUI），

@@ -154,22 +154,31 @@ def test_manual_compact_emits_the_same_event_as_the_automatic_one(tmp_path):
     assert compacted[0]["cut"] >= 1
 
 
-def test_the_tui_path_also_writes_the_event_stream(tmp_path):
+def test_the_tui_path_also_writes_the_event_stream(tmp_path, monkeypatch):
     """**最重要的那条路**:真 tty 下 pai 进 TUI,而 TUI 自建 on_event 走 app.on_event。
     上面几条测试注入了 reader,全走纯 REPL,照不到这条路——真跑没有观测流也不会红。
 
-    这里不起真 TUI(那要 pty),只钉住结构约束:`_run_tui` 必须收得到落盘器,
-    否则日常用法下整个 feature 17 是空的。
+    这里不起真 TUI(那要 pty),而是把 `_run_tui` 换成间谍真跑一次装配:
+    断言的是**递到手里的对象**,不是源码文本。第一版的
+    `"trace=" in getsource(...)` 连 `trace=None` 都命中(R4#T3 的点名例子)。
     """
     import inspect
 
+    from pai.core.trace import EventTrace
     from pai.modes import interactive
 
     params = inspect.signature(interactive._run_tui).parameters
     assert "trace" in params, "_run_tui 必须接收落盘器,否则 TUI 下事件不落盘"
-    # 装配处必须真的把它传进去(签名有、不传等于没有)
-    source = inspect.getsource(interactive.run_interactive)
-    assert "trace=trace" in source or "trace=" in source
+    # 装配处必须真的把它传进去(签名有、不传等于没有)——间谍替身收下全部 kwargs,
+    # 真 _run_tui 被换掉,所以不需要 pty;`_use_tui` 一并换成恒真,逼装配走 TUI 分支
+    handed = {}
+    monkeypatch.setattr(interactive, "_use_tui", lambda reader: True)
+    monkeypatch.setattr(interactive, "_run_tui", lambda **kw: handed.update(kw))
+    interactive.run_interactive(client=object(), model="fake-model",
+                                out=lambda s: None,
+                                history_path=tmp_path / "hist")
+    assert isinstance(handed.get("trace"), EventTrace), \
+        f"TUI 分支拿到的 trace 不是落盘器:{handed.get('trace')!r}"
 
 
 def test_tui_command_dispatch_carries_on_event(tmp_path):
