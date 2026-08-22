@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import List, Optional, Sequence
 
+from pai.modes.statusline import display_width
 from pai.tui import theme
 from pai.tui.component import CURSOR_MARKER, Component
 
@@ -19,6 +20,27 @@ UNREVERSE = "\x1b[27m"
 from pai.tui.keys import Key
 
 _WORD_BREAK = " \t\n"
+
+
+def _wrap_spans(line: str, room: Optional[int]) -> List[tuple]:
+    """把一个逻辑行按显示列切成 `(start, end)` 字符区间。
+
+    `room is None` = 不折（width 未知时保持旧行为）。按 `display_width`
+    逐字符量宽：组合记号计 0 列所以天然粘在基字符后面；宽字符不会被劈成两半
+    （放不下就整个挪去下一段）。单字符比 room 还宽（room=1 撞上汉字）时照放，
+    宁可超 1 列也不许造出空段死循环。"""
+    if room is None or not line:
+        return [(0, len(line))]
+    spans: List[tuple] = []
+    start, used = 0, 0
+    for idx, ch in enumerate(line):
+        w = display_width(ch)
+        if used + w > room and idx > start:
+            spans.append((start, idx))
+            start, used = idx, 0
+        used += w
+    spans.append((start, len(line)))
+    return spans
 
 
 class LineEditor(Component):
@@ -237,6 +259,14 @@ class LineEditor(Component):
     # --- 渲染 ---------------------------------------------------------
 
     def render(self, width: int) -> List[str]:
+        """逻辑行 → 显示行。超宽按**显示列**折行（feature 21 拍板 A，pi 与 CC
+        独立同选）：此前 width 收了不用，main-screen 下终端自动折行让 dock 的
+        高度记账全错（阶梯同款根因），alt 下 `_fit` 连 CURSOR_MARKER 一起截掉。
+
+        三条不变量：折行不丢字符；CURSOR_MARKER 永远落在光标所在的显示行；
+        选区反显对**每个显示行内配平**——alt 屏按行 diff 重绘，跨行悬空的 SGR
+        会在只重绘其中一行时漏出来。折行按字符边界不做词级（pi 的词级回退是
+        体验优化非正确性，中文也没词边界）。"""
         lines = self.text.split("\n")
         before = self.text[:self.cursor]
         row = before.count("\n")
@@ -245,25 +275,33 @@ class LineEditor(Component):
         out: List[str] = []
         base = 0
         for i, line in enumerate(lines):
-            prefix = theme.paint(self.prompt if i == 0 else self.continuation,
-                                 theme.CYAN, color=self.color)
-            body = line
-            if i == row:
-                body = body[:col] + CURSOR_MARKER + body[col:]
-            if span is not None:
-                # 选区是**整段文本**的下标，逐行换算成本行的局部区间；
-                # 光标标记已经插进去了，切片时要把它的长度算上
-                marker = len(CURSOR_MARKER) if i == row else 0
-                lo = span[0] - base
-                hi = span[1] - base
-                if i == row and col <= lo:
-                    lo += marker
-                if i == row and col <= hi:
-                    hi += marker
-                lo = max(0, min(len(body), lo))
-                hi = max(0, min(len(body), hi))
-                if hi > lo:
-                    body = (body[:lo] + REVERSE + body[lo:hi] + UNREVERSE + body[hi:])
-            out.append(prefix + body)
+            raw_prefix = self.prompt if i == 0 else self.continuation
+            prefix = theme.paint(raw_prefix, theme.CYAN, color=self.color)
+            pad = " " * display_width(raw_prefix)
+            room = max(1, width - display_width(raw_prefix)) if width > 0 else None
+            chunks = _wrap_spans(line, room)
+            for k, (lo_c, hi_c) in enumerate(chunks):
+                body = line[lo_c:hi_c]
+                # 光标在本段内（或在行尾且这是最后一段）才插标记
+                cut = None
+                if i == row and (lo_c <= col < hi_c
+                                 or (col == hi_c and k == len(chunks) - 1)):
+                    cut = col - lo_c
+                    body = body[:cut] + CURSOR_MARKER + body[cut:]
+                if span is not None:
+                    # 选区是**整段文本**的下标，换算成本段的局部区间；
+                    # 光标标记已经插进去了，切片时要把它的长度算上
+                    lo = span[0] - base - lo_c
+                    hi = span[1] - base - lo_c
+                    if cut is not None and cut <= lo:
+                        lo += len(CURSOR_MARKER)
+                    if cut is not None and cut <= hi:
+                        hi += len(CURSOR_MARKER)
+                    lo = max(0, min(len(body), lo))
+                    hi = max(0, min(len(body), hi))
+                    if hi > lo:
+                        body = (body[:lo] + REVERSE + body[lo:hi]
+                                + UNREVERSE + body[hi:])
+                out.append((prefix if k == 0 else pad) + body)
             base += len(line) + 1
         return out
