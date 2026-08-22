@@ -1,5 +1,5 @@
 # 20-e2e-for-seams
-状态：实现中（第 1 条已做并推翻了一个既有结论，2/3 条待续）
+状态：已交付（2026-08-22，三条全部完成；全量 1181 passed + 1 skipped（R4#26 已登记的 Pillow 缺失）+ 3 deselected，collected 1182 与 STATUS 对账一致）
 分支：`test/20-e2e-for-seams`
 流程：中等改动直做（无 spec/plan）——理由：只补测试不动被测代码（`test` 类型），
       三条的改法都由既有发现决定，没有需要拍板的取舍；用户 2026-08-19 认可方向。
@@ -54,7 +54,34 @@
 （紧循环调 `app.feed()` + 假时钟，造出真路径上不存在的到达形态）。
 已纠正 16 的 devlog 与复盘，并在 TODO 重开「拖选卡顿成因未确诊」。
 
-第 2 条（阶梯断言）与第 3 条（6 处 `getsource` 断言）尚未动。
+第 2 条（阶梯断言，2026-08-22）：期望缩进改为**锚到源头文本**——答案续行对
+`answer` 变量、`/help` 行对 `interactive.HELP` 文案，断言「屏幕缩进 == 源头缩进」
+严格相等，析取项整个删掉。先真跑摸清形态（答案续行顶格、`/help` 行自带 2 格），
+再注入反证两连：
+- 深破坏（`theme.wrap` 不拆 `\n`，即 12 阶梯的原病）→ 红（整块被打散，标记行找不到）；
+- 浅阶梯（`_answer_lines` 给续行加 1~n 格缩进，正是旧断言放过的形态：
+  行首一个空格满足 `startswith((marker, " "))`、不足 12 格躲过第二条）→
+  新断言精确红在 `' - file0.txt'` 缩进 1 ≠ 源头 0。
+
+第 3 条（`getsource` 断言，2026-08-22）：原报告说 8 处，现存 6 处（R4#T1/T5
+清理时已顺带消掉 2 处——口径漂移如实记）。逐条裁决：3 换 3 留。
+
+换成行为断言的（每条注入反证验过）：
+- `test_trace_wiring.py` trace 接线：`_run_tui` 换成间谍真跑装配，断言递到手里的
+  是 `EventTrace` 实例。注入 R4#T3 点名的那个突变（`trace=None`）→ 红——
+  而旧断言 `"trace=" in source` 对这个突变恰恰是绿的，这条是 3 处里唯一能
+  当场演示「旧的防不住」的。
+- `test_interactive_steering.py` 队列模式：构造器换间谍、reader 立刻 EOF 真跑一次
+  `run_interactive`，断言 `built == ["all"]`。注入 `"all"→"single"` → 红。
+- `test_viz_server.py` 路由存在性：对真 server 逐个打页面引用的 `/api/*`，
+  只认 404 为失联（参数不齐的 400/500 说明路由在）；另加「提取正则至少抓到一个」
+  的护栏防空转。注入路由改名 `/api/flow → /api/floww` → 红。
+
+保留源码断言的（各自写明为什么换不掉，写在测试 docstring 里）：
+- `test_tui_mouse_wheel.py` WHEEL_LINES 注释纪律——钉的是**注释本身**，行为测不出注释；
+- `test_interactive_steering.py` follow_up 符号缺席——行为只能证明「有」，
+  证明「不存在残留引用」只有扫源码一条路；
+- `test_modes.py` TUI 文案无 emoji——lint 型测试，行为版要枚举全部渲染路径，枚举不完。
 
 ## 遗留问题
 

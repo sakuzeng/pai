@@ -58,19 +58,30 @@ class TestQueueWiring:
         assert q.drain(where=_for_model) == [_msg("改用 rg"), _msg("再看 tests/")]
         assert q.drain() == [_msg("/help")], "命令必须留到本轮结束，不能被注入吃掉"
 
-    def test_the_queue_is_all_mode(self):
+    def test_the_queue_is_all_mode(self, tmp_path, monkeypatch):
         """问 3 拍板：注入用 all（照 CC，两个 drain 点都是批量、每条各自一条消息）。
 
         这条钉的是**装配**而不是队列本身——`interactive` 建队列时选错模式，
-        单测里的队列再对也没用。
+        单测里的队列再对也没用。改为行为断言（R4#T3）：把构造器换成间谍真跑一次
+        `run_interactive`（reader 立刻 EOF，一轮模型都不打），看它**建出来的**
+        是什么模式——源码文本版连改成变量传参都会假红。
         """
-        import inspect
-
         from pai.modes import interactive
 
-        src = inspect.getsource(interactive.run_interactive)
-        assert 'PendingMessageQueue("all")' in src
-        assert "PendingMessageQueue(\"single\")" not in src
+        real = interactive.PendingMessageQueue
+        built = []
+        monkeypatch.setattr(
+            interactive, "PendingMessageQueue",
+            lambda mode: built.append(mode) or real(mode))
+
+        def eof_reader(*args, **kwargs):
+            raise EOFError
+
+        interactive.run_interactive(client=object(), model="fake-model",
+                                    reader=eof_reader, out=lambda s: None,
+                                    history_path=tmp_path / "hist")
+        assert built == ["all"], \
+            f"装配建的队列不是恰好一条 all 模式的:{built!r}"
 
 
 class TestDockCountFollowsTheDrain:
@@ -203,6 +214,10 @@ class TestFollowUpIsGone:
     """问 2：followUp 删干净了——留半截比不删更糟（两条路各说各话）。"""
 
     def test_no_follow_up_symbol_left_in_the_module(self):
+        """保留源码断言（R4#T3 逐条处理时的裁决）：钉的是**符号缺席**。
+        行为断言只能证明「有」，证明「不存在任何残留引用」只有扫源码一条路；
+        误伤面（注释里提到这个词也会红）是刻意接受的——注释里都不该再提它。
+        """
         import inspect
 
         from pai.modes import interactive

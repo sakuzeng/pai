@@ -215,11 +215,21 @@ def test_multiline_content_does_not_stair_step(session, tmp_path):
     lines = [l for l in s.screen_text().split("\n")]
     while lines and not lines[-1].strip():
         lines.pop()
+    # 期望缩进锚到**源头文本**：答案续行在 `answer` 里顶格，/help 行的缩进
+    # 来自 `interactive.HELP` 文案自身。阶梯的定义是「屏幕缩进 ≠ 源头缩进」，
+    # 所以断言两者严格相等——第一版的 `row.startswith((marker, " "))` 只要
+    # 行首有一个空格就恒真，1~11 格的阶梯全放过（R4#T2）。
+    from pai.modes.interactive import HELP
+
+    def indent_of(line: str) -> int:
+        return len(line) - len(line.lstrip(" "))
+
+    sources = answer.split("\n") + HELP.split("\n")
     for marker in ("- file0.txt", "（后略）", "/status", "/permissions"):
+        want = indent_of(next(l for l in sources if marker in l))
         row = next(l for l in lines if marker in l)
-        assert row.lstrip() == row.strip() or row.startswith((marker, " ")), \
-            f"这一行没有回到列首（阶梯）：{row!r}"
-        assert not row.startswith("    " * 3), f"缩进异常（阶梯）：{row!r}"
+        assert indent_of(row) == want, \
+            f"缩进漂了（阶梯）：屏幕 {indent_of(row)} 格，源头 {want} 格：{row!r}"
 
     separator, prompt, footer = lines[-3:]
     assert set(separator.strip()) == {"─"}, f"分隔线不在倒数第三行：{lines[-3:]}"

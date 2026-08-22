@@ -328,6 +328,10 @@ def test_no_emoji_in_tui_authored_lines():
     我自己写的 TUI 侧文案，违反了我自己立的规矩。
     （`render_text` 与 `_handle_command` 里那些是 05/06 交付的 scrollback 内容，
     本轮不动，见 theme.py 的声明。）
+
+    保留源码断言（R4#T3 逐条处理时的裁决）：这是 lint 型测试，钉的是
+    **源码字面量的字符集**；行为版要把每条渲染路径都跑到才等价，枚举不完——
+    扫源码反而是更强的那个。
     """
     import inspect
 
