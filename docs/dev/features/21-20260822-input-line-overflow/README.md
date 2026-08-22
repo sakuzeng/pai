@@ -1,6 +1,6 @@
 # 21-input-line-overflow
 状态：已交付（2026-08-22）
-分支：`fix/21-input-line-overflow`（建议名，提交时创建——改动此刻悬在 `test/20-e2e-for-seams` 的工作树上未提交，与 #16/#19/#25 小修同批；用户未指示提交）
+分支：`fix/21-input-line-overflow`（自 `fix/r4-cleanup` 分出——同日 #16/#19/#25 小修在那条上，`fix/r4-cleanup` 又自 `test/20-e2e-for-seams` 分出）
 流程：中等改动（候选拍板后直做 + TDD；不走完整 spec/plan——改动集中在
       `editor.render` 一处，形态拍板即是全部设计决策）
 
