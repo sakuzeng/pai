@@ -30,7 +30,7 @@ JSON-RPC / 默认 ask + server 级规则 / settings.json `mcpServers` 字段）�
     非 JSON 行丢弃计数（server 往 stdout 打日志是常见事故，不能炸）。
   - `call_tool(raw_name, args, timeout_ms)`：`tools/call`，超时或进程死 →
     抛 `MCPError`（带原因）；`isError: true` → 同样抛 `MCPError`（错误细节 =
-    content 的 text 拼接）——**在协议层是异常，到工具层转字符串**（见 §2）。
+    content 的 text 拼接）——在协议层是异常，到工具层转字符串（见 §2）。
   - `close()`：先 `terminate()`（SIGTERM），0.5s 不退 `kill()`（SIGKILL）。
     CC 的 SIGINT→SIGTERM 升级是 Docker 场景，pai v1 本地脚本 SIGTERM 起步够，
     理由记注释。幂等（pi 的 shutdown 契约）。

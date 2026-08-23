@@ -77,9 +77,10 @@ usage 的取法按实测重写（D#58）：`include_usage` 在 DeepSeek 上是�
 本地假 provider 说 OpenAI 兼容协议，于是真 pai 进程能在真 pty 里跑完整回合
 （真 SSE / 真 gate / 真 TUI），「需要模型开口」的功能也能自动测了——
 feature 12 被用户打回的三条 bug 各钉了一条 e2e。
-阶段 6 前半程 skills 已交付——SKILL.md 两级目录扫描、目录索引进 system prompt
-（description 常驻/正文按需的渐进式披露）、`skill(name)` 工具加载、压缩后重挂、
-`/skill` 显式通道；MCP client 子阶段未动。
+阶段 6 全部交付——skills（SKILL.md 两级目录扫描、目录索引进 system prompt
+的渐进式披露、`skill(name)` 工具加载、压缩后重挂、`/skill` 显式通道）与
+MCP client（手写 stdio JSON-RPC、`mcp__<server>__<tool>` 桥接、settings 两层
+配置 + 信任门禁、权限零引擎改动）。
 功能全貌见 [features/02](features/02-20260803-compaction/README.md)、
 [features/05](features/05-20260810-repl/README.md)、
 [features/07](features/07-20260810-permissions/README.md)。
@@ -220,54 +221,20 @@ feature 12 被用户打回的三条 bug 各钉了一条 e2e。
 
 ## 下一步
 
-阶段 2（REPL + TUI）、阶段 3（记忆）、阶段 4（权限 + 工作目录边界）、阶段 5（流式）已交付。
-随后 feature 14 补上录制与回放（`PAI_TUI_RECORD` + `pai-replay` 出 PNG，
-让 AI 自己看得见界面）、feature 15 补上假 provider + 真 pty e2e
-（「需要模型开口」的功能也能自动测了）。
+主线：阶段 1-6 全部交付（压缩 / REPL+TUI / 记忆 / 权限与边界 / 流式 /
+skills+MCP client）。roadmap 只剩阶段 7 evals（真实会话轨迹回放评测 + 跑批，
+参照 pi `packages/evals/`）——动工前照例先核对该阶段「前置精读」清单。
 
-随后 feature 13 交付 alt-screen（三条裁决见 [D#64](decisions.md)「常驻但不接管鼠标」、
-[D#65](decisions.md)「退出不回吐只打会话提示」、[D#66](decisions.md)「绝不重发 `?1049h`／绝不 `2J`」）
-——真 tty 下 `pai` 进备用屏：整屏归 pai，
-上面是可键盘滚动的 transcript、下面是 dock，退出时把屏幕原样还给 shell
-（只在主屏留一行「会话存哪了」）。`.pai/settings.json` 的 `tui.altScreen: false` 可退回 12 的形态。
-本轮不接管鼠标（保住终端原生的拖选复制），所以「工具结果可点」只建了地基没做；
-搜索同样留下一轮。阶段 2 原则 2 的复议结论是它被拆开了：pi 那句「别在 main-screen 里
-*假装*」照旧成立，作废的是 pai 自己加的「只做 main-screen」。
+主线之外，接手者值得先知道的旧账（全部在 TODO，这里只挑影响判断的）：
 
-随后 feature 16 接管鼠标（滚轮滚自己的 transcript、拖选复制、点击展开、输入框选区）——
-9 个 task 全部实现、986 passed，但停在「实现中」不标已交付：
-真终端里「从后往前拖选」松手后不复制且卡顿，离线复现不了
-（定性为「事件一条一条到、合并没机会生效」，见 TODO）。
+1. ★ 拖选卡顿成因至今未确诊（feature 16 停在「实现中」的原因）：离线复现不了，
+   feature 20 已推翻第一版处方——下一步是真机复现定位，不是再猜一个原因。
+2. ★ pty e2e 偶发挂死（不报错不超时就是不回来）：复现即中奖，攒线索阶段。
+3. ★「干完再看」手势要不要做（D#68 追记衍生）：产品问题，待用户拍板方向。
+4. matcher 签名 3 参改 4 参（D#49，feature 07 起欠着）：spec 与实现凑不拢，
+   要么订正 spec 要么换实现，待拍板。
+5. 校准类欠账一批：压缩的 reserve/keep_recent、skills 四常量（25 遗留 3）、
+   MCP 输出字符预算（29 复核质疑：对中文偏大约一倍）——都等真实使用数据。
 
-下一步：用户 2026-08-11 拍板——先不做新功能，测试与优化已有的。
-候选清单（按「用户能感知」排序）：
-1. 修 feature 16 那条坏路径——处方已被 feature 20 推翻重开：原写的「driver 层
-   读干净再处理」实测拆掉也不红（60 条事件一次 `os.read(4096)` 本来就全拿到），
-   真机拖选卡顿成因至今未确诊，见 TODO ★「拖选卡顿成因未确诊」；
-2. 给已交付功能补真实回合的 e2e——13/16 两轮共打回 13 条，没有一条是离线测试能发现的。
-   feature 20 已交付第一批（拖动帧数 e2e + 阶梯断言收紧 + getsource 裁决 3 换 3 留）；
-3. 量一量再优化（`perf` 的判据是先有数字）：整屏帧渲染、`_highlight` 的逐字符扫描、
-   transcript 无上限增长；
-4. 之后才是 `--resume`（13 引入的缺口）与阶段 6 skills / MCP client。
-feature 12 的遗留见 TODO「feature 12（TUI）交付遗留」，其中一条值得先知道：
-跑很久且不发事件的工具执行期间，用户打的字在 dock 上完全看不见（字符没丢，
-在内核 tty 缓冲区，但屏幕不动）——在最需要反馈的时候没有反馈，12 复盘质疑二。
-阶段 5 的四条遗留见 TODO「feature 11（流式）遗留」，其中两条值得先知道：
-并发在界面上完全不可见（做了并发却看不见并发）、
-中断丢弃半条 assistant 消息（屏幕上看得见、上下文里没有）。
-
-一条待用户拍板（见 TODO）：
-1. matcher 签名从已拍板 spec 的 3 参改成 4 参（D#49，feature 07 起就欠着）——
-   spec 第 2 节与第 4 节凑不到一起，路径锚点是「规则的属性」，三参没有出口。
-   要么认可并订正 spec，要么换实现。
-   ~~2. `/mode` 与 shift+tab~~ 已由 feature 12 交付。
-
-阶段 1 遗留的两条候选仍在 TODO：
-- reserve_tokens / keep_recent_tokens 实测校准——目前仍是从 pi 借来的经验值，
-  需要真实会话（或 `--llm` 冒烟测试）的真实摘要长度与触发频率数据才能定。
-- microcompact 评估（K context/cc-compaction.md）——pai 的 4 个工具全部可重放，
-  按 tool_call_id 清旧结果不用调模型，可能是性价比最高的第二级压缩，阶段 1 跑通后评估。
-
-阶段 2 REPL 的 6 条遗留见 TODO「feature 05（REPL）遗留」小节，其中两条值得先知道：
-`Tool.run` 的返回契约分不出工具内部错误（状态行因此标不出红叉）、
-~~steering 无真实输入源~~ 2026-08-13 由 feature 18 关闭（TUI 干活期间打字已通电）。
+各 feature 的遗留细目一律见 TODO 对应小节（05/06/07/09/11/12/13/16/24/25/29 等），
+不在此复述——本节只保「现在该往哪看」。

@@ -12,8 +12,8 @@
   `docs/dev/features/23-20260822-model-visible-is-recorded`
 - 相关：[cc-loop.md](cc-loop.md)（循环结构，本篇不重复）
 
-两个机制一句话：prompt 是装配层按实际工具**算出来**的，落盘是全 QueryEngine
-**只有一个入口**的。features/22、23 各按其中一半对齐。
+两个机制一句话：prompt 是装配层按实际工具算出来的，落盘是全 QueryEngine
+只有一个入口的。features/22、23 各按其中一半对齐。
 
 ---
 
@@ -42,7 +42,7 @@ pai 的取形（features/22 拍板）：`build_system_prompt(tools)` 纯函数 +
 ## 二、recordTranscript：落盘只有一个入口，且幂等
 
 `recordTranscript(messages)` 是 QueryEngine 全部约 8 处落盘的唯一入口，
-每次传**当前完整 messages**。函数内部：
+每次传当前完整 messages。函数内部：
 
 1. 按消息 uuid 对已落盘集合（`getSessionMessages`）去重，只追加增量——
    调用方不需要知道「哪些是新的」，随时全量调用都收敛。

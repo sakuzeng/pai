@@ -13,9 +13,9 @@
   包装唯一出处（compact() 改调它）。
 - T4 loop：`entry_ledger`（与 messages 平行的 id 台账，REPL 跨轮持有）穿过
   `_record`/`_extend`/`_inject_instructions`；自动压缩落 `firstKeptEntryId`
-  且压缩条目**先于**指令重注入落盘（顺序反了重建会把新指令归进被摘掉的旧段）。
+  且压缩条目先于指令重注入落盘（顺序反了重建会把新指令归进被摘掉的旧段）。
 - T4b interactive：ledger 穿 REPL/TUI 全部 dispatch 路径；`/compact` 此前
-  **根本不落盘**——补成与自动压缩同款；`/clear` 同步裁台账；`_run_shell`
+  根本不落盘——补成与自动压缩同款；`/clear` 同步裁台账；`_run_shell`
   改走 `loop._record`（feature 23 的 REPL 侧遗留就此关闭）。
 - T5 resume：`resolve_resume_target`（latest/id 前缀/路径）、`trim_unfinished`
   （CC 三道过滤的 pai 版）、`run_interactive(resume=)` 重建 + 按原 id 重录进
@@ -42,7 +42,7 @@
 
 自查（对照 pi 原版逐行重审 build_messages）撞出一个真洞并当场红→绿：
 第二次压缩的切点落在第一次的摘要消息上时，firstKeptEntryId 指向的是
-compaction 条目——只扫 message 条目的保留段扫描会把保留段**静默丢光**。
+compaction 条目——只扫 message 条目的保留段扫描会把保留段静默丢光。
 pi 的 buildContextEntries 扫全部条目、压缩条目在保留段里化身摘要消息，
 抄的时候漏了这层。修法照 pi；`test_second_compaction_can_keep_the_first_summary`
 钉死。
