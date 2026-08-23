@@ -403,6 +403,18 @@ def run_interactive(
     skill_tool.set_tracker(loaded_skills)
     if not any(s.model_invocable for s in skills):
         tools = {n: t for n, t in tools.items() if n != "skill"}
+    # MCP（feature 29）：配置 → 信任门禁（装配期 asker 问真人）→ 连接 → 并表；
+    # 并表后再过一次 visible_tools 让 deny 裸名规则对 MCP 工具生效。
+    # 关闭挂 atexit 而非 try/finally：REPL/TUI 有多个退出口（return/break/raise），
+    # 大缩进包住 400 行不值；close 幂等、进程生命周期 = 会话生命周期。
+    import atexit
+
+    from pai.core.mcp import close_all_mcp, connect_configured_servers
+    mcp_sessions, mcp_tools = connect_configured_servers(ask=asker_ref, warn=out)
+    for mcp_tool in mcp_tools:
+        tools.setdefault(mcp_tool.name, mcp_tool)
+    tools = visible_tools(tools, rules)
+    atexit.register(close_all_mcp, mcp_sessions)
     skills_catalog = render_catalog(skills)
     instructions = make_instructions(build_context, loaded_skills,
                                      {s.name: s for s in skills})

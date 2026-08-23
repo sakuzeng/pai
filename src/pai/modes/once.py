@@ -14,6 +14,7 @@ from pai.core.compaction import CompactionSettings
 from pai.core.gate import make_before_tool_call
 from pai.core.hooks import load_hooks
 from pai.core.loop import build_system_prompt, run_agent
+from pai.core.mcp import close_all_mcp, connect_configured_servers
 from pai.modes.echo import make_stream_echo
 from pai.core.events import AgentEvent, MemoryWritten, RecallFailed, RecallInjected
 from pai.core.memory import build_context, memory_dir
@@ -81,6 +82,13 @@ def run_once(
     skill_tool.set_tracker(loaded_skills)
     if not any(s.model_invocable for s in skills):
         tools = {n: t for n, t in tools.items() if n != "skill"}
+    # MCP（feature 29）：配置 → 信任门禁（once 无人可问，未信任项目级跳过+warn）
+    # → 连接（单 server 失败隔离）→ 桥接并表。并表后再过一次 visible_tools：
+    # deny 裸名规则对 MCP 工具照常生效。setdefault = 不覆盖内置与先到者。
+    mcp_sessions, mcp_tools = connect_configured_servers(warn=print)
+    for mcp_tool in mcp_tools:
+        tools.setdefault(mcp_tool.name, mcp_tool)
+    tools = visible_tools(tools, rules)
     # 用户级 skills 根进边界（spec 第 3 节）：否则 once 下用户级 skill 的附属
     # 文件（read_file）被「界外 ask → 无真人 deny」拦死。软链 skill 的真身根
     # 一并进（feature 28 问 3·A，dotfiles 形态受信；项目级刻意不解析）。
@@ -88,28 +96,33 @@ def run_once(
     working_dirs = WorkingDirs.from_startup(
         None, additional=((str(user_skills_dir()),) + user_skill_link_roots(skills))
         if skills else ())
-    return run_agent(
-        task,
-        client=client,
-        model=model or model_name(),
-        tools=tools,
-        # prompt 按过滤后的实际工具集生成（feature 22）——模型看见几个就说几个
-        system_prompt=build_system_prompt(tools, skills_catalog=render_catalog(skills)),
-        max_steps=max_steps,
-        max_total_tokens=max_total_tokens,
-        session=session,
-        on_event=on_event,
-        # 组合 loader（feature 25）：压缩重建后 loop 重调 instructions，
-        # 已加载 skills 的正文跟着指令消息回到上下文（重挂机制，spec 第 4 节）
-        instructions=make_instructions(
-            build_context, loaded_skills, {s.name: s for s in skills}),
-        recall=recall,
-        context_window=context_window(),
-        compaction=CompactionSettings(),
-        # once 没有真人：模式默认 dontAsk（D#48 的显式化，见 gate.py）。
-        # 显式传 mode 可覆盖——`--dangerously-skip-permissions` 就走这条。
-        before_tool_call=make_before_tool_call(
-            rules, hooks=hooks, tools=tools, asker=None, warn=print,
-            working_dirs=working_dirs,
-            mode=mode if mode is not None else DONT_ASK),
-    )
+    try:
+        return run_agent(
+            task,
+            client=client,
+            model=model or model_name(),
+            tools=tools,
+            # prompt 按过滤后的实际工具集生成（feature 22）——模型看见几个就说几个
+            system_prompt=build_system_prompt(
+                tools, skills_catalog=render_catalog(skills)),
+            max_steps=max_steps,
+            max_total_tokens=max_total_tokens,
+            session=session,
+            on_event=on_event,
+            # 组合 loader（feature 25）：压缩重建后 loop 重调 instructions，
+            # 已加载 skills 的正文跟着指令消息回到上下文（重挂机制，spec 第 4 节）
+            instructions=make_instructions(
+                build_context, loaded_skills, {s.name: s for s in skills}),
+            recall=recall,
+            context_window=context_window(),
+            compaction=CompactionSettings(),
+            # once 没有真人：模式默认 dontAsk（D#48 的显式化，见 gate.py）。
+            # 显式传 mode 可覆盖——`--dangerously-skip-permissions` 就走这条。
+            before_tool_call=make_before_tool_call(
+                rules, hooks=hooks, tools=tools, asker=None, warn=print,
+                working_dirs=working_dirs,
+                mode=mode if mode is not None else DONT_ASK),
+        )
+    finally:
+        # once 跑完即退：MCP 子进程随 run 收尾（幂等，单个失败不拦下一个）
+        close_all_mcp(mcp_sessions)
