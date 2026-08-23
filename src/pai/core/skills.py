@@ -22,7 +22,7 @@ from typing import Callable, Dict, List, Optional
 from xml.sax.saxutils import escape
 
 from pai.core.memory import FRONTMATTER_MAX_LINES, parse_frontmatter
-from pai.core.paths import project_skills_dir, user_skills_dir
+from pai.core.paths import project_dir, project_skills_dir, user_skills_dir
 
 # 目录里每条 description 的截断上限。取 dsh `catalogDescriptionMaxLength` 的默认值
 # （500）；CC 2.1.88 是 250、官方文档现行 1536——三家里取中庸的一档，未实测校准。
@@ -131,6 +131,74 @@ def scan_skills(*, cwd: Optional[Path] = None, home: Optional[Path] = None,
     for skill in _scan_root(project_skills_dir(cwd), "project", warn):
         merged[skill.name] = skill                          # 后写覆盖 = 项目赢
     return sorted(merged.values(), key=lambda s: s.name)
+
+
+# ---------------------------------------------------------------- 信任与边界辅助
+
+# 项目级 skills 的信任标记（feature 28 拍板问 2·B，CC 工作区信任对位）。
+# 放项目身份目录（~/.pai/projects/<slug>/）：跟项目走、不进仓库——
+# 进仓库的话塞 skill 的人可以连标记一起塞。
+TRUST_MARKER = "skills_trusted"
+
+
+def project_skills_trusted(cwd: Optional[Path] = None,
+                           home: Optional[Path] = None) -> bool:
+    return (project_dir(cwd, home) / TRUST_MARKER).is_file()
+
+
+def mark_project_skills_trusted(cwd: Optional[Path] = None,
+                                home: Optional[Path] = None) -> None:
+    directory = project_dir(cwd, home)
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / TRUST_MARKER).write_text("trusted\n", encoding="utf-8")
+
+
+def apply_project_trust(skills: List[Skill], *,
+                        cwd: Optional[Path] = None, home: Optional[Path] = None,
+                        ask: Optional[Callable[[str, List[str]], str]] = None,
+                        warn: Callable[[str], None]) -> List[Skill]:
+    """项目级 skills 的信任门禁（feature 28 问 2·B）：别人塞进仓库的 skill
+    不再静默生效。用户级永远受信（用户自己装的）。
+
+    已信任 → 原样放行；未信任且有真人（ask）→ 问一次，选「信任」持久化标记、
+    其余回答（含跳过/自由文本）一律按拒绝处理且不持久化——信任必须是精确选择；
+    未信任且无真人（once）→ 丢弃项目级 + warn 指路。
+    已知边界（README 如实记）：信任是项目级一次性的，信任之后新增的 skill
+    不再触发确认（CC 的工作区信任同款弱点）。
+    """
+    project = [s for s in skills if s.source == "project"]
+    if not project or project_skills_trusted(cwd, home):
+        return skills
+    names = "、".join(s.name for s in project)
+    if ask is not None:
+        trust_option = "信任并加载（记住，之后不再问）"
+        answer = ask(f"项目 .pai/skills 里有 {len(project)} 个 skills（{names}）。"
+                     f"skills 会指挥模型行为，只信任你 review 过的。",
+                     [trust_option, "本次不加载"])
+        if answer == trust_option:
+            mark_project_skills_trusted(cwd, home)
+            return skills
+        warn(f"项目级 skills 本次未加载：{names}")
+        return [s for s in skills if s.source != "project"]
+    warn(f"项目级 skills 未信任，当前模式无人可确认，已跳过：{names}"
+         "（在交互模式里确认一次即可信任）")
+    return [s for s in skills if s.source != "project"]
+
+
+def user_skill_link_roots(skills: List[Skill]) -> tuple:
+    """用户级软链 skill 的真身根（feature 28 问 3·A）：用户自建的软链（dotfiles
+    形态）视为受信，真身目录进 WorkingDirs.additional，附属文件在 once 下也可读。
+    项目级刻意不解析：仓库可被塞入指向 `~/.ssh` 之类的恶意软链，自动放行真身
+    等于开任意读洞。"""
+    import os
+    roots: List[str] = []
+    for s in skills:
+        if s.source != "user":
+            continue
+        real = os.path.realpath(str(s.base_dir))
+        if real != str(s.base_dir) and real not in roots:
+            roots.append(real)
+    return tuple(roots)
 
 
 # ---------------------------------------------------------------- 目录渲染

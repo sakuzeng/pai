@@ -267,10 +267,12 @@
 
 ### feature 25（skills）遗留 —— 2026-08-22
 
-- [ ] 项目级 skill 无信任门槛（25 遗留 1，D#72 顺带点名）：别人塞进仓库的
-      `.pai/skills/` 静默生效并能指挥模型干活。CC 靠工作区信任对话框挡，
-      pai 没有这层。与「配了 Bash allow 即可越界」（feature 09 遗留）同类：
-      洞在明面上，至少该在首次扫到项目级 skill 时提示一次。
+- [x] ~~项目级 skill 无信任门槛（25 遗留 1，D#72 顺带点名）~~ 已修 2026-08-23
+      （[feature 28](features/28-20260823-skills-trust-and-write-guard/README.md)
+      问 2·B，CC 式门禁）：首遇未信任项目 skills 交互模式真人确认（精确选中
+      「信任」才持久化到项目身份目录，拒绝/跳过不持久化下次再问）；once 无人
+      可问 → 不加载 + warn 指路。pty e2e 钉对话框全链。已知边界：信任是项目级
+      一次性的，信任后新增 skill 不再触发确认（CC 同款弱点，记 28 devlog）。
 - [ ] 会话中途增删改 skill 不生效（25 遗留 2）：扫描只在装配期跑一次（pi 同款），
       CC 的实时变更检测 / dsh 的 Chokidar watcher 都没抄。最小修法是
       `/skill reload` 或按轮重扫；注意重扫会动 system prompt 前缀（缓存代价）。
@@ -290,6 +292,9 @@
 - [ ] `~/.pai/skills/` 整目录读免问是刻意代价（25 遗留 6，记录非待办）：
       用户级 skills 根进了 WorkingDirs.additional，read_file 读该目录下任何
       文件不再询问。不加就是 once 下用户级 skill 结构性不可用（spec 第 3 节）。
+      追记 2026-08-23（feature 28 问 3·A）：用户级软链 skill 的真身根同样进
+      additional（dotfiles 受信），免问读面随之扩到这些真身目录；写面已由
+      危险写名单收口（28 问 1）。
 
 ### 25 复核发现 —— 2026-08-23（出处：25 复核）
 
@@ -307,18 +312,17 @@
       `.claude/skills`，子目录里的 skills 也生效——顺带解掉 25 evidence
       「skill 放子目录不生效」的静默失效。pai 现在是 git 根单根（dsh 同款）。
       用户裁决：登记不并进 27，等真实需要再立案。
-- [ ] 中·软链 skill 结构性不可用（25 复核）——正文半边已被 feature 27 顺带修掉
-      （skill 工具退出路径边界后，软链 SKILL.md 的正文加载不再撞
-      `WorkingDirs.contains` 的双路径校验，冒烟场景 3 复验通过）。残余范围收窄为
-      附属文件：软链 skill 目录下的参考文件走 read_file 时，realpath 在界外仍
-      ask/deny。修法不变：扫描时解析并 warn，或边界对 skills 根下软链放行真身。
-- [ ] 中·acceptEdits 模式下 `~/.pai/skills/` 可免问写入（25 复核，遗留 6 只
-      声明了读面）：用户级根进 additional 后，`decide` 第 5 步对「界内写」
-      直接 allow，且 `is_dangerous_write` 名单不含 skills 目录——acceptEdits
-      下模型可静默写入/篡改用户级 skill，写进去的内容在之后所有项目的会话里
-      自动进目录，属「写进去就等于拿到后续指挥权」的持久化位点（与遗留 1
-      信任门槛同族）。最小修法：skills 根进 `_DANGEROUS_HOME_DIRS` 一类
-      持久化位点名单。
+- [x] ~~中·软链 skill 结构性不可用（25 复核）~~ 全部收掉：正文半边
+      feature 27 顺带修（豁免位）；附属文件半边 feature 28 问 3·A 修——
+      用户级软链真身根进 additional（dotfiles 受信），项目级刻意不解析
+      （仓库可塞指向 `~/.ssh` 的恶意软链，理由记 28 档案），后者是刻意代价
+      非待办。
+- [x] ~~中·acceptEdits 模式下 `~/.pai/skills/` 可免问写入（25 复核）~~ 已修
+      2026-08-23（[feature 28](features/28-20260823-skills-trust-and-write-guard/README.md)
+      问 1·A）：`.pai/skills` 路径段进 `_DANGEROUS_ANYWHERE`（用户级与项目级
+      一个模式全覆盖），写 skills 永远 ask、bypass 免疫；注入反证去掉名单项
+      即红。已知豁口如实记 28 devlog：bash readlink 真身直写可绕（bash 不参与
+      边界的既有拍板，与 `.git/hooks` 同类）。
 - [x] ~~低·「disable-model-invocation 的 skill /skill 可调」无测试（25 复核）~~
       已补 2026-08-23（feature 26 顺带）：
       `test_repl_skill_can_invoke_disable_model_invocation`，含注入反证。

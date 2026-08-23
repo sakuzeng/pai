@@ -76,7 +76,8 @@ from pai.core.memory import (
 from pai.core.queue import PendingMessageQueue
 from pai.core.recall import RecallState, make_recall
 from pai.core.session import SessionLog
-from pai.core.skills import make_instructions, read_skill_body, render_catalog, scan_skills
+from pai.core.skills import (apply_project_trust, make_instructions, read_skill_body,
+                             render_catalog, scan_skills, user_skill_link_roots)
 from pai.core.trace import EventTrace, compose
 from pai.core.settings import alt_screen_enabled, load_settings, mouse_enabled
 from pai.core.tools import Tool, ask, get_tools, memory_tool
@@ -393,7 +394,10 @@ def run_interactive(
     # 或全被 disable-model-invocation）时把工具收走（同 once，25 复核低 3）——
     # /skill 用户通道不受影响，它走 get_catalog 不走工具集。
     # 用户级 skills 根进边界，否则用户级 skill 的附属文件被界外 ask 拦住。
-    skills = scan_skills(warn=out)
+    # 信任门禁（feature 28 问 2·B）：首遇未信任的项目级 skills 走真人确认，
+    # 选「信任」持久化到项目身份目录；其余回答按拒绝处理、下次再问。
+    # 此刻还在装配期、TUI 未起，asker_ref 里是 reader 版真人通道，可用。
+    skills = apply_project_trust(scan_skills(warn=out), ask=asker_ref, warn=out)
     loaded_skills = skill_tool.LoadedSkills()
     skill_tool.set_catalog({s.name: s for s in skills} if skills else None)
     skill_tool.set_tracker(loaded_skills)
@@ -402,8 +406,10 @@ def run_interactive(
     skills_catalog = render_catalog(skills)
     instructions = make_instructions(build_context, loaded_skills,
                                      {s.name: s for s in skills})
+    # 软链用户级 skill 的真身根一并进边界（feature 28 问 3·A；项目级刻意不解析）
     working_dirs = WorkingDirs.from_startup(
-        None, additional=(str(user_skills_dir()),) if skills else ())
+        None, additional=((str(user_skills_dir()),) + user_skill_link_roots(skills))
+        if skills else ())
     gate = make_before_tool_call(
         rules, hooks=hooks, tools=tools, asker=asker_ref, warn=out, mode=mode_state,
         working_dirs=working_dirs)

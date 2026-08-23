@@ -84,6 +84,7 @@
 
 | 功能 | 状态 | 一句话结果 |
 |---|---|---|
+| [28-20260823-skills-trust-and-write-guard](28-20260823-skills-trust-and-write-guard/README.md) | 已交付 | skills 持久化位点与信任门槛三合一（25 复核中 2 条 + 25 遗留 1）：`.pai/skills` 段进危险写名单（写 skills 永远 ask，acceptEdits/bypass 翻不过）；项目级 skills CC 式信任门禁（interactive 真人确认持久化到项目身份目录、once 未信任不加载+warn，pty e2e 钉对话框全链）；用户级软链真身进边界、项目级刻意不解（恶意软链任意读洞）。注入反证两处各红各的 |
 | [27-20260823-skill-boundary-exempt](27-20260823-skill-boundary-exempt/README.md) | 已交付 | 修 25 复核高 2（子目录启动 skill 被边界拦）：CC 反编译走读证实「读 SKILL.md 路径」建模是三家孤例（CC 的 SkillTool 无 getPath、dsh 门在 isModelInvocable），skill 工具退出路径边界改走 `Tool.boundary_exempt` 显式豁免位（D#73，只作用兜底、deny/ask 规则在前），「未知名回 cwd」绕法连带删除；软链正文顺带修好，子目录场景进回归测试 |
 | [26-20260823-reattach-test-fix](26-20260823-reattach-test-fix/README.md) | 已交付 | 修 25 复核发现的假绿：压缩重挂锚测试场景两锚改三锚（从 find_cut_point 机制推出刀位）让正文真被摘掉 + 双向断言（token 不在 tool 消息、在指令消息），注入反证掐断重挂必红；顺带补 /skill 通道对 disable-model-invocation 的覆盖缺口。只动 tests，1292 passed |
 | [25-20260822-skills](25-20260822-skills/README.md) | 已交付 | 阶段 6 skills 子阶段：SKILL.md 两级目录扫描（项目赢 D#72）→ 目录索引进 system prompt（渐进式披露带预算）→ 专用 skill 工具加载（D#71，动工前反向对照证实「零新增工具」只是 pi 一家）→ 压缩后重挂（搭 D#42 的车零 loop 改动，REAL_TRAJECTORY 真轨迹钉死）→ /skill 命令。7 task TDD，1291 passed；交付前真 API 回合模型不点名自主调了 skill |

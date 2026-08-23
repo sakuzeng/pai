@@ -143,8 +143,10 @@ def paths_all_inside(paths: Iterable[str], dirs: WorkingDirs) -> bool:
 _DANGEROUS_HOME_FILES = (".bashrc", ".zshrc", ".bash_profile", ".zprofile", ".profile")
 # 家目录下整个挡掉的子目录
 _DANGEROUS_HOME_DIRS = (".ssh",)
-# 任意位置只要路径里有这一段就挡（git hooks 在任何仓库里都是执行点）
-_DANGEROUS_ANYWHERE = (os.path.join(".git", "hooks"),)
+# 任意位置只要路径里有这一段就挡（git hooks 在任何仓库里都是执行点；
+# skills 目录同理——写进去的 SKILL.md 在后续会话自动指挥模型，用户级
+# `~/.pai/skills` 与项目级 `<根>/.pai/skills` 一个模式全覆盖，feature 28 问 1·A）
+_DANGEROUS_ANYWHERE = (os.path.join(".git", "hooks"), os.path.join(".pai", "skills"))
 
 
 def is_dangerous_write(path: str, home: Optional[str] = None) -> bool:
