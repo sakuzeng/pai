@@ -86,7 +86,11 @@ class MCPSession:
         self.tools: List[dict] = []           # tools/list 的原始条目（未桥接）
         self._proc: Optional[subprocess.Popen] = None
         self._next_id = 0
-        self._lock = threading.Lock()         # 写管道 + id 分配
+        self._lock = threading.Lock()         # id 分配 + pending 表
+        # 写管道单独一把锁（29 复核低 2）：当前调度对 MCP 工具串行（未声明
+        # concurrency_safe），这把锁是结构保险——将来声明并发时两线程写 stdin
+        # 不会字节交错损坏协议。与 _lock 分开，避免写管道阻塞 reader 的配对查表。
+        self._write_lock = threading.Lock()
         self._pending: Dict[int, dict] = {}   # id -> {"event": Event, "reply": msg}
         self._reader: Optional[threading.Thread] = None
 
@@ -188,6 +192,10 @@ class MCPSession:
                 continue
             if not isinstance(msg, dict) or "id" not in msg:
                 continue                      # server 端 notification：v1 忽略
+            if not isinstance(msg["id"], (int, str)):
+                # 29 复核低 1：`"id": [1]` 这类 unhashable id 会让 dict.get 抛
+                # TypeError 弄死 reader——之后所有调用退化成超时挂等。丢弃该行。
+                continue
             with self._lock:
                 slot = self._pending.get(msg["id"])
             if slot is not None:
@@ -210,8 +218,9 @@ class MCPSession:
         if proc is None or proc.stdin is None or proc.poll() is not None:
             raise MCPError(f"MCP server `{self.name}` 已退出，无法发送请求")
         try:
-            proc.stdin.write((json.dumps(obj) + "\n").encode("utf-8"))
-            proc.stdin.flush()
+            with self._write_lock:
+                proc.stdin.write((json.dumps(obj) + "\n").encode("utf-8"))
+                proc.stdin.flush()
         except (BrokenPipeError, OSError):
             self.state = "failed"
             raise MCPError(f"MCP server `{self.name}` 管道已断（进程退出）")
@@ -499,16 +508,22 @@ def connect_configured_servers(*, cwd=None, home=None,
     tools: List[Tool] = []
     configs = apply_mcp_trust(load_mcp_servers(cwd=cwd, home=home, warn=warn),
                               cwd=cwd, home=home, ask=ask, warn=warn)
-    for cfg in configs:
-        session = MCPSession(cfg.name, cfg.command, cfg.args, cfg.env,
-                             call_timeout_ms=cfg.timeout_ms)
-        try:
-            session.start()
-        except MCPError as e:
-            warn(f"{e}，已跳过该 server")
-            continue
-        sessions.append(session)
-        tools.extend(bridge_tools(session, warn=warn))
+    try:
+        for cfg in configs:
+            session = MCPSession(cfg.name, cfg.command, cfg.args, cfg.env,
+                                 call_timeout_ms=cfg.timeout_ms)
+            try:
+                session.start()
+            except MCPError as e:
+                warn(f"{e}，已跳过该 server")
+                continue
+            sessions.append(session)
+            tools.extend(bridge_tools(session, warn=warn))
+    except BaseException:
+        # 29 复核低 4：非 MCPError 异常（内部 bug 才会走到这）不许把已启动的
+        # 子进程留成孤儿——先收掉再照样往上抛，不吞
+        close_all_mcp(sessions)
+        raise
     return sessions, tools
 
 

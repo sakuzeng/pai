@@ -265,6 +265,26 @@
       引用时须在 decisions 补一条「参照源定级」。
 
 
+### 29 复核发现 —— 2026-08-23（出处：29 复核；全部低级，无高中级）
+
+- [x] ~~低·reader 线程对 unhashable id 会死（29 复核）~~ 已修 2026-08-23
+      （!小修）：id 非 (int,str) 丢弃该行；`test_reader_survives_unhashable_id`
+      钉住（bad-id-noise 夹具模式，修前红在超时）。
+- [x] ~~低·`_send` 写管道不在锁内（29 复核，结构性伏笔）~~ 已修 2026-08-23
+      （!小修）：独立 `_write_lock`（与配对查表的 `_lock` 分开防阻塞 reader），
+      结构保险无行为变化、无红可构造（调度现串行），如实注明。
+- [x] ~~低·spec 与实现不符——连接超时粒度（29 复核）~~ 已修 2026-08-23
+      （!小修）：按实现改 spec 措辞（每请求各计）并留追记标注。
+- [x] ~~低·connect_configured_servers 无兜底 finally（29 复核）~~ 已修
+      2026-08-23（!小修）：BaseException 时先 close_all 再照样抛；
+      `test_connect_helper_closes_sessions_on_unexpected_error` 钉住（修前红）。
+- [x] ~~低·装配级测试覆盖缺口三处（29 复核）~~ 已补 2026-08-23（!小修）：
+      repl 信任问答持久化 / once 坏 server 不崩 / 配置 timeout 全链，三条
+      绿于到达（钉的是冒烟实证过的既有正确行为，如实标注）。
+- [ ] 低·非对象 inputSchema 原样透传（29 复核，记录性）：server 给
+      `{"type":"string"}` 这类根级非对象 schema 会直达 API，可能被拒——
+      CC 2.1.88 同样透传（拍平是 2.1.195 才加的）。等真撞到再挡。
+
 ### feature 29（MCP client）遗留 —— 2026-08-23
 
 - [ ] HTTP/SSE/ws 传输与 OAuth 未做（29 遗留 1，拍板问 1 范围）：v1 只有

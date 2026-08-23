@@ -53,6 +53,9 @@ for raw in sys.stdin:
         # server 往 stdout 打日志是常见事故：协议行前后夹杂垃圾行
         sys.stdout.write("log: something noisy\n")
         sys.stdout.flush()
+    if MODE == "bad-id-noise":
+        # 恶意/坏 server：合法 JSON 但 id 是 unhashable 的 list（29 复核低 1）
+        send({"jsonrpc": "2.0", "id": [1], "result": {}})
     if method == "initialize":
         send({"jsonrpc": "2.0", "id": msg["id"], "result": {
             "protocolVersion": msg["params"].get("protocolVersion", "2025-06-18"),
