@@ -483,9 +483,12 @@ def test_make_instructions_composes_base_and_loaded(tmp_path):
 def test_compaction_reinjects_loaded_skill_body(tmp_path, monkeypatch):
     """验收标准 4（R4#A4 点名的 CC 坑）：压缩重建后，已加载 skill 的正文仍在上下文里。
 
-    底料用 REAL_TRAJECTORY（真实会话轨迹夹具，AGENTS 规约）；压缩场景照
-    test_breaker 的两锚节奏。重挂机制搭 D#42 指令重注入的车：组合 loader 在
-    压缩重建后被 loop 重新调用，届时追踪器里已有加载记录。
+    底料用 REAL_TRAJECTORY（真实会话轨迹夹具，AGENTS 规约）。场景是三锚节奏
+    （feature 26 修假绿）：skill 轮之后再来两轮 bash，让 find_cut_point 的刀落在
+    skill 轮之后、把它的 tool_result 真的摘出上下文——25 复核证明两锚版里正文被
+    keep-recent 尾段保住，掐断重挂测试照样绿。双向断言：token 不在任何 tool 消息
+    （自证正文真被摘掉了，防场景漂移回假绿）+ token 在指令消息（只可能来自重挂——
+    组合 loader 在压缩重建后被 loop 重新调用，届时追踪器里已有加载记录，D#42 的车）。
     """
     monkeypatch.chdir(tmp_path)
     from pai.core.compaction import CompactionSettings
@@ -502,7 +505,9 @@ def test_compaction_reinjects_loaded_skill_body(tmp_path, monkeypatch):
             {"tool_calls": [("skill", json.dumps({"name": "alpha"}))],
              "usage": {"prompt_tokens": 100, "completion_tokens": 10, "total_tokens": 110}},
             {"tool_calls": [("bash", json.dumps({"command": "true"}))],
-             "usage": {"prompt_tokens": 850, "completion_tokens": 10, "total_tokens": 860}},
+             "usage": {"prompt_tokens": 390, "completion_tokens": 10, "total_tokens": 400}},
+            {"tool_calls": [("bash", json.dumps({"command": "true"}))],
+             "usage": {"prompt_tokens": 840, "completion_tokens": 10, "total_tokens": 850}},
             {"content": "这是摘要"},
             {"content": "done"},
         ]
@@ -519,8 +524,14 @@ def test_compaction_reinjects_loaded_skill_body(tmp_path, monkeypatch):
         assert answer == "done"
         summary_reqs = [r for r in client.requests if "tools" not in r]
         assert summary_reqs, "场景必须真的触发了压缩，否则本测试在测空气"
-        joined = json.dumps(messages, ensure_ascii=False)
-        assert "ALPHA-REATTACH-TOKEN" in joined, "压缩后已加载 skill 的正文必须还在上下文里"
+        tool_bodies = [m.get("content") or "" for m in messages if m.get("role") == "tool"]
+        assert not any("ALPHA-REATTACH-TOKEN" in body for body in tool_bodies), \
+            "skill 的 tool_result 必须真的被压缩摘掉——它还在就说明场景漂回了假绿（25 复核）"
+        inst_msgs = [m for m in messages
+                     if m.get("role") == "user" and "# 项目指令与记忆" in (m.get("content") or "")]
+        assert inst_msgs, "压缩重建后必须有指令消息"
+        assert "ALPHA-REATTACH-TOKEN" in inst_msgs[0]["content"], \
+            "正文被摘掉后，token 只可能经重挂回到指令消息——不在就是重挂没生效"
     finally:
         skill_mod.set_catalog(None)
         skill_mod.set_tracker(None)
@@ -598,6 +609,22 @@ def test_repl_without_skills_hides_tool_and_catalog(tmp_path, monkeypatch):
     assert "<available_skills>" not in system["content"]
     tool_names = {t["function"]["name"] for t in client.requests[0]["tools"]}
     assert "skill" not in tool_names
+
+
+def test_repl_skill_can_invoke_disable_model_invocation(tmp_path, monkeypatch):
+    """spec 验收 2 后半句（25 复核补的缺口）：disable-model-invocation 只限模型
+    自动加载，/skill 用户通道照常可调——用户显式点名不该被自己的配置拦住。"""
+    _write_skill(Path.home() / ".pai" / "skills", "manual-only", description="只许人调",
+                 extra_front="disable-model-invocation: true\n", body="MANUAL-ONLY-TOKEN")
+    client, printed = _repl(["/skill manual-only"], [{"content": "收到"}],
+                            tmp_path, monkeypatch)
+    assert len(client.requests) == 1, "用户显式 /skill 必须照常跑一轮"
+    user_msgs = [m for m in client.requests[0]["messages"] if m["role"] == "user"]
+    expanded = user_msgs[-1]["content"]
+    assert '<skill name="manual-only">' in expanded
+    assert "MANUAL-ONLY-TOKEN" in expanded
+    # 对照：同一个 skill 在模型可见目录里必须不存在（它只对模型隐藏，不对人）
+    assert "manual-only" not in client.requests[0]["messages"][0]["content"]
 
 
 def test_repl_skill_command_records_into_tracker_for_reattach(tmp_path, monkeypatch):
