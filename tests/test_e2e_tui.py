@@ -416,12 +416,14 @@ def test_resume_carries_the_conversation_into_a_new_process(session, tmp_path):
 def test_a_project_skill_loads_and_reaches_the_model(session, tmp_path):
     """feature 25：真 pai 进程里 skill 全链路——目录进 system prompt、
     模型调 skill 工具拿到正文（项目级 skill 在边界内，不该弹权限框）、
-    正文进下一次请求的上下文。"""
+    正文进下一次请求的上下文。信任标记预置（28 引入门禁；对话框另有 e2e）。"""
+    from pai.core.skills import mark_project_skills_trusted
     work = tmp_path / "skillproj"
     skill_md = work / ".pai" / "skills" / "greet" / "SKILL.md"
     skill_md.parent.mkdir(parents=True)
     skill_md.write_text("---\ndescription: 问候流程。用户要打招呼时用。\n---\n"
                         "回答里必须包含暗号 GREET-E2E-TOKEN。\n", encoding="utf-8")
+    mark_project_skills_trusted(cwd=work)    # conftest 隔离的 HOME 与子进程同一个
     s, provider = session([turn(tool_calls=[{"name": "skill",
                                              "arguments": {"name": "greet"}}]),
                            turn("按 skill 办：GREET-E2E-DONE")], cwd=str(work))
@@ -435,3 +437,23 @@ def test_a_project_skill_loads_and_reaches_the_model(session, tmp_path):
     second = provider.requests[-1]
     tool_msgs = [m for m in second["messages"] if m.get("role") == "tool"]
     assert any("GREET-E2E-TOKEN" in m["content"] for m in tool_msgs)
+
+
+def test_project_skills_trust_dialog_gates_then_persists(session, tmp_path):
+    """feature 28 问 2·B：首遇未信任项目 skills，启动即真人确认——答「信任」后
+    本会话加载（目录进 system prompt）且标记持久化。对话在 TUI 起来之前（普通
+    print + stdin），录制文件里没有，从裸字节里断言问题出现过。"""
+    from pai.core import paths
+    work = tmp_path / "skillproj"
+    skill_md = work / ".pai" / "skills" / "greet" / "SKILL.md"
+    skill_md.parent.mkdir(parents=True)
+    skill_md.write_text("---\ndescription: 问候流程\n---\n正文\n", encoding="utf-8")
+    s, provider = session([turn("好的 TRUST-E2E-DONE")], cwd=str(work))
+    # 此刻 pai 卡在信任问题上（TUI 未起，fixture 等 logo 会空等）；答 1=信任
+    assert "项目 .pai/skills" in s.raw.decode("utf-8", "replace"), \
+        f"启动时该有信任提问。裸输出：{s.raw.decode('utf-8', 'replace')[-400:]}"
+    s.send("1\r", until="从零实现的编码 agent", timeout=10.0)
+    s.send("你好\r", until="TRUST-E2E-DONE")
+    assert "<available_skills>" in provider.requests[0]["messages"][0]["content"]
+    marker = paths.project_dir(work) / "skills_trusted"
+    assert marker.is_file(), "选「信任」必须持久化标记"

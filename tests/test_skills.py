@@ -327,6 +327,176 @@ def test_skill_tool_capabilities_and_boundary_declarations(skill_env):
     assert tool.boundary_exempt is True
 
 
+# ---------------------------------------------------------------- feature 28 · 写面/信任/软链
+
+from pai.core.boundary import is_dangerous_write  # noqa: E402
+from pai.core.skills import (  # noqa: E402
+    apply_project_trust,
+    mark_project_skills_trusted,
+    user_skill_link_roots,
+)
+
+
+def test_dangerous_write_guards_skills_dirs(tmp_path):
+    """28 问 1·A：skills 目录是持久化位点（写进去的内容在后续会话自动指挥模型），
+    用户级与项目级都进危险写名单——与 `.git/hooks` 同款「写进去就拿到后续执行权」。"""
+    home = tmp_path / "home"
+    assert is_dangerous_write(str(home / ".pai" / "skills" / "a" / "SKILL.md"),
+                              home=str(home))
+    assert is_dangerous_write(str(tmp_path / "repo" / ".pai" / "skills" / "x.md"),
+                              home=str(home))
+    assert not is_dangerous_write(str(tmp_path / "repo" / "src" / "main.py"),
+                                  home=str(home))
+
+
+def test_accept_edits_does_not_silently_write_skills(tmp_path):
+    """28 问 1 的 decide 级钉法（25 复核中 4 的直接反面）：acceptEdits + 界内写
+    skills 目录 → ask（危险写在求值链第 2 步，acceptEdits 在第 5 步翻不过它）。"""
+    from pai.core.permissions import ACCEPT_EDITS
+    home = tmp_path / "home"
+    user_root = paths.user_skills_dir(home)
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    dirs = WorkingDirs.from_startup(str(proj), additional=(str(user_root),))
+    d = decide("write_file",
+               {"path": str(user_root / "evil" / "SKILL.md"), "content": "x"},
+               RuleSet(), tools=all_tools(), working_dirs=dirs,
+               home=str(home), mode=ACCEPT_EDITS)
+    assert d.kind == "ask" and "持久化位点" in d.reason
+    d2 = decide("write_file",
+                {"path": str(proj / ".pai" / "skills" / "evil.md"), "content": "x"},
+                RuleSet(), tools=all_tools(), working_dirs=dirs,
+                home=str(home), mode=ACCEPT_EDITS)
+    assert d2.kind == "ask" and "持久化位点" in d2.reason
+
+
+def _trust_env(tmp_path):
+    home, proj = tmp_path / "home", tmp_path / "proj"
+    _write_skill(home / ".pai" / "skills", "mine", description="用户级")
+    _write_skill(proj / ".pai" / "skills", "theirs", description="项目级")
+    return home, proj, scan_skills(cwd=proj, home=home)
+
+
+def test_trust_once_drops_untrusted_project_skills_and_warns(tmp_path):
+    """28 问 2·B：once 无人可问——未信任的项目级 skills 不加载 + warn；
+    用户级永远受信不受影响。"""
+    home, proj, skills = _trust_env(tmp_path)
+    warnings: list[str] = []
+    kept = apply_project_trust(skills, cwd=proj, home=home, warn=warnings.append)
+    assert [s.name for s in kept] == ["mine"]
+    assert any("theirs" in w and "未信任" in w for w in warnings)
+
+
+def test_trust_marker_lets_project_skills_through(tmp_path):
+    home, proj, skills = _trust_env(tmp_path)
+    mark_project_skills_trusted(cwd=proj, home=home)
+    warnings: list[str] = []
+    kept = apply_project_trust(skills, cwd=proj, home=home, warn=warnings.append)
+    assert {s.name for s in kept} == {"mine", "theirs"}
+    assert warnings == []
+
+
+def test_trust_dialog_yes_persists_and_loads(tmp_path):
+    """真人选「信任」：本次加载 + 标记持久化（下次不再问，CC 工作区信任对位）。"""
+    home, proj, skills = _trust_env(tmp_path)
+    asked: list[str] = []
+
+    def ask(question, options):
+        asked.append(question)
+        return options[0]                         # 信任并加载（记住）
+
+    kept = apply_project_trust(skills, cwd=proj, home=home, ask=ask,
+                               warn=lambda _m: None)
+    assert {s.name for s in kept} == {"mine", "theirs"}
+    assert len(asked) == 1 and "theirs" in asked[0]
+    # 第二次装配：标记已持久化，不再问
+    kept2 = apply_project_trust(skills, cwd=proj, home=home,
+                                ask=lambda *_: pytest.fail("信任后不该再问"),
+                                warn=lambda _m: None)
+    assert {s.name for s in kept2} == {"mine", "theirs"}
+
+
+def test_trust_dialog_no_skips_without_persisting(tmp_path):
+    """选「本次不加载」：项目级丢弃、不持久化（下次还会问），跳过/自由文本同待遇
+    ——信任必须是精确选择，不从含糊回答里推断。"""
+    home, proj, skills = _trust_env(tmp_path)
+    warnings: list[str] = []
+    kept = apply_project_trust(skills, cwd=proj, home=home,
+                               ask=lambda _q, options: options[1],
+                               warn=warnings.append)
+    assert [s.name for s in kept] == ["mine"]
+    assert any("theirs" in w for w in warnings)
+    asked_again: list[str] = []
+    apply_project_trust(skills, cwd=proj, home=home,
+                        ask=lambda q, o: (asked_again.append(q), o[1])[1],
+                        warn=lambda _m: None)
+    assert asked_again, "拒绝不持久化——下次装配必须再问"
+
+
+def test_once_untrusted_project_skill_stays_out_of_prompt(tmp_path, monkeypatch):
+    """装配级钉法：once 下未信任项目 skill 不进 system prompt、不进目录。"""
+    from pai.modes.once import run_once
+    proj = tmp_path / "proj"
+    _write_skill(proj / ".pai" / "skills", "theirs", description="项目级技能")
+    proj.mkdir(exist_ok=True)
+    monkeypatch.chdir(proj)
+    client = FakeClient([{"content": "done"}])
+    run_once("x", client=client, model="fake", no_session=True, on_event=lambda _: None)
+    system = client.requests[0]["messages"][0]["content"]
+    assert "theirs" not in system
+    assert "<available_skills>" not in system
+
+
+def test_user_skill_link_roots_resolves_only_user_level(tmp_path):
+    """28 问 3·A：用户级软链 skill 的真身根进边界（dotfiles 受信）；
+    项目级刻意不解析——仓库可被塞入指向敏感目录的恶意软链。"""
+    home, proj = tmp_path / "home", tmp_path / "proj"
+    real_user = tmp_path / "dotfiles" / "greet"
+    real_proj = tmp_path / "outside" / "evil"
+    for real in (real_user, real_proj):
+        real.mkdir(parents=True)
+        (real / "SKILL.md").write_text("---\ndescription: d\n---\n正文\n",
+                                       encoding="utf-8")
+    user_root = home / ".pai" / "skills"
+    proj_root = proj / ".pai" / "skills"
+    user_root.mkdir(parents=True)
+    proj_root.mkdir(parents=True)
+    (user_root / "greet").symlink_to(real_user)
+    (proj_root / "evil").symlink_to(real_proj)
+    skills = scan_skills(cwd=proj, home=home)
+    roots = user_skill_link_roots(skills)
+    import os
+    assert os.path.realpath(str(real_user)) in roots
+    assert all(os.path.realpath(str(real_proj)) not in r for r in roots)
+
+
+def test_once_reads_attachment_of_symlinked_user_skill(tmp_path, monkeypatch):
+    """全链钉法：软链用户级 skill 的附属文件在 once（dontAsk）下 read_file 可读。"""
+    from pai.modes.once import run_once
+    home = Path.home()                            # conftest 已隔离
+    real = tmp_path / "dotfiles" / "greet"
+    real.mkdir(parents=True)
+    (real / "SKILL.md").write_text("---\ndescription: 软链技能\n---\n正文\n",
+                                   encoding="utf-8")
+    (real / "references.md").write_text("ATTACH-TOKEN-28\n", encoding="utf-8")
+    user_root = home / ".pai" / "skills"
+    user_root.mkdir(parents=True, exist_ok=True)
+    (user_root / "greet").symlink_to(real)
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    monkeypatch.chdir(proj)
+    ref = user_root / "greet" / "references.md"
+    script = [
+        {"tool_calls": [("read_file", json.dumps({"path": str(ref)}))]},
+        {"content": "done"},
+    ]
+    client = FakeClient(script)
+    run_once("x", client=client, model="fake", no_session=True, on_event=lambda _: None)
+    tool_msgs = [m for m in client.requests[-1]["messages"] if m.get("role") == "tool"]
+    assert tool_msgs and "ATTACH-TOKEN-28" in tool_msgs[0]["content"], \
+        f"附属文件必须可读，实际回填：{tool_msgs[0]['content'][:120] if tool_msgs else '无'}"
+
+
 # ---------------------------------------------------------------- T4 · 边界与 once 接线
 
 import json  # noqa: E402
@@ -418,6 +588,7 @@ def test_once_loads_project_skill_from_repo_subdir(tmp_path, monkeypatch):
     sub = repo / "src" / "deep"
     sub.mkdir(parents=True)
     monkeypatch.chdir(sub)
+    mark_project_skills_trusted(cwd=sub)     # 本测试测边界不测信任门禁（28 引入）
     script = [
         {"tool_calls": [("skill", json.dumps({"name": "alpha"}))]},
         {"content": "done"},

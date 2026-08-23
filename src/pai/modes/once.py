@@ -20,8 +20,8 @@ from pai.core.memory import build_context, memory_dir
 from pai.core.paths import user_skills_dir
 from pai.core.permissions import DONT_ASK, RuleSet, load_rules, visible_tools
 from pai.core.recall import RecallState, make_recall
-from pai.core.skills import (LoadedSkills, make_instructions, render_catalog,
-                             scan_skills)
+from pai.core.skills import (LoadedSkills, apply_project_trust, make_instructions,
+                             render_catalog, scan_skills, user_skill_link_roots)
 from pai.core.tools import memory_tool
 from pai.core.tools import skill as skill_tool
 from pai.core.session import SessionLog
@@ -73,17 +73,21 @@ def run_once(
     # 模型没有任何可调的 skill（一个没有，或全被 disable-model-invocation）时把
     # 工具收走——摆一个必然空手而归的工具就是让模型撞空（与 INTERACTIVE_ONLY
     # 同一个道理；once 连 /skill 通道都没有，25 复核低 3）。
-    skills = scan_skills(warn=print)
+    # 信任门禁（feature 28 问 2·B）：once 无人可问，未信任的项目级 skills
+    # 不加载 + warn 指路（在交互模式确认一次即可信任）。
+    skills = apply_project_trust(scan_skills(warn=print), warn=print)
     loaded_skills = LoadedSkills()
     skill_tool.set_catalog({s.name: s for s in skills} if skills else None)
     skill_tool.set_tracker(loaded_skills)
     if not any(s.model_invocable for s in skills):
         tools = {n: t for n, t in tools.items() if n != "skill"}
-    # 用户级 skills 根进边界（spec 第 3 节）：否则 once 下用户级 skill 的正文与
-    # 附属文件（read_file）全被「界外 ask → 无真人 deny」拦死，功能结构性不可用。
-    # 代价如实声明：~/.pai/skills/ 下任何文件的读取从此免问。
+    # 用户级 skills 根进边界（spec 第 3 节）：否则 once 下用户级 skill 的附属
+    # 文件（read_file）被「界外 ask → 无真人 deny」拦死。软链 skill 的真身根
+    # 一并进（feature 28 问 3·A，dotfiles 形态受信；项目级刻意不解析）。
+    # 代价如实声明：这些目录下任何文件的读取从此免问。
     working_dirs = WorkingDirs.from_startup(
-        None, additional=(str(user_skills_dir()),) if skills else ())
+        None, additional=((str(user_skills_dir()),) + user_skill_link_roots(skills))
+        if skills else ())
     return run_agent(
         task,
         client=client,
