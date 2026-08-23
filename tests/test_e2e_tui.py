@@ -137,16 +137,19 @@ class Session:
 def session(tmp_path):
     made = []
 
-    def start(script, **kwargs):
+    def start(script, wait_logo=True, **kwargs):
         provider = FakeProvider(script).start()
         made.append(provider)
         s = Session(provider, tmp_path, **kwargs)
         made.append(s)
-        end = time.time() + 8.0
-        while time.time() < end:                 # 等启动动画放完（logo 定格进 scrollback）
-            s.drain(0.15)
-            if "从零实现的编码 agent" in s.screen_text():
-                break
+        # wait_logo=False 给「启动即阻塞在 TUI 之前」的场景（信任对话框等）：
+        # logo 永远不会出现，8s 超时就是纯白等（实测省约 8s/条）
+        if wait_logo:
+            end = time.time() + 8.0
+            while time.time() < end:             # 等启动动画放完（logo 定格进 scrollback）
+                s.drain(0.15)
+                if "从零实现的编码 agent" in s.screen_text():
+                    break
         return s, provider
 
     yield start
@@ -477,8 +480,12 @@ def test_project_skills_trust_dialog_gates_then_persists(session, tmp_path):
     skill_md = work / ".pai" / "skills" / "greet" / "SKILL.md"
     skill_md.parent.mkdir(parents=True)
     skill_md.write_text("---\ndescription: 问候流程\n---\n正文\n", encoding="utf-8")
-    s, provider = session([turn("好的 TRUST-E2E-DONE")], cwd=str(work))
-    # 此刻 pai 卡在信任问题上（TUI 未起，fixture 等 logo 会空等）；答 1=信任
+    s, provider = session([turn("好的 TRUST-E2E-DONE")], cwd=str(work),
+                          wait_logo=False)      # 对话框挡在 TUI 前，logo 不会出现
+    # 等信任问题出现在裸字节里（通常 <1s；上限只为慢机器兜底）
+    end = time.time() + 8.0
+    while time.time() < end and "项目 .pai/skills" not in s.raw.decode("utf-8", "replace"):
+        s.drain(0.2)
     assert "项目 .pai/skills" in s.raw.decode("utf-8", "replace"), \
         f"启动时该有信任提问。裸输出：{s.raw.decode('utf-8', 'replace')[-400:]}"
     s.send("1\r", until="从零实现的编码 agent", timeout=10.0)
