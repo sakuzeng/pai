@@ -265,6 +265,35 @@
       引用时须在 decisions 补一条「参照源定级」。
 
 
+### feature 29（MCP client）遗留 —— 2026-08-23
+
+- [ ] HTTP/SSE/ws 传输与 OAuth 未做（29 遗留 1，拍板问 1 范围）：v1 只有
+      stdio。远程 server 需求出现时先做 streamable-http + 静态 header
+      （dsh 形态），OAuth 等真实需要。
+- [ ] resources/prompts/sampling/roots/elicitation/progress/list_changed
+      未做（29 遗留 2，spec 非目标）：裁剪判据记档（「协议能力在自家架构里
+      没有归属者时不到动工时候」）。prompts 的归属者是 / 命令表、resources
+      是 @ 引用——那两个机制先出现，这条才解锁。list_changed 与「REPL 中途
+      改 skill 不生效」（25 遗留 2）同族，做时一起。
+- [ ] 重连未做（29 遗留 3）：server 死了摘除、调用回错误串（pi 式）。
+      真需要时抄 dsh 的三件套（uptime 重置预算 / 等关闭再退避否则彻底停 /
+      故障期不注销工具），设计已存 K mcp/dsh-mcp.md。
+- [ ] 大输出落盘与非文本内容未做（29 遗留 4）：超 100k 字符截断留提示、
+      image/audio 占位符——CC 的落盘+类型签名形态等真实撞到再做。
+      输出预算的字符换算对中文偏大（复盘质疑三），校准与 25 遗留 3 同批。
+- [ ] `${VAR}` 环境变量展开与 `.mcp.json` 生态兼容未做（29 遗留 5）：
+      检入仓库的项目级配置想引 secret 时需要前者；想直接挂 CC 生态配置时
+      需要后者（settings 加一个「外部 mcp 配置文件路径」项即可）。
+- [ ] 连接失败不告知模型（29 遗留 6）：v1 只 warn 给用户——模型可能反复试
+      不存在的工具名。反向对照 P3 证明 CC 文档的「经 ToolSearch 告知」实测
+      未复现，无可抄的已验证行为，pai 要自己定形态（最小：装配期把失败
+      server 列进 system prompt 一行）。
+- [ ] interactive 的 MCP 关闭挂 atexit 是取舍（29 遗留 7，记录性）：
+      REPL/TUI 多出口不做大缩进；close 幂等 + 进程生命周期 = 会话生命周期。
+      若 run_interactive 重构出单一出口，顺手改确定性关闭（复盘质疑一）。
+- [ ] dirty-stdout 丢弃不可见（29 遗留 8）：非 JSON 行静默丢、无计数——
+      丢弃行数超阈值该 warn 一次（复盘质疑四）。
+
 ### feature 25（skills）遗留 —— 2026-08-22
 
 - [x] ~~项目级 skill 无信任门槛（25 遗留 1，D#72 顺带点名）~~ 已修 2026-08-23

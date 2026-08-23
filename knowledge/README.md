@@ -17,6 +17,7 @@ permissions/     权限求值、工作目录边界、hooks 与门禁
 tui/             终端 UI：绘制、备用屏、鼠标、输入归属、终端物理特性
 streaming/       流式输出与工具调度
 skills/          按需加载的能力扩展：发现、索引注入、渐进式披露
+mcp/             MCP client：传输、工具桥接、命名、超时预算、信任
 model-api/       打模型 API 时要知道的事（key 取法、max_tokens 语义）
 engineering/     换个项目仍成立的通用工程方法（测试、观测、接缝、进程）
 overview/        跨主题的覆盖图与索引
@@ -133,6 +134,11 @@ dsh 的文档与源码在同一个仓库、同一个 commit 里，拆开只会�
 | `streaming/` | | | |
 | [streaming/cc-streaming-tools.md](streaming/cc-streaming-tools.md) | 工具在模型还没说完就开跑：能力标志是收 input 的函数（默认全 false）、保序贪心分批、只有 Bash 出错才杀兄弟、子 AbortController 不向上传播；`getAssistantMessageId` 那条不适用于 pai（协议不同） | 精读 | src/pai/core/loop.py、roadmap 阶段 5 |
 | [streaming/streaming-tool-calls.md](streaming/streaming-tool-calls.md) | 流式下 tool_calls 按 `index` 归并且 `arguments` 逐字符分片；usage 实测永远在末块（`include_usage` 是空操作，惯用的「choices 为空即 usage 块」分支永不触发 → 用量静默丢失）；中断的流没有 usage | 沉淀 | src/pai/core/loop.py、roadmap 阶段 5 |
+| `mcp/` | | | |
+| [mcp/claude-mcp.md](mcp/claude-mcp.md) | 官方 MCP 全景（抓取 2026-08-23，行为条目带 v2.1.1xx~2.2xx 版本）：四种传输与 `mcpServers` 配置形状、scope 三层与项目级审批+工作区信任链、`mcp__s__t` 命名、超时三件套（连接 `MCP_TIMEOUT`/执行默认约 28h/空闲 5min-30min）、输出预算（警告 10k 固定、上限 25k token 可调、超限落盘换文件引用）、重连退避 1s×2 封顶 5 次、工具搜索默认延迟加载（阈值 10% 窗口）、根级组合器 schema 拍平 | 精读 | features/29、roadmap 阶段 6 |
+| [mcp/pi-mcp.md](mcp/pi-mcp.md) | pi 显式不做 MCP（写进 philosophy 的产品决策，git 全历史零 MCP 文件）：「225-token README beats a 13,000-token MCP server description」；替代形态三层（CLI+README+Skills / Extensions 进程内注册 / resources_discover）。可抄的骨架：工具注册表与来源解耦（MCP 是灌表 adapter）、prepareToolCall 固定流水线让权限层结构性覆盖、错误转 isError 回填、fail-closed、session_start 起 shutdown 收的进程契约 | 精读 | features/29、src/pai/core/tools/__init__.py |
+| [mcp/cc-mcp.md](mcp/cc-mcp.md) | CC 2.1.88 反编译：tools/list 后五道工序（capability 门禁→Unicode 清洗防 HackerOne #3086545→description 截 2048→schema 原样透传→annotations 映射能力位）；权限默认 ask、specifier 三形态禁括号；memoize 连接池+onclose 惰性重连（作者自留 TODO 怀疑）、SDK 只发 onerror 不发 onclose 的缝隙补丁、stdio 关闭 SIGINT→SIGTERM 升级；输出 25k token 超限落盘+类型签名；MCP 工具默认全延迟加载 | 精读 | features/29、src/pai/core/permissions.py |
+| [mcp/dsh-mcp.md](mcp/dsh-mcp.md) | dsh（pin 47f9438）918 行源码/2393 行测试/0 行子系统文档：Tools only（Resources/Prompts 延后判据原文）、`serverName` 用户配置不信远端、命名 hash 兜底 `\0` 分隔、代隔离重连（uptime 重置预算/等关闭再退避否则彻底停/故障期不注销工具）、裸 request 绕 SDK 缓存副作用。两个缺口=pai 超车点：MCP 工具不过任何权限门（`mcp__*` 通配是记录成已具备的空头期权）、上下文全量平铺无预算。⚠️ 文档 vs 源码八处不符（D1-D8），Agent Note 是不更新的决策快照 | 精读 | features/29、src/pai/core/permissions.py、knowledge/skills/dsh-skills.md |
 | `skills/` | | | |
 | [skills/claude-skills.md](skills/claude-skills.md) | 官方 skills 全景：SKILL.md（frontmatter+正文）、四级存放与冲突规则、渐进式披露（description 常驻/正文调用时载）、列表预算（窗口 1% + 每条 1536 字符）、压缩后重挂（单个 5k/共享 25k token）；含 2.1.239 真实探针两条出入（frontmatter name 也能调起、坏 YAML 时正文首段顶 description） | 精读 | roadmap 阶段 6、features/25 |
 | [skills/pi-skills.md](skills/pi-skills.md) | pi 最小形态（R4#A4 原型）：扫描（SKILL.md 目录不再递归/根下 .md/ignore 文件/realpath 去重/先到先得）+ `<available_skills>` XML 进 system prompt + 模型用 read 加载正文（零新增工具，pi 自认不总灵）+ `/skill:name` 展开成 `<skill>` 块。⚠️ 无列表预算（三家唯一）、压缩后正文不重挂；文档说 name 必填而源码回退目录名 | 精读 | features/25、src/pai/core/memory.py |
