@@ -291,6 +291,48 @@
       用户级 skills 根进了 WorkingDirs.additional，read_file 读该目录下任何
       文件不再询问。不加就是 once 下用户级 skill 结构性不可用（spec 第 3 节）。
 
+### 25 复核发现 —— 2026-08-23（出处：25 复核）
+
+- [x] ~~高·验收标准 4 的锚测试是假绿（25 复核）~~ 已修 2026-08-23
+      （[feature 26](features/26-20260823-reattach-test-fix/README.md)）：
+      场景改三锚让切点真摘掉 skill 的 tool_result + 双向断言（token 不在
+      tool 消息、在指令消息），注入反证掐断重挂必红（红的输出在 26 devlog）。
+- [ ] 高·子目录启动时项目级 skill 目录与边界脱节（25 复核）：扫描按 git 根
+      （`project_skills_dir` 向上找 `.git`），边界 `WorkingDirs.startup_cwd`
+      按启动 cwd——从仓库子目录起 pai 时目录照常进 system prompt，但 skill
+      工具调用被边界拦（once/dontAsk 直接拒绝且带权限话术，正是 R4#10 要避开
+      的；interactive 弹意外权限框）。离线冒烟实证：/tmp git 项目子目录启动，
+      回填是「权限被拒绝」而非正文。2026-08-23 已拍板走 feature 27
+      （skill 工具退出路径边界 + 显式豁免位，CC/dsh 同构——CC 反编译证据见
+      27 档案），实现中。
+- [ ] skills 发现升级为 cwd→git 根沿途多根链（27 拍板顺带，出处：25 复核
+      的 CC 源码研究）：CC 的 `getProjectDirsUpToHome` 收集沿途每层
+      `.claude/skills`，子目录里的 skills 也生效——顺带解掉 25 evidence
+      「skill 放子目录不生效」的静默失效。pai 现在是 git 根单根（dsh 同款）。
+      用户裁决：登记不并进 27，等真实需要再立案。
+- [ ] 中·软链 skill 结构性不可用（25 复核）：扫描 `entry.is_dir()` 跟随软链
+      收录，但 `WorkingDirs.contains` 要求字面与 realpath 双路径都在界内——
+      `~/.pai/skills/<名>` 软链到 dotfiles 仓库（常见形态）时 skill 调用被拒。
+      离线冒烟实证：软链用户级 skill 回填「权限被拒绝」。两层语义须对齐：
+      要么扫描时解析并拒软链（warn），要么边界对 skills 根下的软链放行真身。
+- [ ] 中·acceptEdits 模式下 `~/.pai/skills/` 可免问写入（25 复核，遗留 6 只
+      声明了读面）：用户级根进 additional 后，`decide` 第 5 步对「界内写」
+      直接 allow，且 `is_dangerous_write` 名单不含 skills 目录——acceptEdits
+      下模型可静默写入/篡改用户级 skill，写进去的内容在之后所有项目的会话里
+      自动进目录，属「写进去就等于拿到后续指挥权」的持久化位点（与遗留 1
+      信任门槛同族）。最小修法：skills 根进 `_DANGEROUS_HOME_DIRS` 一类
+      持久化位点名单。
+- [x] ~~低·「disable-model-invocation 的 skill /skill 可调」无测试（25 复核）~~
+      已补 2026-08-23（feature 26 顺带）：
+      `test_repl_skill_can_invoke_disable_model_invocation`，含注入反证。
+- [ ] 低·skill.py 模块注释「装配期写、执行期只读」对追踪器不成立（25 复核）：
+      `_TRACKER.record()` 在执行期写，而工具声明 `concurrency_safe=True` 会进
+      scheduler 的 ThreadPoolExecutor，`LoadedSkills._seq += 1` 非原子，并发
+      加载时序号可并列（影响仅限重挂排序）。改注释或给 record 加锁。
+- [ ] 低·全部 skill 均 disable-model-invocation 时 once 仍摆 skill 工具
+      （25 复核）：装配只在 `skills` 全空时收走工具，目录却为空——once 没有
+      /skill 通道，工具必然空手而归，违背装配注释自己写的「不摆撞空的工具」。
+
 ### feature 21（输入行折行）遗留 —— 2026-08-22
 
 - [ ] 折行续排行上的鼠标点击定位不对（21 遗留 1）：`app._input_click` 按

@@ -149,7 +149,7 @@ feature 12 被用户打回的三条 bug 各钉了一条 e2e。
 + feature 13 alt-screen task 1-7 + feature 16 鼠标与选区 task 1-9
 + feature 17 viz-flow task 1-3.5（事件落盘 + RecallInjected/ConversationCleared + 装配））：
 
-- `./test.sh` → 1291 passed, 3 deselected，全部离线，约 2.5 分钟。这是默认路径。
+- `./test.sh` → 1292 passed, 3 deselected，全部离线，约 2.5 分钟。这是默认路径。
   R4#26 已修（2026-08-22）：Pillow 进 dev 依赖并已装，此前常驻的那条 skip 归零；
   今后 Pillow 缺席相关测试直接红（带修法提示），不再静默 skip。
   两套假 provider 分工是硬的：`tests/fake_llm.py` 注入的假客户端测装配与逻辑；
