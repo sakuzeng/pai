@@ -1,8 +1,9 @@
 """两层 `settings.json` 的通用读取（用户级 + 项目级）。
 
-`permissions.py` 有它自己的一份读取——**刻意不改它**（feature 13 plan）：
-它工作正常且被 100+ 条测试盯着，为了「不重复」去动它是无谓风险。
-两处读同一个文件这件事登记为遗留，等第三个读者出现时再合并。
+自 feature 30 起这里是唯一的读盘 + 坏文件容错实现（`read_settings_layers`）：
+feature 13 时记的「等第三个读者出现时再合并」在 mcp 成为第四个读者后兑现，
+permissions / hooks / mcp / 本模块的 section 取值全部消费它。
+通用信任门禁（`project_trust_gate`）也住这里——信任的对象就是项目级配置。
 """
 
 from __future__ import annotations
@@ -18,13 +19,10 @@ SETTINGS_FILE = "settings.json"
 
 def load_settings(cwd: Optional[str] = None, home: Optional[str] = None,
                   warn: Optional[Callable[[str], None]] = None) -> Dict[str, Any]:
-    """读两层并浅合并：**后读的项目层覆盖用户层**（与权限层的分层顺序一致）。"""
-    cwd_path = Path(cwd) if cwd is not None else Path.cwd()
-    home_path = Path(home) if home is not None else Path.home()
+    """读两层并浅合并：后读的项目层覆盖用户层（与权限层的分层顺序一致）。"""
     merged: Dict[str, Any] = {}
-    for path in (home_path / paths.USER_DIR / SETTINGS_FILE,
-                 cwd_path / paths.USER_DIR / SETTINGS_FILE):
-        for section, value in _read(path, warn).items():
+    for _path, data in read_settings_layers(cwd=cwd, home=home, warn=warn):
+        for section, value in data.items():
             if isinstance(value, dict) and isinstance(merged.get(section), dict):
                 merged[section] = {**merged[section], **value}
             else:
@@ -77,3 +75,62 @@ def _read(path: Path, warn: Optional[Callable[[str], None]]) -> Dict[str, Any]:
             warn(f"设置文件 {path} 不是合法 JSON（{e}），本层按空处理")
         return {}
     return data if isinstance(data, dict) else {}
+
+
+# ---------------------------------------------------------------- 分层读取原语（feature 30）
+
+def read_settings_layers(cwd=None, home=None, warn=None):
+    """两层 settings.json 的原始内容：((用户层路径, dict), (项目层路径, dict))。
+
+    这是仓库里唯一的「读 settings 文件 + 坏文件容错」实现（feature 30，问 1·A）：
+    此前 permissions / hooks / mcp / 本模块各有一套，settings 读取者到第四个时
+    合并阈值（本文件头注记的「等第三个读者」）已翻倍越过。section 解析刻意留在
+    各消费方——权限的 RuleSet 组装、hooks 解析、mcpServers 校验都是各自的领域
+    知识，这里只管读盘与告警一份实现。
+    """
+    cwd_path = Path(cwd) if cwd is not None else Path.cwd()
+    home_path = Path(home) if home is not None else Path.home()
+    user_path = home_path / paths.USER_DIR / SETTINGS_FILE
+    project_path = cwd_path / paths.USER_DIR / SETTINGS_FILE
+    return ((user_path, _read(user_path, warn)),
+            (project_path, _read(project_path, warn)))
+
+
+# ---------------------------------------------------------------- 通用信任门禁（feature 30）
+
+def project_trusted(marker: str, cwd=None, home=None) -> bool:
+    """项目级配置的信任标记是否存在。标记住项目身份目录（~/.pai/projects/<slug>/），
+    不进仓库——检入仓库的配置能声明任何东西，但塞不进信任标记（feature 28 拍板）。"""
+    return (paths.project_dir(cwd, home) / marker).is_file()
+
+
+def mark_project_trusted(marker: str, cwd=None, home=None) -> None:
+    directory = paths.project_dir(cwd, home)
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / marker).write_text("trusted\n", encoding="utf-8")
+
+
+def project_trust_gate(items, *, marker: str, cwd=None, home=None,
+                       ask=None, warn,
+                       question, trust_option: str, refuse_option: str,
+                       refused_note, unattended_note):
+    """项目级条目的通用信任门禁（feature 30 问 2·A：skills 与 mcp 的三胞胎合一）。
+
+    机制一份：已信任放行；有真人（ask）问一次、精确选中信任项才持久化标记、
+    其余回答按拒绝且不持久化（下次再问）；无真人（once）丢弃项目级 + 提示。
+    文案全部由适配方传入（question 收 (数量, 名单) 返回问题原文），两侧输出
+    逐字不变——refactor 判据。条目须带 `source`（"user"|"project"）与 `name`。
+    """
+    project = [it for it in items if it.source == "project"]
+    if not project or project_trusted(marker, cwd, home):
+        return list(items)
+    names = "、".join(it.name for it in project)
+    if ask is not None:
+        answer = ask(question(len(project), names), [trust_option, refuse_option])
+        if answer == trust_option:
+            mark_project_trusted(marker, cwd, home)
+            return list(items)
+        warn(refused_note(names))
+        return [it for it in items if it.source != "project"]
+    warn(unattended_note(names))
+    return [it for it in items if it.source != "project"]

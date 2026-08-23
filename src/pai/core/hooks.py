@@ -205,15 +205,11 @@ def load_hooks(
     坏条目**跳过并告警**，与坏 JSON 同样绝不弄挂 agent——一条写错的 hook
     不该让整个 agent 起不来。
     """
-    from pai.core.permissions import SETTINGS_FILE, _read_settings   # 复用同一套读盘与容错
-
-    cwd_path = Path(cwd) if cwd is not None else Path.cwd()
-    home_path = Path(home) if home is not None else Path.home()
-    user_dir = home_path / paths.USER_DIR
+    from pai.core.settings import read_settings_layers   # 统一读盘与容错（feature 30）
 
     specs = []
-    for path in (user_dir / SETTINGS_FILE, cwd_path / paths.USER_DIR / SETTINGS_FILE):
-        entries = (_read_settings(path, warn).get("hooks") or {}).get(HOOK_EVENT) or []
+    for path, data in read_settings_layers(cwd=cwd, home=home, warn=warn):
+        entries = (data.get("hooks") or {}).get(HOOK_EVENT) or []
         for entry in entries:
             if not isinstance(entry, dict) or not entry.get("command"):
                 if warn:

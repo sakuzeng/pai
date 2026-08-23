@@ -387,21 +387,12 @@ class MCPServerConfig:
         self.source = source                  # "user" | "project"
 
 
-def _read_servers_layer(path, source: str,
-                        warn: Callable[[str], None]) -> List[MCPServerConfig]:
-    """读一层 settings.json 的 mcpServers 段。坏文件/坏条目 warn 后跳过，
-    pai 照常起（启动路径不崩，与权限层 _read_settings、skills 扫描同一条铁律）。
-    两层自读循 hooks.py 先例——项目层要单独过信任门禁，不能用 load_settings
-    的预合并结果。"""
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError:
-        return []                             # 没有文件是常态
-    try:
-        data = json.loads(text)
-    except ValueError as e:
-        warn(f"设置文件 {path} 不是合法 JSON（{e}），本层 mcpServers 按空处理")
-        return []
+def _parse_servers_section(data: dict, source: str,
+                           warn: Callable[[str], None]) -> List[MCPServerConfig]:
+    """一层 settings 内容里的 mcpServers 段解析。坏条目 warn 后跳过，
+    pai 照常起（启动路径不崩，与 skills 扫描同一条铁律）。读盘与坏文件容错
+    自 feature 30 起走 settings.read_settings_layers——项目层要单独过信任门禁，
+    所以消费的是分层原始 dict 而非 load_settings 的预合并结果。"""
     servers = data.get("mcpServers")
     if not isinstance(servers, dict):
         return []
@@ -439,31 +430,25 @@ def load_mcp_servers(*, cwd=None, home=None,
                      warn: Callable[[str], None]) -> List[MCPServerConfig]:
     """读两层 settings.json 的 mcpServers。同名项目级赢（settings 合并语义与
     skills D#72 一致）。"""
-    from pathlib import Path
-
-    from pai.core.paths import USER_DIR
-    cwd_path = Path(cwd) if cwd is not None else Path.cwd()
-    home_path = Path(home) if home is not None else Path.home()
+    from pai.core.settings import read_settings_layers
+    (_up, user_data), (_pp, project_data) = read_settings_layers(
+        cwd=cwd, home=home, warn=warn)
     merged: Dict[str, MCPServerConfig] = {}
-    for cfg in _read_servers_layer(home_path / USER_DIR / "settings.json",
-                                   "user", warn):
+    for cfg in _parse_servers_section(user_data, "user", warn):
         merged[cfg.name] = cfg
-    for cfg in _read_servers_layer(cwd_path / USER_DIR / "settings.json",
-                                   "project", warn):
+    for cfg in _parse_servers_section(project_data, "project", warn):
         merged[cfg.name] = cfg                # 后写覆盖 = 项目赢
     return sorted(merged.values(), key=lambda c: c.name)
 
 
 def project_mcp_trusted(cwd=None, home=None) -> bool:
-    from pai.core.paths import project_dir
-    return (project_dir(cwd, home) / MCP_TRUST_MARKER).is_file()
+    from pai.core.settings import project_trusted
+    return project_trusted(MCP_TRUST_MARKER, cwd, home)
 
 
 def mark_project_mcp_trusted(cwd=None, home=None) -> None:
-    from pai.core.paths import project_dir
-    directory = project_dir(cwd, home)
-    directory.mkdir(parents=True, exist_ok=True)
-    (directory / MCP_TRUST_MARKER).write_text("trusted\n", encoding="utf-8")
+    from pai.core.settings import mark_project_trusted
+    mark_project_trusted(MCP_TRUST_MARKER, cwd, home)
 
 
 def apply_mcp_trust(servers: List[MCPServerConfig], *, cwd=None, home=None,
@@ -473,26 +458,21 @@ def apply_mcp_trust(servers: List[MCPServerConfig], *, cwd=None, home=None,
     """项目级 MCP server 的信任门禁（feature 28 问 2·B 的推广）：检入仓库的
     settings.json 能起任意子进程，静默生效不可接受。用户级永远受信。
 
-    语义与 skills 的 apply_project_trust 逐条对齐：已信任放行；有真人问一次、
-    精确选中「信任」才持久化；无真人（once）丢弃项目级 + warn 指路。
+    机制自 feature 30 起走 settings.project_trust_gate（与 skills 同一份实现），
+    本函数只剩 MCP 的文案与标记名——输出逐字不变。
     """
-    project = [s for s in servers if s.source == "project"]
-    if not project or project_mcp_trusted(cwd, home):
-        return servers
-    names = "、".join(s.name for s in project)
-    if ask is not None:
-        trust_option = "信任并连接（记住，之后不再问）"
-        answer = ask(f"项目 settings.json 配置了 {len(project)} 个 MCP server"
-                     f"（{names}）。它们会作为子进程启动并向模型提供工具，"
-                     f"只信任你 review 过的。", [trust_option, "本次不连接"])
-        if answer == trust_option:
-            mark_project_mcp_trusted(cwd, home)
-            return servers
-        warn(f"项目级 MCP server 本次未连接：{names}")
-        return [s for s in servers if s.source != "project"]
-    warn(f"项目级 MCP server 未信任，当前模式无人可确认，已跳过：{names}"
-         "（在交互模式里确认一次即可信任）")
-    return [s for s in servers if s.source != "project"]
+    from pai.core.settings import project_trust_gate
+    return project_trust_gate(
+        servers, marker=MCP_TRUST_MARKER, cwd=cwd, home=home, ask=ask, warn=warn,
+        question=lambda n, names: (
+            f"项目 settings.json 配置了 {n} 个 MCP server（{names}）。"
+            f"它们会作为子进程启动并向模型提供工具，只信任你 review 过的。"),
+        trust_option="信任并连接（记住，之后不再问）",
+        refuse_option="本次不连接",
+        refused_note=lambda names: f"项目级 MCP server 本次未连接：{names}",
+        unattended_note=lambda names: (
+            f"项目级 MCP server 未信任，当前模式无人可确认，已跳过：{names}"
+            "（在交互模式里确认一次即可信任）"))
 
 
 # ---------------------------------------------------------------- 装配辅助

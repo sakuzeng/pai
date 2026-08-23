@@ -909,9 +909,12 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
       （超宽即 dump + throw）。值得复议。
 - [ ] transcript 无上限：长会话里条目只增不减（每条还带一份行缓存）。
       与 feature 10 那条「一事一文件让索引膨胀」是同一类账，但这次没有任何收缩机制。
-- [ ] 两处读同一个 `settings.json`：`core/settings.py`（本轮新增）与
-      `permissions.py` 自己那份。本轮刻意没合并（动一个被 100+ 条测试盯着的文件是无谓风险），
-      等第三个读者出现时再合。
+- [x] ~~两处读同一个 `settings.json`（等第三个读者出现时再合）~~ 已合
+      2026-08-24（[feature 30](features/30-20260824-config-and-trust-dedup/README.md)）：
+      读取者到第四个（mcp）时触发条件翻倍命中，`settings.read_settings_layers`
+      成为唯一读盘实现，permissions/hooks/mcp/settings 全部消费它；顺带把
+      skills 与 mcp 的信任门禁三胞胎合成 `project_trust_gate` 一份（文案参数化
+      逐字不变）。
 - [ ] 内容不满一屏时顶部对齐，transcript 与 dock 之间留一大片空白。
       与 pi/CC 的形态一致，但没问过用户觉得好不好看。
 
