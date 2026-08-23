@@ -17,10 +17,10 @@
 去注入 → 全绿。收尾扩面 `136 passed`（editor/app/mouse/e2e 全文件）。
 
 事故（如实记）：第一轮注入反证的复原用了 `git checkout src/pai/tui/editor.py`，
-而折行实现当时**未提交**——checkout 把实现连注入一起冲回 HEAD，
+而折行实现当时未提交——checkout 把实现连注入一起冲回 HEAD，
 且复原后的「确认」跑出 `3 failed` 被我误读成绿。发现后重新落实现，
 第二轮注入改用 python 脚本加/删注入行，不再碰 git checkout。
-教训升格到复盘：**未提交的修复，注入反证的复原手段不能是 git checkout**；
+教训升格到复盘：未提交的修复，注入反证的复原手段不能是 git checkout；
 且复原后的确认跑必须真的读数字，不能只看「跑完了」。
 
 遗留（同步 TODO）：

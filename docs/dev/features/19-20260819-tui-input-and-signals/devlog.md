@@ -44,7 +44,7 @@ ESC+ESC 不拆 → 只红连按两次；处理器又画回去 → 只红「处�
 
 全量首跑撞红两条 `test_tui_dialog.py`（`test_esc_cancels`、
 `test_permission_dialog_cancel_means_deny`）——同样是编码旧时序语义的测试：
-它们 `feed(b"\x1b")` 之后立刻 `flush()`。**先确认真实路径不受影响再改测试**：
+它们 `feed(b"\x1b")` 之后立刻 `flush()`。先确认真实路径不受影响再改测试：
 `driver.POLL_SECONDS = 0.1`，恰是新阈值 0.05 的两倍，真按 Esc 时 select 超时
 那一下必然已静默够久。随后给这两条注入同款时钟。
 

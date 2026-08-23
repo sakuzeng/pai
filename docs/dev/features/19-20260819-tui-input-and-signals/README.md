@@ -42,14 +42,14 @@
 raw mode 下 ISIG 已关，Ctrl+C 只是普通字节，所以连退出都做不到，只能 kill。
 
 同文件另一个边角：`\x1b` 与后续字节同批到达时被并吞成 `unknown`——
-连按两次 Esc 实测得到 `unknown '\x1b\x1b'`，**一个 esc 都不产生**，
+连按两次 Esc 实测得到 `unknown '\x1b\x1b'`，一个 esc 都不产生，
 于是对话框的 Esc 取消在快速操作下不可靠。
 
 ### R4#12 SIGWINCH 同步重入可能掀掉整个 TUI
 
-`handle_resize` 在信号处理器里**同步**调 `_on_resize` → `app.refresh()` → 写 stdout。
+`handle_resize` 在信号处理器里同步调 `_on_resize` → `app.refresh()` → 写 stdout。
 `AltScreenRenderer` 有 `_drawing` 重入门（altscreen.py:71-81），
-`DockRenderer` **完全没有**——`tui.altScreen: false` 路径下，信号打在一帧写到
+`DockRenderer` 完全没有——`tui.altScreen: false` 路径下，信号打在一帧写到
 一半的位置，两帧字节交错、`_height`/`_cursor_offset` 被重入改写，dock 永久漂移。
 更硬的一刀：主线程正处于 `sys.stdout.write` 内部时处理器再写同一 stream，
 Python 的 buffered IO 会抛 `RuntimeError: reentrant call`，而 TUI 的大 try

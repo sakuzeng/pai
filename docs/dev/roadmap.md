@@ -250,7 +250,10 @@ feature 12 又撞出六条，其中一条改写了一条已登记遗留的定性
   - [x] MCP 反向对照（交付前）→ [features/29 evidence](features/29-20260823-mcp-client/evidence/20260823-mcp交付前反向对照/说明.md)
         （真 DeepSeek 一跑即成：不点名自主调 `mcp__fake__echo_token`，
         全链含信任门禁与 allow 规则）
-- 顺带工具：ToolSearch（工具多了才需要延迟加载与检索——在此之前是过度设计）。
+- 顺带工具：ToolSearch——阶段 6 收束（2026-08-23）时刻意未做：判据「工具多了
+  才需要」未触发（内置 6 个，MCP 工具量取决于用户配置）。不随阶段关闭而消失：
+  真实配置里 MCP 工具超一屏时再立案，届时参照 CC 的延迟加载与 K mcp/claude-mcp.md
+  「工具搜索」节。
 - 流程：superpowers 全链路，两个子阶段各一轮。skills 档案：
   [features/25-20260822-skills/](features/25-20260822-skills/README.md)。
 
