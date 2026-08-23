@@ -97,8 +97,9 @@ def test_bash_timeout_returns_partial_output(monkeypatch):
     """后台进程占住管道时，超时前已产出的输出必须回传，而不是被异常抹成零输出（R3#3，实测复现）。"""
     from pai.core.tools import shell
 
+    # 后台 sleep 只需比 1s 超时长即可复现「占住管道」；5s 改 2s 语义不变省 3s（30 优化）
     monkeypatch.setattr(shell, "TIMEOUT_SECONDS", 1, raising=False)
-    result = shell.bash(command="sleep 5 & echo hi")
+    result = shell.bash(command="sleep 2 & echo hi")
     assert "hi" in result
     assert "超时" in result
 
