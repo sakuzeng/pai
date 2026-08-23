@@ -1046,3 +1046,22 @@ ask 规则照常在前（测试钉优先级）。skill 删掉 path 声明与「�
 
 出处：[features/27](features/27-20260823-skill-boundary-exempt/README.md)
 拍板问 1（候选 B「两根进 additional」与 C「边界根改 git 根」的取舍见档案）。
+
+## 74. MCP 工具的 schema 来自外部：「schema 与代码同源」的显式破例（2026-08-23，feature 29）
+
+AGENTS 架构约束「工具 schema 一律由 @tool 装饰器从函数签名生成，禁止手写
+schema 字典」的前提是工具是 pai 自己写的。MCP 工具的 schema 来自外部 server
+的 tools/list——同源约束在这里结构性不可能成立。
+
+三家的做法：CC 原样透传（annotations 另行映射能力位），dsh 原样透传且连子集
+校验都不过并自认「垃圾进垃圾出是 server 作者的责任」，pi 无此问题（不做 MCP）。
+
+pai：破例但不裸奔——外部 schema 与 description 一律过 Unicode 清洗
+（NFKC + 剥 Cf/Co/Cn；CC 防 HackerOne #3086545 的真实攻击面：Tag 字符往
+description 藏模型可读、人不可见的指令）+ description 截 2048 字符，然后
+作为 `Tool.parameters` 透传。输入参数校验刻意留给 server（dsh 同款：兜底
+`{}` 让 server 报「缺参数」这种模型能学的错）。破例范围只此一处：
+`core/mcp.py` 的 `bridge_tools`，其它任何地方手写 schema 字典仍然违规。
+
+出处：[features/29](features/29-20260823-mcp-client/README.md)；
+K mcp/cc-mcp.md、mcp/dsh-mcp.md。

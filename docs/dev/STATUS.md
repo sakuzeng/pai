@@ -1,6 +1,13 @@
 # 当前状态快照
 
-最后更新：2026-08-23（晚：feature 28 交付——skills 持久化位点与信任门槛三合一：
+最后更新：2026-08-23（夜：feature 29 交付——阶段 6 后半程 MCP client，阶段 6
+全部完成：`core/mcp.py` 手写 stdio JSON-RPC（Tools only，四问拍板全 A）→
+`mcp__<server>__<tool>` 桥接（清洗/截断/预算，D#74 schema 同源显式破例）→
+settings `mcpServers` 两层配置 + 28 式信任门禁 → 权限零引擎改动（默认 ask 落
+既有兜底、`mcp__s__*` fnmatch 白拿）。前置精读四篇 knowledge/mcp/、动工前后
+两轮反向对照（真探针 + 真 DeepSeek 回合一跑即成）。档案
+[features/29](features/29-20260823-mcp-client/README.md)）。
+更早（晚）：feature 28 交付——skills 持久化位点与信任门槛三合一：
 `.pai/skills` 段进危险写名单（acceptEdits/bypass 都翻不过）、项目级 skills
 CC 式信任门禁（interactive 真人确认持久化 / once 未信任不加载+warn）、用户级
 软链真身进边界（项目级刻意不解）。25 复核至此全部清零（高 2 中 2 低 3 修毕，
@@ -126,6 +133,7 @@ feature 12 被用户打回的三条 bug 各钉了一条 e2e。
 | `tui/screen.py` | 可用 | 最小终端模拟器（字节 → 屏幕，含 SGR 配色跟踪）。测试断言与回放出图共用同一份——分成两份的话「测试全绿」与「图上是对的」会各说各话 |
 | `tui/record.py` / `tui/replay.py` | 可用 | `PAI_TUI_RECORD=<路径>` 录下写给终端的字节（含尺寸与 resize）；`pai-replay <文件> -o 图.png` 回放成 PNG，让 AI 自己看得见界面（feature 14） |
 | `tui/terminal.py` | 可用 | raw mode 进出、进出备用屏（`?1049h` + `?7l`，退出无条件复原且顺序不能反）、`SIGWINCH` 同步不去抖 + 同尺寸丢弃、非 tty 闸门（判 stdout）、非主线程明确告警 |
+| `core/mcp.py` | 可用 | MCP client（feature 29，四问拍板全 A）：`MCPSession` 手写 stdio JSON-RPC 显式状态机（newline 分帧、id 配对、脏 stdout 容忍、超时/进程死/isError 收敛 MCPError、close 幂等 SIGTERM→SIGKILL、不重连——死了摘除）；桥接 `mcp__<server>__<tool>`（小写归一+超长 sha256 兜底、(server,raw) 存闭包不反解、Unicode 清洗（NFKC+剥 Cf/Co/Cn）+描述 2048 截断 + 输出 100k 字符预算、MCPError→`错误：`字符串——D#74 schema 同源显式破例）；配置 settings `mcpServers` 两层自读项目赢 + `mcp_trusted` 信任门禁（28 模式）；权限零引擎改动（默认 ask 落兜底、`mcp__s__*` fnmatch 白拿）。v1 刻意不做的八条见 TODO「feature 29 遗留」 |
 | `core/skills.py` | 可用 | skills（feature 25）：`scan_skills` 两级目录（`~/.pai/skills` 与 `<git根>/.pai/skills`，项目赢 D#72；缺/坏 frontmatter 跳过并 warn——刻意不抄 CC 的回退首段）、`render_catalog`（name+description 不给路径，每条 500 字符 + 总 8000 字节双上限）、`render_loaded_skills` + `make_instructions`（压缩后重挂：最近优先、单篇 2 万字符截头保留、总 10 万装不下整条丢，预算是 CC 5k/25k token 的换算值未实测校准）；feature 28：`apply_project_trust` 项目级信任门禁（CC 工作区信任对位——interactive 真人确认持久化、once 未信任不加载+warn，标记在项目身份目录）、`user_skill_link_roots` 用户级软链真身进边界（项目级刻意不解） |
 | `core/tools/skill.py` | 可用 | `skill(name)` 工具（D#71）：现读磁盘剥 frontmatter 回 `<skill_content>` + 相对路径基准；未知与被隐藏说同一句话（不泄露）；不进路径边界——`boundary_exempt` 显式豁免位（feature 27，D#73：入参无路径语义、路径来自装配层扫描，CC/dsh 同构；deny/用户 ask 规则照常在前），子目录启动与软链正文由此可用；once/interactive 装配把用户级 skills 根加进 WorkingDirs.additional（附属文件的 read_file 仍走既有边界），`/skill` 命令走展开注入（REPL 空闲即跑轮次，TUI 忙碌期进 steering 队列） |
 | mcp_client / evals | 未开始 | 路线图后续阶段，见 [roadmap.md](roadmap.md) |
@@ -161,7 +169,7 @@ feature 12 被用户打回的三条 bug 各钉了一条 e2e。
 + feature 13 alt-screen task 1-7 + feature 16 鼠标与选区 task 1-9
 + feature 17 viz-flow task 1-3.5（事件落盘 + RecallInjected/ConversationCleared + 装配））：
 
-- `./test.sh` → 1307 passed, 3 deselected，全部离线，约 2.5 分钟。这是默认路径。
+- `./test.sh` → 1339 passed, 3 deselected，全部离线，约 2.5 分钟。这是默认路径。
   R4#26 已修（2026-08-22）：Pillow 进 dev 依赖并已装，此前常驻的那条 skip 归零；
   今后 Pillow 缺席相关测试直接红（带修法提示），不再静默 skip。
   两套假 provider 分工是硬的：`tests/fake_llm.py` 注入的假客户端测装配与逻辑；

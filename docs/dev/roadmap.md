@@ -199,7 +199,9 @@ feature 12 又撞出六条，其中一条改写了一条已登记遗留的定性
   三条升格的取舍见 [D#57](decisions.md)（一次响应一条消息）、[D#58](decisions.md)（usage 每块都看）、
   [D#59](decisions.md)（权限按批前置）。
 
-## 阶段 6 · skills / MCP client（skills 子阶段已交付 2026-08-22，档案 [features/25](features/25-20260822-skills/README.md)；MCP 子阶段未动）
+## 阶段 6 · skills / MCP client（两个子阶段均已交付：skills 2026-08-22
+[features/25](features/25-20260822-skills/README.md)、MCP client 2026-08-23
+[features/29](features/29-20260823-mcp-client/README.md)）
 
 - 目标：按需加载的能力扩展。两个子阶段，skills 先行。
 - 参照（2026-08-22 补 dsh 条目，D#69 衍生 TODO 销账·阶段 6 部分）：
@@ -208,7 +210,12 @@ feature 12 又撞出六条，其中一条改写了一条已登记遗留的定性
   `src/services/compact/compact.ts` 的压缩重挂（反编译 2.1.88，⚠️ 官方文档基线是
   2.1.196+，引用必须带版本）；dsh `docs/capability-seams.zh.md`、`docs/tool-catalog.zh.md`、
   `docs/subsystems/skills.zh.md`（pin `47f9438`）。
-  MCP——dsh `docs/api-gateway.zh.md`、`docs/subsystems/`（该子阶段动工时定细目）。
+  MCP（2026-08-23 动工日定细目，原「dsh docs/api-gateway.zh.md」线索实测是空的——
+  `docs/subsystems/` 60 篇里没有 mcp，api-gateway 对 mcp 零命中）——
+  CC `src/services/mcp/{client,config,types}.ts` + `src/tools/MCPTool/`（反编译 2.1.88）；
+  dsh `packages/mcp/mcp-client/`（源码）+ `.agents/notes/implemented/feature/
+  2026-07-07-mcp-client-plugin.zh.md` 与 `2026-08-06-…-auto-reconnect.zh.md`（设计意图）+
+  包 README.zh.md（活文档）；pi 无 MCP（显式产品决策，作反例参照）。
 - 前置精读（skills 子阶段四篇已落 2026-08-22；MCP 子阶段动工那天再补，不预先囤）：
   - [x] 官方 skills 章节 → [knowledge/skills/claude-skills.md](../../knowledge/skills/claude-skills.md)
         （渐进式披露、列表预算窗口 1%、压缩重挂 5k/25k；含 2.1.239 真实探针两条出入）
@@ -227,8 +234,22 @@ feature 12 又撞出六条，其中一条改写了一条已登记遗留的定性
         （真 DeepSeek 回合：不点名也自主调了 `skill({"name":"release-note"})`，
         回答遵守 skill 全部规范；两次废跑各有一条教训——项目 skill 认 git 根，
         子目录不 init 就静默扫不到）
-  - [ ] 官方 MCP 章节（https://code.claude.com/docs/zh-CN/mcp）（MCP 子阶段）
-  - [ ] MCP 子阶段的反向对照（动工前）：拿 N 个真实场景跑一遍，不符处记进 evidence
+  - [x] 官方 MCP 章节 → [knowledge/mcp/claude-mcp.md](../../knowledge/mcp/claude-mcp.md)
+        （传输四种、scope 三层与审批信任链、超时三件套、输出预算 25k、延迟加载）
+  - [x] pi 对照 → [knowledge/mcp/pi-mcp.md](../../knowledge/mcp/pi-mcp.md)
+        （pi 显式不做 MCP——反例 + 可抄骨架：注册表 adapter、权限流水线、fail-closed）
+  - [x] CC MCP 源码走读 → [knowledge/mcp/cc-mcp.md](../../knowledge/mcp/cc-mcp.md)
+        （2.1.88：五道清洗工序、默认 ask、重连细节、25k 落盘、全延迟加载）
+  - [x] dsh MCP 精读 → [knowledge/mcp/dsh-mcp.md](../../knowledge/mcp/dsh-mcp.md)
+        （Tools only 判据、命名五不变式、代隔离重连；⚠️ 权限与预算两缺口 +
+        文档 vs 源码八处不符）
+  - [x] MCP 反向对照（动工前）→ [features/29 evidence](features/29-20260823-mcp-client/evidence/20260823-mcp动工前反向对照/说明.md)
+        （真探针三场景：raw name 上线 + capabilities 版本漂移实据、isError 细节
+        一字不差到模型、连接失败告知模型的文档行为实测未复现；dsh 八处
+        文档-源码不符转录）
+  - [x] MCP 反向对照（交付前）→ [features/29 evidence](features/29-20260823-mcp-client/evidence/20260823-mcp交付前反向对照/说明.md)
+        （真 DeepSeek 一跑即成：不点名自主调 `mcp__fake__echo_token`，
+        全链含信任门禁与 allow 规则）
 - 顺带工具：ToolSearch（工具多了才需要延迟加载与检索——在此之前是过度设计）。
 - 流程：superpowers 全链路，两个子阶段各一轮。skills 档案：
   [features/25-20260822-skills/](features/25-20260822-skills/README.md)。

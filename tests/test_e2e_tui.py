@@ -439,6 +439,35 @@ def test_a_project_skill_loads_and_reaches_the_model(session, tmp_path):
     assert any("GREET-E2E-TOKEN" in m["content"] for m in tool_msgs)
 
 
+def test_mcp_tool_reaches_model_through_real_process(session, tmp_path):
+    """feature 29：真 pai 进程全链——用户级 settings 配 stdio MCP server（真子进程），
+    工具进模型工具集，模型调用拿到结果，allow 规则放行不弹权限框。"""
+    import sys as _sys
+    from pathlib import Path
+    fake_server = str(Path(__file__).parent / "fake_mcp_server.py")
+    home_pai = Path.home() / ".pai"
+    home_pai.mkdir(parents=True, exist_ok=True)
+    (home_pai / "settings.json").write_text(json.dumps({
+        "mcpServers": {"fake": {"command": _sys.executable,
+                                "args": [fake_server],
+                                "env": {"FAKE_MCP_MODE": "normal"}}},
+        "permissions": {"allow": ["mcp__fake__*"]},
+    }), encoding="utf-8")
+    work = tmp_path / "mcpproj"
+    work.mkdir()
+    s, provider = session([turn(tool_calls=[{"name": "mcp__fake__echo_token",
+                                             "arguments": {}}]),
+                           turn("拿到了 MCP-E2E-DONE")], cwd=str(work))
+    s.send("调一下 mcp 工具\r", until="MCP-E2E-DONE")
+    screen = s.screen_text()
+    assert "是否允许" not in screen, "allow 规则放行，不该弹权限框"
+    tool_names = {t["function"]["name"] for t in provider.requests[0]["tools"]}
+    assert "mcp__fake__echo_token" in tool_names
+    tool_msgs = [m for m in provider.requests[-1]["messages"]
+                 if m.get("role") == "tool"]
+    assert any("FAKE-MCP-TOKEN-4711" in m["content"] for m in tool_msgs)
+
+
 def test_project_skills_trust_dialog_gates_then_persists(session, tmp_path):
     """feature 28 问 2·B：首遇未信任项目 skills，启动即真人确认——答「信任」后
     本会话加载（目录进 system prompt）且标记持久化。对话在 TUI 起来之前（普通
