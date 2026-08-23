@@ -70,13 +70,14 @@ def run_once(
     hooks = load_hooks(warn=print)
     tools = visible_tools(get_tools(), rules)      # 裸名 deny 的工具压根不摆给模型
     # skills（feature 25）：装配期扫一次，目录进 system prompt、正文走 skill 工具。
-    # 没有任何 skill 时把工具收走——摆一个必然空手而归的工具就是让模型撞空
-    # （与 INTERACTIVE_ONLY 同一个道理）。
+    # 模型没有任何可调的 skill（一个没有，或全被 disable-model-invocation）时把
+    # 工具收走——摆一个必然空手而归的工具就是让模型撞空（与 INTERACTIVE_ONLY
+    # 同一个道理；once 连 /skill 通道都没有，25 复核低 3）。
     skills = scan_skills(warn=print)
     loaded_skills = LoadedSkills()
     skill_tool.set_catalog({s.name: s for s in skills} if skills else None)
     skill_tool.set_tracker(loaded_skills)
-    if not skills:
+    if not any(s.model_invocable for s in skills):
         tools = {n: t for n, t in tools.items() if n != "skill"}
     # 用户级 skills 根进边界（spec 第 3 节）：否则 once 下用户级 skill 的正文与
     # 附属文件（read_file）全被「界外 ask → 无真人 deny」拦死，功能结构性不可用。

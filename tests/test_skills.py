@@ -456,6 +456,23 @@ def test_once_without_skills_hides_skill_tool(tmp_path, monkeypatch):
     assert "<available_skills>" not in client.requests[0]["messages"][0]["content"]
 
 
+def test_once_all_disabled_also_hides_skill_tool(tmp_path, monkeypatch):
+    """25 复核低 3：全部 skill 都 disable-model-invocation 时同样收走工具——
+    once 连 /skill 通道都没有，这个工具对谁都空手而归。"""
+    from pai.modes.once import run_once
+    home = Path.home()
+    _write_skill(home / ".pai" / "skills", "manual-only", description="只许人调",
+                 extra_front="disable-model-invocation: true\n")
+    proj = tmp_path / "proj"
+    proj.mkdir(exist_ok=True)
+    monkeypatch.chdir(proj)
+    client = FakeClient([{"content": "done"}])
+    run_once("x", client=client, model="fake", no_session=True, on_event=lambda _: None)
+    tool_names = {t["function"]["name"] for t in client.requests[0]["tools"]}
+    assert "skill" not in tool_names
+    assert "<available_skills>" not in client.requests[0]["messages"][0]["content"]
+
+
 # ---------------------------------------------------------------- T5 · 压缩后重挂
 
 import copy  # noqa: E402
@@ -507,6 +524,34 @@ def test_reattach_skips_deleted_files_and_empty_is_empty(tmp_path):
     catalog["gone"].path.unlink()
     assert render_loaded_skills(loaded, catalog) == ""
     assert render_loaded_skills(LoadedSkills(), catalog) == ""
+
+
+def test_loaded_skills_record_is_thread_safe():
+    """25 复核低 2：skill 工具声明 concurrency_safe=True 会进调度线程池，
+    追踪器 record 在执行期写——`_seq += 1` 是读改写，无锁会丢增量。
+    缩小线程切换间隔逼出竞争（无锁时探针 5/5 复现，丢约 35%）。"""
+    import sys
+    import threading
+    old = sys.getswitchinterval()
+    sys.setswitchinterval(1e-6)
+    try:
+        loaded = LoadedSkills()
+        n_threads, per_thread = 8, 5000
+
+        def worker(tid: int) -> None:
+            for i in range(per_thread):
+                loaded.record(f"s{tid}-{i}")
+
+        threads = [threading.Thread(target=worker, args=(t,))
+                   for t in range(n_threads)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        assert loaded._seq == n_threads * per_thread, \
+            "并发 record 丢了增量——「最近优先」的排序会退化成运气"
+    finally:
+        sys.setswitchinterval(old)
 
 
 def test_make_instructions_composes_base_and_loaded(tmp_path):
@@ -649,6 +694,24 @@ def test_repl_without_skills_hides_tool_and_catalog(tmp_path, monkeypatch):
     assert "<available_skills>" not in system["content"]
     tool_names = {t["function"]["name"] for t in client.requests[0]["tools"]}
     assert "skill" not in tool_names
+
+
+def test_repl_all_disabled_hides_tool_but_keeps_user_channel(tmp_path, monkeypatch):
+    """25 复核低 3：全部 skill 都 disable-model-invocation 时目录为空，模型调
+    skill 必然空手而归——照「不摆撞空的工具」原则收走；/skill 用户通道不受影响
+    （它走 get_catalog，不走工具集）。"""
+    _write_skill(Path.home() / ".pai" / "skills", "manual-only", description="只许人调",
+                 extra_front="disable-model-invocation: true\n", body="人调正文")
+    client, printed = _repl(["/skill manual-only", "随便问一句"],
+                            [{"content": "收到"}, {"content": "答"}],
+                            tmp_path, monkeypatch)
+    assert len(client.requests) == 2, "/skill 通道必须照常跑轮次"
+    assert "人调正文" in client.requests[0]["messages"][-2]["content"] \
+        or any("人调正文" in (m.get("content") or "")
+               for m in client.requests[0]["messages"])
+    tool_names = {t["function"]["name"] for t in client.requests[1]["tools"]}
+    assert "skill" not in tool_names
+    assert "<available_skills>" not in client.requests[1]["messages"][0]["content"]
 
 
 def test_repl_skill_can_invoke_disable_model_invocation(tmp_path, monkeypatch):

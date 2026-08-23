@@ -322,13 +322,14 @@
 - [x] ~~低·「disable-model-invocation 的 skill /skill 可调」无测试（25 复核）~~
       已补 2026-08-23（feature 26 顺带）：
       `test_repl_skill_can_invoke_disable_model_invocation`，含注入反证。
-- [ ] 低·skill.py 模块注释「装配期写、执行期只读」对追踪器不成立（25 复核）：
-      `_TRACKER.record()` 在执行期写，而工具声明 `concurrency_safe=True` 会进
-      scheduler 的 ThreadPoolExecutor，`LoadedSkills._seq += 1` 非原子，并发
-      加载时序号可并列（影响仅限重挂排序）。改注释或给 record 加锁。
-- [ ] 低·全部 skill 均 disable-model-invocation 时 once 仍摆 skill 工具
-      （25 复核）：装配只在 `skills` 全空时收走工具，目录却为空——once 没有
-      /skill 通道，工具必然空手而归，违背装配注释自己写的「不摆撞空的工具」。
+- [x] ~~低·skill.py 模块注释「装配期写、执行期只读」对追踪器不成立（25 复核）~~
+      已修 2026-08-23（!小修）：`LoadedSkills.record` 加锁 + 注释改说真话；
+      竞争红可确定性构造（`setswitchinterval(1e-6)` 下 8 线程无锁 5/5 丢增量
+      约 35%），测试 `test_loaded_skills_record_is_thread_safe` 钉住。
+- [x] ~~低·全部 skill 均 disable-model-invocation 时 once 仍摆 skill 工具
+      （25 复核）~~ 已修 2026-08-23（!小修）：once/interactive 收工具的条件从
+      「skills 全空」改为「无 model_invocable」；/skill 用户通道不受影响
+      （测试钉住通道仍可跑轮次）。
 
 ### feature 21（输入行折行）遗留 —— 2026-08-22
 
