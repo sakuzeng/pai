@@ -450,3 +450,101 @@ def test_loop_with_real_trajectory_and_mcp_tool(session):
     assert answer == "done"
     tool_msgs = [m for m in messages if m.get("role") == "tool"]
     assert any("FAKE-MCP-TOKEN-4711" in (m.get("content") or "") for m in tool_msgs)
+
+
+# ---------------------------------------------------------------- 29 复核清账
+
+def test_reader_survives_unhashable_id(session):
+    """29 复核低 1：server 回 `"id": [1]` 这类脏应答不能弄死 reader 线程——
+    死了之后所有调用退化成超时挂等，「脏输入容忍」的承诺就打折了。"""
+    s = session("bad-id-noise")
+    assert s.state == "connected"
+    result = s.call_tool("echo_token", {}, timeout_ms=3000)
+    texts = [b.get("text") for b in result["content"] if b.get("type") == "text"]
+    assert texts[0] == "FAKE-MCP-TOKEN-4711"
+
+
+def test_connect_helper_closes_sessions_on_unexpected_error(tmp_path, monkeypatch):
+    """29 复核低 4：桥接层冒出非 MCPError 异常时，已启动的 session 不许泄漏——
+    异常照样往上抛（不是吞），但子进程必须先收掉。"""
+    from pai.core import mcp as mcp_mod
+    home = tmp_path / "home"
+    _write_settings(home, {"fake": {"command": sys.executable,
+                                    "args": [FAKE_SERVER],
+                                    "env": {"FAKE_MCP_MODE": "normal"}}})
+    made: list = []
+    real_session = mcp_mod.MCPSession
+
+    class Recording(real_session):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            made.append(self)
+
+    monkeypatch.setattr(mcp_mod, "MCPSession", Recording)
+    monkeypatch.setattr(mcp_mod, "bridge_tools",
+                        lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("boom")))
+    with pytest.raises(RuntimeError):
+        mcp_mod.connect_configured_servers(cwd=tmp_path / "proj", home=home,
+                                           warn=lambda _m: None)
+    assert made, "场景必须真的起过 session，否则本测试在测空气"
+    assert all(s.state == "closed" for s in made)
+
+
+def test_repl_mcp_trust_dialog_loads_and_persists(tmp_path, monkeypatch):
+    """29 复核低 5a：interactive 装配级信任问答——答「信任」后工具进请求、
+    标记持久化（28 的 skills 有同款 repl 测试，29 此前只有 apply 级单测）。"""
+    from pai.core import paths
+    from tests.test_skills import _repl
+    proj = tmp_path / "proj"
+    _write_settings(proj, {"fake": {"command": sys.executable,
+                                    "args": [FAKE_SERVER],
+                                    "env": {"FAKE_MCP_MODE": "normal"}}})
+    client, printed = _repl(["1", "问一句"], [{"content": "答"}],
+                            tmp_path, monkeypatch)
+    tool_names = {t["function"]["name"] for t in client.requests[0]["tools"]}
+    assert "mcp__fake__echo_token" in tool_names
+    assert (paths.project_dir(proj) / "mcp_trusted").is_file()
+
+
+def test_once_broken_server_warns_and_continues(tmp_path, monkeypatch):
+    """29 复核低 5b：server 起不来 → warn、run 照常、mcp 工具不混入
+    （此前只有 session 级测试，装配级靠冒烟——补成回归）。"""
+    from pai.modes.once import run_once
+    _write_settings(Path.home(), {"broken": {"command": "/nonexistent/no-cmd"}})
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    monkeypatch.chdir(proj)
+    client = FakeClient([{"content": "done"}])
+    answer = run_once("x", client=client, model="fake", no_session=True,
+                      on_event=lambda _: None)
+    assert answer == "done"
+    tool_names = {t["function"]["name"] for t in client.requests[0]["tools"]}
+    assert not any(n.startswith("mcp__") for n in tool_names)
+
+
+def test_once_config_timeout_reaches_call(tmp_path, monkeypatch):
+    """29 复核低 5c：settings 的 `timeout` 字段全链生效——慢 server 在配置
+    超时处快速回填错误，而不是挂到 server 睡醒。"""
+    import time
+
+    from pai.modes.once import run_once
+    _write_settings(Path.home(), {"slow": {
+        "command": sys.executable, "args": [FAKE_SERVER],
+        "env": {"FAKE_MCP_MODE": "slow-call", "FAKE_MCP_SLOW_SECONDS": "10"},
+        "timeout": 1000}})
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    monkeypatch.chdir(proj)
+    script = [
+        {"tool_calls": [("mcp__slow__echo_token", "{}")]},
+        {"content": "done"},
+    ]
+    client = FakeClient(script)
+    started = time.time()
+    run_once("x", client=client, model="fake", no_session=True,
+             rules=RuleSet.from_lists(allow=["mcp__slow__*"]),
+             on_event=lambda _: None)
+    assert time.time() - started < 5, "配置超时 1s，不该等 server 睡满 10s"
+    tool_msgs = [m for m in client.requests[-1]["messages"] if m.get("role") == "tool"]
+    assert tool_msgs and tool_msgs[0]["content"].startswith("错误：")
+    assert "超时" in tool_msgs[0]["content"]

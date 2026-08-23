@@ -21,8 +21,10 @@ JSON-RPC / 默认 ask + server 级规则 / settings.json `mcpServers` 字段）�
     `capabilities: {}`——空对象，dsh 同款：协议层杜绝 server 反向发起）；
     收 result 后发 `notifications/initialized`；再 `tools/list`（不处理分页
     cursor 之外的情况：有 `nextCursor` 就继续拉，drain 完为止）。
-    连接/发现整体超时 `MCP_CONNECT_TIMEOUT_MS = 10_000`（自定，CC 是 30s——
-    pai 本地 stdio 场景 10s 足够，常量旁注明未校准）。
+    连接/发现超时 `CONNECT_TIMEOUT_MS = 10_000` 按请求计（initialize 与每页
+    tools/list 各一个计时器；自定，CC 是 30s——pai 本地 stdio 场景 10s 足够，
+    常量旁注明未校准）。（追记 2026-08-23，29 复核低 3：本条原文写「整体超时」
+    与实现不符——实现自始就是每请求各计，按实现改措辞销账。）
   - 传输：newline-delimited JSON-RPC。写：`json.dumps + "\n"` 后 flush；读：
     后台线程逐行 `readline`，按 `id` 配对挂起的请求（dict + Event）；
     非 JSON 行丢弃计数（server 往 stdout 打日志是常见事故，不能炸）。
