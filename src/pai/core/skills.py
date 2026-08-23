@@ -22,7 +22,7 @@ from typing import Callable, Dict, List, Optional
 from xml.sax.saxutils import escape
 
 from pai.core.memory import FRONTMATTER_MAX_LINES, parse_frontmatter
-from pai.core.paths import project_dir, project_skills_dir, user_skills_dir
+from pai.core.paths import project_skills_dir, user_skills_dir
 
 # 目录里每条 description 的截断上限。取 dsh `catalogDescriptionMaxLength` 的默认值
 # （500）；CC 2.1.88 是 250、官方文档现行 1536——三家里取中庸的一档，未实测校准。
@@ -143,14 +143,14 @@ TRUST_MARKER = "skills_trusted"
 
 def project_skills_trusted(cwd: Optional[Path] = None,
                            home: Optional[Path] = None) -> bool:
-    return (project_dir(cwd, home) / TRUST_MARKER).is_file()
+    from pai.core.settings import project_trusted
+    return project_trusted(TRUST_MARKER, cwd, home)
 
 
 def mark_project_skills_trusted(cwd: Optional[Path] = None,
                                 home: Optional[Path] = None) -> None:
-    directory = project_dir(cwd, home)
-    directory.mkdir(parents=True, exist_ok=True)
-    (directory / TRUST_MARKER).write_text("trusted\n", encoding="utf-8")
+    from pai.core.settings import mark_project_trusted
+    mark_project_trusted(TRUST_MARKER, cwd, home)
 
 
 def apply_project_trust(skills: List[Skill], *,
@@ -160,29 +160,23 @@ def apply_project_trust(skills: List[Skill], *,
     """项目级 skills 的信任门禁（feature 28 问 2·B）：别人塞进仓库的 skill
     不再静默生效。用户级永远受信（用户自己装的）。
 
-    已信任 → 原样放行；未信任且有真人（ask）→ 问一次，选「信任」持久化标记、
-    其余回答（含跳过/自由文本）一律按拒绝处理且不持久化——信任必须是精确选择；
-    未信任且无真人（once）→ 丢弃项目级 + warn 指路。
-    已知边界（README 如实记）：信任是项目级一次性的，信任之后新增的 skill
-    不再触发确认（CC 的工作区信任同款弱点）。
+    机制自 feature 30 起走 settings.project_trust_gate（与 mcp 同一份实现：
+    已信任放行 / 真人精确选中才持久化 / 无人丢弃项目级 + 提示），本函数只剩
+    skills 的文案与标记名——输出逐字不变。已知边界（28 README 如实记）：
+    信任是项目级一次性的，信任后新增 skill 不再触发确认（CC 同款弱点）。
     """
-    project = [s for s in skills if s.source == "project"]
-    if not project or project_skills_trusted(cwd, home):
-        return skills
-    names = "、".join(s.name for s in project)
-    if ask is not None:
-        trust_option = "信任并加载（记住，之后不再问）"
-        answer = ask(f"项目 .pai/skills 里有 {len(project)} 个 skills（{names}）。"
-                     f"skills 会指挥模型行为，只信任你 review 过的。",
-                     [trust_option, "本次不加载"])
-        if answer == trust_option:
-            mark_project_skills_trusted(cwd, home)
-            return skills
-        warn(f"项目级 skills 本次未加载：{names}")
-        return [s for s in skills if s.source != "project"]
-    warn(f"项目级 skills 未信任，当前模式无人可确认，已跳过：{names}"
-         "（在交互模式里确认一次即可信任）")
-    return [s for s in skills if s.source != "project"]
+    from pai.core.settings import project_trust_gate
+    return project_trust_gate(
+        skills, marker=TRUST_MARKER, cwd=cwd, home=home, ask=ask, warn=warn,
+        question=lambda n, names: (
+            f"项目 .pai/skills 里有 {n} 个 skills（{names}）。"
+            f"skills 会指挥模型行为，只信任你 review 过的。"),
+        trust_option="信任并加载（记住，之后不再问）",
+        refuse_option="本次不加载",
+        refused_note=lambda names: f"项目级 skills 本次未加载：{names}",
+        unattended_note=lambda names: (
+            f"项目级 skills 未信任，当前模式无人可确认，已跳过：{names}"
+            "（在交互模式里确认一次即可信任）"))
 
 
 def user_skill_link_roots(skills: List[Skill]) -> tuple:

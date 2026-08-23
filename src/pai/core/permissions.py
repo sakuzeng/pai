@@ -371,25 +371,9 @@ def decide(
 
 
 # ---- Task 5：配置加载与裸名 deny 摘工具 ----
-
-
-def _read_settings(path: Path, warn: Optional[Callable[[str], None]]) -> dict:
-    """读一层设置。**坏文件绝不弄挂 agent**：告警 + 当作空规则集。
-
-    这条与 hook 的「自身异常不阻断工作」是同一条铁律：权限配置写错了，
-    代价应该是「这层规则没生效」，不是「pai 起不来」。
-    """
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError:
-        return {}                       # 没有这个文件是常态，不是错误
-    try:
-        data = json.loads(text)
-    except ValueError as e:
-        if warn:
-            warn(f"权限设置 {path} 不是合法 JSON（{e}），本层规则按空处理")
-        return {}
-    return data if isinstance(data, dict) else {}
+#
+# 读盘与坏文件容错（「坏文件绝不弄挂 agent」的铁律）自 feature 30 起住
+# core/settings.read_settings_layers——settings 读取者曾多到四处，合并成一份。
 
 
 def load_rules(
@@ -406,18 +390,23 @@ def load_rules(
     合并是**追加**不是覆盖：任一层的 deny 都进 deny 桶，而 deny 桶最先求值，
     所以「任一层 deny 都翻不过来」是求值顺序的自然结果，不需要额外逻辑。
     """
+    # 读盘走统一原语（feature 30）；本函数只留自己的领域知识——锚点与 RuleSet 组装
+    from pai.core.settings import read_settings_layers
+
     cwd_path = Path(cwd) if cwd is not None else Path.cwd()
     home_path = Path(home) if home is not None else Path.home()
     user_dir = home_path / paths.USER_DIR
+    (user_path, user_data), (project_path, project_data) = read_settings_layers(
+        cwd=cwd_path, home=home_path, warn=warn)
 
     layers = (
-        ("user", user_dir, user_dir / SETTINGS_FILE),
-        ("project", cwd_path, cwd_path / paths.USER_DIR / SETTINGS_FILE),
+        ("user", user_dir, user_path, user_data),
+        ("project", cwd_path, project_path, project_data),
     )
 
     merged = RuleSet()
-    for source, anchor, path in layers:
-        perms = _read_settings(path, warn).get("permissions") or {}
+    for source, anchor, path, data in layers:
+        perms = data.get("permissions") or {}
         for kind in KINDS:
             for text in perms.get(kind) or []:
                 try:
