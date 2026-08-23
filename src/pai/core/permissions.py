@@ -261,6 +261,12 @@ def _boundary_fallback(
     所以只能落到最保守的一档。这是拍板问 2「不做 bash 边界」的直接代价。
     """
     tool = tools.get(tool_name)
+    if tool is not None and tool.boundary_exempt:
+        # 边界豁免（feature 27，D#73）：入参无路径语义、路径由 pai 自算的工具
+        # （目前只有 skill）兜底放行。deny / 危险写 / 用户 ask 规则在求值链
+        # 前面已查过，走到这里说明都没命中。
+        return Decision(kind="allow",
+                        reason=f"`{tool_name}` 声明了边界豁免（路径由 pai 自算，入参无路径语义）")
     if tool is None or not tool.participates_in_boundary():
         return Decision(
             kind="ask",
