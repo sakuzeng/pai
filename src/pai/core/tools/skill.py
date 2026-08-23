@@ -7,11 +7,10 @@
 
 from __future__ import annotations
 
-import os
 from typing import Annotated, Dict, Optional
 
 from pai.core.skills import LoadedSkills, Skill, read_skill_body, render_skill_block
-from pai.core.tools import READ, capabilities_for, path_access_for, tool
+from pai.core.tools import boundary_exempt_for, capabilities_for, tool
 
 _CATALOG: Optional[Dict[str, Skill]] = None
 _TRACKER: Optional[LoadedSkills] = None
@@ -57,15 +56,10 @@ def skill(name: Annotated[str, "要加载的 skill 名字，必须来自 availab
     return render_skill_block(entry, body)
 
 
-@path_access_for(skill, READ)
-def _skill_path(args: dict) -> str:
-    """边界判定用的路径：已知名 → SKILL.md 真路径；未知名 → cwd。
-
-    未知名返回 cwd 是刻意的：让边界放行、由工具自己报「未知 skill」——
-    否则幻觉名字会撞出一段权限话术（R4#10 同款教训：错误要指向真因）。
-    """
-    entry = (_CATALOG or {}).get(str(args.get("name", "")))
-    return str(entry.path) if entry is not None else os.getcwd()
-
-
+# 边界豁免（feature 27，D#73）：入参只有名字、正文路径来自装配层扫描，
+# 「读 SKILL.md 这个路径」的建模是三家参照里没有的孤例（CC 的 SkillTool 无
+# getPath、dsh 的门是 isModelInvocable）。25 版的 path_access_for + 「未知名回
+# cwd」绕法随之删除——那段绕法正是建模不合身的症状；子目录启动/软链正文
+# 也不再撞权限话术。deny / 用户 ask 规则照常在前（豁免只影响兜底）。
+boundary_exempt_for(skill)
 capabilities_for(skill, read_only=True, concurrency_safe=True)

@@ -78,6 +78,12 @@ class Tool:
     get_path: Optional[PathGetter] = None
     access: Optional[str] = None
 
+    # 边界豁免位（feature 27，D#73）：路径由 pai 自算、入参无路径语义的工具
+    # （skill：模型只能传名字，正文路径来自装配层扫描）在兜底步 allow，
+    # 不落「未声明路径语义 → ask」。只影响求值链第 7 步兜底——deny 规则、
+    # 危险写检查、用户显式 ask 规则照常在前。默认 False：豁免必须显式声明。
+    boundary_exempt: bool = False
+
     # 调度用的两项能力声明（feature 11）。`None` = 没声明 = False，见 `_ask`。
     is_read_only: Optional[Capability] = None
     is_concurrency_safe: Optional[Capability] = None
@@ -245,6 +251,23 @@ def capabilities_for(tool_func, *, read_only=False, concurrency_safe=False) -> N
 
     REGISTRY[name].is_read_only = as_capability(read_only)
     REGISTRY[name].is_concurrency_safe = as_capability(concurrency_safe)
+
+
+def boundary_exempt_for(tool_func) -> None:
+    """给已注册的工具声明边界豁免（feature 27，D#73）：兜底步 allow，不落
+    「未声明路径语义 → ask」。
+
+    只许给满足两个条件的工具：入参表达不了路径（模型没法用它指定读哪个文件），
+    且它真正碰的路径由 pai 自己算（装配期扫描等受信来源）。skill 是第一个也是
+    目前唯一的：CC 的 SkillTool 无 getPath、dsh 的门是 isModelInvocable 策略位，
+    「读 SKILL.md 这个路径」的建模是三家参照里没有的孤例。豁免只作用于求值链
+    第 7 步兜底，deny 规则 / 危险写检查 / 用户显式 ask 规则照常在前
+    （tests/test_skills.py 钉优先级）。没注册就抛，同 capabilities_for。
+    """
+    name = tool_func if isinstance(tool_func, str) else getattr(tool_func, "__name__", "")
+    if name not in REGISTRY:
+        raise ValueError(f"boundary_exempt_for：工具 {name!r} 没注册，先用 @tool 注册")
+    REGISTRY[name].boundary_exempt = True
 
 
 def matcher_for(tool_func) -> Callable[[Matcher], Matcher]:

@@ -320,12 +320,11 @@ def test_skill_tool_capabilities_and_boundary_declarations(skill_env):
     tool = skill_env["tool"]
     assert tool.read_only({"name": "alpha"}) is True
     assert tool.concurrency_safe({"name": "alpha"}) is True
-    assert tool.access == READ
-    # 已知名 → 解析成 SKILL.md 真路径（进边界判定）
-    assert tool.get_path({"name": "alpha"}) == str(skill_env["skills"]["alpha"].path)
-    # 未知名 → 返回 cwd：让边界放行、由工具自己报「未知」，不撞出权限话术（R4#10）
-    import os
-    assert tool.get_path({"name": "no-such"}) == os.getcwd()
+    # feature 27：skill 不参与路径边界——正文路径由装配层扫描自算，入参只有名字。
+    # 「读 SKILL.md 这个路径」的建模是三家参照里没有的孤例（CC 的 SkillTool 无
+    # getPath、dsh 的门是 isModelInvocable 策略位），豁免位显式声明。
+    assert tool.get_path is None and tool.access is None
+    assert tool.boundary_exempt is True
 
 
 # ---------------------------------------------------------------- T4 · 边界与 once 接线
@@ -337,29 +336,45 @@ from pai.core.permissions import RuleSet, decide  # noqa: E402
 from tests.fake_llm import FakeClient  # noqa: E402
 
 
-def test_decide_asks_for_user_skill_without_additional_dirs(skill_env, tmp_path):
-    """机制钉住：用户级 skills 根不在边界里时，读它就是界外 ask——
-    这正是装配必须把它加进 additional 的理由（spec 第 3 节）。"""
+def test_decide_allows_skill_tool_via_boundary_exemption(skill_env, tmp_path):
+    """feature 27（25 复核高 2）：skill 工具兜底放行走豁免位，不再依赖 skills 根
+    在不在边界里——子目录启动、软链正文这类「路径在界外」的形态不再撞权限话术。"""
     proj = tmp_path / "proj"
     proj.mkdir()
-    dirs = WorkingDirs.from_startup(str(proj))
-    d = decide("skill", {"name": "alpha"}, RuleSet(), tools=all_tools(),
-               working_dirs=dirs)
-    assert d.kind == "ask"
-
-
-def test_decide_allows_user_skill_with_additional_dirs(skill_env, tmp_path):
-    proj = tmp_path / "proj"
-    proj.mkdir()
-    user_root = paths.user_skills_dir(tmp_path / "home")
-    dirs = WorkingDirs.from_startup(str(proj), additional=(str(user_root),))
+    dirs = WorkingDirs.from_startup(str(proj))       # 不含任何 skills 根
     d = decide("skill", {"name": "alpha"}, RuleSet(), tools=all_tools(),
                working_dirs=dirs)
     assert d.kind == "allow"
-    # 附属文件同理：read_file 读 skills 根下的参考文件也放行
+
+
+def test_decide_skill_exemption_yields_to_deny_and_ask_rules(skill_env, tmp_path):
+    """豁免只作用于兜底（求值链第 7 步）：deny 规则与用户显式 ask 规则照常在前。
+    豁免位用错等于在权限层开洞，这条钉优先级不许倒。"""
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    dirs = WorkingDirs.from_startup(str(proj))
+    d = decide("skill", {"name": "alpha"}, RuleSet.from_lists(deny=["skill"]),
+               tools=all_tools(), working_dirs=dirs)
+    assert d.kind == "deny"
+    d2 = decide("skill", {"name": "alpha"}, RuleSet.from_lists(ask=["skill"]),
+                tools=all_tools(), working_dirs=dirs)
+    assert d2.kind == "ask" and d2.rule is not None
+
+
+def test_decide_skill_attachments_still_walk_the_boundary(skill_env, tmp_path):
+    """豁免只给 skill 工具自己；附属文件走 read_file 仍按既有边界判——
+    这就是用户级根仍须进 additional 的理由（25 遗留 6 的声明不变）。"""
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    user_root = paths.user_skills_dir(tmp_path / "home")
     ref = user_root / "alpha" / "references.md"
+    bare = WorkingDirs.from_startup(str(proj))
+    d = decide("read_file", {"path": str(ref)}, RuleSet(), tools=all_tools(),
+               working_dirs=bare)
+    assert d.kind == "ask"
+    with_root = WorkingDirs.from_startup(str(proj), additional=(str(user_root),))
     d2 = decide("read_file", {"path": str(ref)}, RuleSet(), tools=all_tools(),
-                working_dirs=dirs)
+                working_dirs=with_root)
     assert d2.kind == "allow"
 
 
@@ -388,6 +403,31 @@ def test_once_loads_user_level_skill_in_dontask_mode(tmp_path, monkeypatch):
     tool_msgs = [m for m in client.requests[-1]["messages"] if m.get("role") == "tool"]
     assert tool_msgs, "skill 调用必须有回填"
     assert "ALPHA-BODY-TOKEN" in tool_msgs[0]["content"]
+    assert "权限被拒绝" not in tool_msgs[0]["content"]
+
+
+def test_once_loads_project_skill_from_repo_subdir(tmp_path, monkeypatch):
+    """25 复核高 2 的回归场景：从仓库子目录启动，项目级 skill 照常进目录，
+    工具调用必须拿到正文而非权限拒绝（此前扫描按 git 根、边界按 cwd，
+    once/dontAsk 下直接死——正是 R4#10 要避开的权限话术，feature 27 修）。"""
+    from pai.modes.once import run_once
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    _write_skill(repo / ".pai" / "skills", "alpha", description="甲技能",
+                 body="SUBDIR-BODY-TOKEN")
+    sub = repo / "src" / "deep"
+    sub.mkdir(parents=True)
+    monkeypatch.chdir(sub)
+    script = [
+        {"tool_calls": [("skill", json.dumps({"name": "alpha"}))]},
+        {"content": "done"},
+    ]
+    client = FakeClient(script)
+    run_once("x", client=client, model="fake", no_session=True, on_event=lambda _: None)
+    assert "<available_skills>" in client.requests[0]["messages"][0]["content"]
+    tool_msgs = [m for m in client.requests[-1]["messages"] if m.get("role") == "tool"]
+    assert tool_msgs, "skill 调用必须有回填"
+    assert "SUBDIR-BODY-TOKEN" in tool_msgs[0]["content"]
     assert "权限被拒绝" not in tool_msgs[0]["content"]
 
 
