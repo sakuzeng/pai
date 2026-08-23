@@ -15,6 +15,7 @@ description 常驻上下文供模型匹配，正文只在被 `skill` 工具加�
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
@@ -197,10 +198,14 @@ class LoadedSkills:
         # 「最近优先」的排序就退化成字典序运气
         self._seq = 0
         self._loaded_at: Dict[str, int] = {}
+        # skill 工具声明 concurrency_safe=True 会进调度线程池，record 在执行期
+        # 并发发生；`_seq += 1` 是读改写，无锁会丢增量（25 复核低 2 实测）
+        self._lock = threading.Lock()
 
     def record(self, name: str) -> None:
-        self._seq += 1
-        self._loaded_at[name] = self._seq
+        with self._lock:
+            self._seq += 1
+            self._loaded_at[name] = self._seq
 
     def names_recent_first(self) -> List[str]:
         return sorted(self._loaded_at, key=lambda n: self._loaded_at[n], reverse=True)

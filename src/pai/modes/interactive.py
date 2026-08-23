@@ -389,13 +389,15 @@ def run_interactive(
     # 模式必须是**可变持有者**：传字符串会被烤进 gate 的闭包，`/mode` 与 shift+tab
     # 就永远改不动了（feature 12 T5 动工前撞见的结构问题）。
     mode_state = PermissionModeState(mode or DEFAULT_MODE)
-    # skills（feature 25）：装配期扫一次；没有任何 skill 时把工具收走（同 once）。
-    # 用户级 skills 根进边界，否则用户级 skill 的正文与附属文件被界外 ask 拦住。
+    # skills（feature 25）：装配期扫一次；模型没有任何可调的 skill（一个没有，
+    # 或全被 disable-model-invocation）时把工具收走（同 once，25 复核低 3）——
+    # /skill 用户通道不受影响，它走 get_catalog 不走工具集。
+    # 用户级 skills 根进边界，否则用户级 skill 的附属文件被界外 ask 拦住。
     skills = scan_skills(warn=out)
     loaded_skills = skill_tool.LoadedSkills()
     skill_tool.set_catalog({s.name: s for s in skills} if skills else None)
     skill_tool.set_tracker(loaded_skills)
-    if not skills:
+    if not any(s.model_invocable for s in skills):
         tools = {n: t for n, t in tools.items() if n != "skill"}
     skills_catalog = render_catalog(skills)
     instructions = make_instructions(build_context, loaded_skills,
