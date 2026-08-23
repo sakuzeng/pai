@@ -1018,3 +1018,31 @@ pai 的项目 skills 同样过不了别人塞进仓库就静默生效那关—�
 登记在 TODO 遗留里，不靠冲突语义兜。
 
 出处：[features/25](features/25-20260822-skills/README.md) 拍板问 3。
+
+## 73. 工具级边界豁免位：skill 工具退出路径边界（2026-08-23，feature 27）
+
+25 把「加载 skill」建模成「读 SKILL.md 这个路径」（`@path_access_for(skill, READ)`
++ 未知名回 cwd 的绕法），25 复核实证了它的结构性后果：扫描按 git 根、边界按启动
+cwd，从仓库子目录启动时目录照常宣传、工具调用却被边界拦（once/dontAsk 直接拒绝
+且带权限话术——正是 R4#10 要避开的）；软链 skill 同样撞死。
+
+三家对照（CC 反编译 2.1.88 符号级走读 + dsh 第一方文档）：没有一家这么建模。
+CC 的 SkillTool 无 `getPath`、不进路径边界，门是 skill 名维度的 allow/deny/ask，
+正文在发现期由 harness 裸读进内存；CC 边界根就是启动 cwd（`getOriginalCwd`），
+`getProjectRoot()` 注释明文「Use for project identity (history, skills, sessions)
+not file operations」——身份根与文件操作根刻意分工，CC 内部同样两根不一致但不成
+bug，因为 Skill 工具不过路径层。dsh 的门是 `isModelInvocable` 策略位（加载前 +
+返回前各查一次），全程不提文件权限层。
+
+pai：`Tool.boundary_exempt` 显式豁免位（默认 False，`boundary_exempt_for(tool)`
+声明），只作用于 decide 求值链第 7 步兜底——deny 规则、危险写检查、用户显式
+ask 规则照常在前（测试钉优先级）。skill 删掉 path 声明与「未知名回 cwd」绕法。
+声明条件收紧为两条同时成立：入参表达不了路径（模型没法用它指定读哪个文件），
+且实际路径来自 pai 自算的受信来源。目前唯一豁免者是 skill。
+
+刻意不抄的：CC 的 skill 名维度 allow/deny/ask 规则（pai 已有 `model_invocable`
+这一半，规则那一半等真实需要）；附属文件的 read_file 仍走既有边界，用户级根
+仍在 `WorkingDirs.additional`（25 遗留 6 的声明不变）。
+
+出处：[features/27](features/27-20260823-skill-boundary-exempt/README.md)
+拍板问 1（候选 B「两根进 additional」与 C「边界根改 git 根」的取舍见档案）。

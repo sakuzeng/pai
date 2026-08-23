@@ -297,24 +297,21 @@
       （[feature 26](features/26-20260823-reattach-test-fix/README.md)）：
       场景改三锚让切点真摘掉 skill 的 tool_result + 双向断言（token 不在
       tool 消息、在指令消息），注入反证掐断重挂必红（红的输出在 26 devlog）。
-- [ ] 高·子目录启动时项目级 skill 目录与边界脱节（25 复核）：扫描按 git 根
-      （`project_skills_dir` 向上找 `.git`），边界 `WorkingDirs.startup_cwd`
-      按启动 cwd——从仓库子目录起 pai 时目录照常进 system prompt，但 skill
-      工具调用被边界拦（once/dontAsk 直接拒绝且带权限话术，正是 R4#10 要避开
-      的；interactive 弹意外权限框）。离线冒烟实证：/tmp git 项目子目录启动，
-      回填是「权限被拒绝」而非正文。2026-08-23 已拍板走 feature 27
-      （skill 工具退出路径边界 + 显式豁免位，CC/dsh 同构——CC 反编译证据见
-      27 档案），实现中。
+- [x] ~~高·子目录启动时项目级 skill 目录与边界脱节（25 复核）~~ 已修
+      2026-08-23（[feature 27](features/27-20260823-skill-boundary-exempt/README.md)，
+      D#73）：skill 工具退出路径边界，`Tool.boundary_exempt` 显式豁免位兜底
+      放行（deny/危险写/用户 ask 规则照常在前，测试钉优先级），「未知名回
+      cwd」绕法连带删除。子目录场景进回归测试，注入反证去掉豁免即红。
 - [ ] skills 发现升级为 cwd→git 根沿途多根链（27 拍板顺带，出处：25 复核
       的 CC 源码研究）：CC 的 `getProjectDirsUpToHome` 收集沿途每层
       `.claude/skills`，子目录里的 skills 也生效——顺带解掉 25 evidence
       「skill 放子目录不生效」的静默失效。pai 现在是 git 根单根（dsh 同款）。
       用户裁决：登记不并进 27，等真实需要再立案。
-- [ ] 中·软链 skill 结构性不可用（25 复核）：扫描 `entry.is_dir()` 跟随软链
-      收录，但 `WorkingDirs.contains` 要求字面与 realpath 双路径都在界内——
-      `~/.pai/skills/<名>` 软链到 dotfiles 仓库（常见形态）时 skill 调用被拒。
-      离线冒烟实证：软链用户级 skill 回填「权限被拒绝」。两层语义须对齐：
-      要么扫描时解析并拒软链（warn），要么边界对 skills 根下的软链放行真身。
+- [ ] 中·软链 skill 结构性不可用（25 复核）——正文半边已被 feature 27 顺带修掉
+      （skill 工具退出路径边界后，软链 SKILL.md 的正文加载不再撞
+      `WorkingDirs.contains` 的双路径校验，冒烟场景 3 复验通过）。残余范围收窄为
+      附属文件：软链 skill 目录下的参考文件走 read_file 时，realpath 在界外仍
+      ask/deny。修法不变：扫描时解析并 warn，或边界对 skills 根下软链放行真身。
 - [ ] 中·acceptEdits 模式下 `~/.pai/skills/` 可免问写入（25 复核，遗留 6 只
       声明了读面）：用户级根进 additional 后，`decide` 第 5 步对「界内写」
       直接 allow，且 `is_dangerous_write` 名单不含 skills 目录——acceptEdits
