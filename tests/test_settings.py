@@ -12,6 +12,7 @@ from types import SimpleNamespace
 import pytest
 
 from pai.core.settings import (
+    bash_timeout_seconds,
     mark_project_trusted,
     project_trust_gate,
     project_trusted,
@@ -112,3 +113,28 @@ def test_gate_trust_persists_and_refuse_does_not(tmp_path):
                                ask=lambda *_: pytest.fail("信任后不该再问"),
                                warn=lambda _m: None, **_TEXTS)
     assert [it.name for it in kept3] == ["mine", "theirs"]
+
+
+# ---------------------------------------------------------------- bash 超时配置
+
+def test_bash_timeout_seconds_reads_valid_value():
+    """超时可配置（TODO 工具调用超时 P1）：CC 走 env、dsh 走 settings section，
+    pai 已有 settings 层，走 settings 与架构一致。"""
+    assert bash_timeout_seconds({"bash": {"timeoutSeconds": 300}},
+                                warn=lambda _m: None) == 300
+
+
+def test_bash_timeout_seconds_missing_returns_none():
+    assert bash_timeout_seconds({}, warn=lambda _m: None) is None
+    assert bash_timeout_seconds({"bash": {}}, warn=lambda _m: None) is None
+
+
+@pytest.mark.parametrize("bad", ["300", 0, -5, 601, True])
+def test_bash_timeout_seconds_invalid_warns_and_falls_back(bad):
+    """非法值 warn + 回默认（None）——静默按默认走的话，用户会以为自己配置生效了
+    （与 mcp timeout、tui 开关同一条 fail-loud 约定）。上限即 MAX_TIMEOUT_SECONDS
+    （600）：默认值配得比模型可传上限还大没有意义。bool 是 int 子类，单独挡。"""
+    warns: list = []
+    assert bash_timeout_seconds({"bash": {"timeoutSeconds": bad}},
+                                warn=warns.append) is None
+    assert warns and "timeoutSeconds" in warns[0]

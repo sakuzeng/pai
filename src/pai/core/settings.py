@@ -63,6 +63,30 @@ def _flag(settings: Dict[str, Any], key: str,
     return True
 
 
+def bash_timeout_seconds(settings: Dict[str, Any],
+                         warn: Optional[Callable[[str], None]] = None
+                         ) -> Optional[int]:
+    """`bash.timeoutSeconds`：bash 工具的默认超时（秒），None = 未配置。
+
+    出处 TODO「工具调用超时」P1：CC 走 env var、dsh 走 settings section，
+    pai 已有 settings 层，走这里与架构一致。合法域 1..MAX_TIMEOUT_SECONDS
+    （600，与模型可传上限同一个数——默认值配得比它还大没有意义）；
+    非法值 warn 回默认（fail loud，与 tui 开关、mcp timeout 同一条约定）。
+    bool 要单独挡：它是 int 的子类，`true` 会被静默当成 1 秒。
+    """
+    value = (settings.get("bash") or {}).get("timeoutSeconds")
+    if value is None:
+        return None
+    from pai.core.tools.shell import MAX_TIMEOUT_SECONDS
+    if isinstance(value, bool) or not isinstance(value, int) \
+            or not 1 <= value <= MAX_TIMEOUT_SECONDS:
+        if warn:
+            warn(f"settings 里 bash.timeoutSeconds 应是 1..{MAX_TIMEOUT_SECONDS} "
+                 f"的整数（秒），收到 {value!r}，按默认处理")
+        return None
+    return value
+
+
 def _read(path: Path, warn: Optional[Callable[[str], None]]) -> Dict[str, Any]:
     try:
         text = path.read_text(encoding="utf-8")

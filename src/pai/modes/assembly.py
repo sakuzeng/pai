@@ -30,7 +30,9 @@ from pai.core.recall import RecallState, make_recall
 from pai.core.skills import (LoadedSkills, Skill, apply_project_trust,
                              make_instructions, render_catalog, scan_skills,
                              user_skill_link_roots)
+from pai.core.settings import bash_timeout_seconds, load_settings
 from pai.core.tools import memory_tool
+from pai.core.tools import shell
 from pai.core.tools import skill as skill_tool
 
 
@@ -66,6 +68,10 @@ def assemble(*, client, tools: Dict[str, object], warn: Callable[[str], None],
     # 权限与 hook（feature 07/09）。rules 可注入（依赖注入优先，测试靠它调宽）。
     rules = rules if rules is not None else load_rules(warn=warn)
     hooks = load_hooks(warn=warn)
+    # bash 默认超时可配置（settings `bash.timeoutSeconds`）。未配置传 None
+    # 显式清空——上一个装配的残留不许漂给下一个。
+    shell.set_default_timeout(bash_timeout_seconds(load_settings(warn=warn),
+                                                   warn=warn))
     tools = visible_tools(tools, rules)      # 裸名 deny 的工具压根不摆给模型
     # skills（feature 25/28）：装配期扫一次；项目级过信任门禁；模型没有任何
     # 可调的 skill（一个没有，或全被 disable-model-invocation）时把工具收走
