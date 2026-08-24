@@ -1,6 +1,11 @@
 # 当前状态快照
 
-最后更新：2026-08-24（feature 31 交付——装配收敛：once/interactive 的装配
+最后更新：2026-08-24（夜：feature 32 交付——阶段 7 evals 第一梯队（方案 C），
+roadmap 阶段 1-7 至此全部有交付：`./eval.sh` 独立评测入口 + runs.jsonl 工件
+索引；回放纵切（真 API 铸造 v1 轨迹入库 → `derive_replay` 派生 fake_provider
+脚本 → 真 pai 子进程重放 → 外部世界断言）+ 真模型冒烟纵切（--llm 双门槛）。
+档案 [features/32](features/32-20260824-evals/README.md)）。
+同日早些：feature 31 交付——装配收敛：once/interactive 的装配
 序列合一进 `modes/assembly.py`，MCP 关闭 atexit→单出口 finally（29 遗留 7）；
 同日独立功能测试 28 冒烟场景全过、三条低级发现 !小修 清零——mcp timeout
 静默回默认加 warn、纯中文工具名挂 hash 防撞名、07 档案状态行补翻。档案
@@ -147,7 +152,7 @@ MCP client（手写 stdio JSON-RPC、`mcp__<server>__<tool>` 桥接、settings �
 | `core/mcp.py` | 可用 | MCP client（feature 29，四问拍板全 A）：`MCPSession` 手写 stdio JSON-RPC 显式状态机（newline 分帧、id 配对、脏 stdout 容忍、超时/进程死/isError 收敛 MCPError、close 幂等 SIGTERM→SIGKILL、不重连——死了摘除）；桥接 `mcp__<server>__<tool>`（小写归一+超长 sha256 兜底、(server,raw) 存闭包不反解、Unicode 清洗（NFKC+剥 Cf/Co/Cn）+描述 2048 截断 + 输出 100k 字符预算、MCPError→`错误：`字符串——D#74 schema 同源显式破例）；配置 settings `mcpServers` 两层自读项目赢 + `mcp_trusted` 信任门禁（28 模式）；权限零引擎改动（默认 ask 落兜底、`mcp__s__*` fnmatch 白拿）。v1 刻意不做的八条见 TODO「feature 29 遗留」 |
 | `core/skills.py` | 可用 | skills（feature 25）：`scan_skills` 两级目录（`~/.pai/skills` 与 `<git根>/.pai/skills`，项目赢 D#72；缺/坏 frontmatter 跳过并 warn——刻意不抄 CC 的回退首段）、`render_catalog`（name+description 不给路径，每条 500 字符 + 总 8000 字节双上限）、`render_loaded_skills` + `make_instructions`（压缩后重挂：最近优先、单篇 2 万字符截头保留、总 10 万装不下整条丢，预算是 CC 5k/25k token 的换算值未实测校准）；feature 28：`apply_project_trust` 项目级信任门禁（CC 工作区信任对位——interactive 真人确认持久化、once 未信任不加载+warn，标记在项目身份目录）、`user_skill_link_roots` 用户级软链真身进边界（项目级刻意不解） |
 | `core/tools/skill.py` | 可用 | `skill(name)` 工具（D#71）：现读磁盘剥 frontmatter 回 `<skill_content>` + 相对路径基准；未知与被隐藏说同一句话（不泄露）；不进路径边界——`boundary_exempt` 显式豁免位（feature 27，D#73：入参无路径语义、路径来自装配层扫描，CC/dsh 同构；deny/用户 ask 规则照常在前），子目录启动与软链正文由此可用；once/interactive 装配把用户级 skills 根加进 WorkingDirs.additional（附属文件的 read_file 仍走既有边界），`/skill` 命令走展开注入（REPL 空闲即跑轮次，TUI 忙碌期进 steering 队列） |
-| mcp_client / evals | 未开始 | 路线图后续阶段，见 [roadmap.md](roadmap.md) |
+| `evals` | 可用 | 评测（feature 32，方案 C 最小合体；套件在仓库根 `evals/`、可离线单测的逻辑在 `src/pai/evals/`）：`./eval.sh` 独立入口（testpaths 不动，与 ./test.sh 口径隔离）；`src/pai/evals/artifacts.py` 工件索引（runs.jsonl 逐 case 一行 + 会话快照）、`src/pai/evals/replay.py` 派生器（v1 会话 → fake_provider 脚本；v0/坏文件/含 compaction/无 user 四类拒绝）；evals/ 下回放评测（真 pai 子进程 + 外部世界断言）与真模型冒烟（--llm 双门槛）各一条。比较机器/模型 judge 是 spec 非目标 |
 
 ## compaction.py 里有什么
 
@@ -180,7 +185,9 @@ MCP client（手写 stdio JSON-RPC、`mcp__<server>__<tool>` 桥接、settings �
 + feature 13 alt-screen task 1-7 + feature 16 鼠标与选区 task 1-9
 + feature 17 viz-flow task 1-3.5（事件落盘 + RecallInjected/ConversationCleared + 装配））：
 
-- `./test.sh` → 1358 passed, 3 deselected，全部离线，约 2.5 分钟。这是默认路径。
+- `./test.sh` → 1365 passed, 3 deselected，全部离线，约 2.5 分钟。这是默认路径。
+- `./eval.sh` → 评测另一条入口（feature 32，不进上面的收集范围）：默认无密钥
+  回放评测；`--llm` 追加真模型评测。工件落 `evals/.eval/<时间戳>/`。
   可选并行 `./test.sh -n auto`（xdist）：实测 2:07 全绿，10 核仅 1.35× 且
   挂死旧账观察期未过，默认仍串行（feature 30 问 3·A，观察期记录见 TODO）。
   R4#26 已修（2026-08-22）：Pillow 进 dev 依赖并已装，此前常驻的那条 skip 归零；
@@ -233,9 +240,11 @@ MCP client（手写 stdio JSON-RPC、`mcp__<server>__<tool>` 桥接、settings �
 
 ## 下一步
 
-主线：阶段 1-6 全部交付（压缩 / REPL+TUI / 记忆 / 权限与边界 / 流式 /
-skills+MCP client）。roadmap 只剩阶段 7 evals（真实会话轨迹回放评测 + 跑批，
-参照 pi `packages/evals/`）——动工前照例先核对该阶段「前置精读」清单。
+主线：roadmap 阶段 1-7 全部有交付（压缩 / REPL+TUI / 记忆 / 权限与边界 /
+流式 / skills+MCP client / evals 第一梯队）。阶段性主线走完，下一程由
+真实使用驱动：日常真用 pai 攒数据 → 校准类欠账（reserve/keep_recent、
+skills 四常量、MCP 输出预算）与评测任务集扩容（32 遗留 3）才有输入；
+两条待用户拍板的悬案（matcher 签名、「干完再看」手势）可找空一轮清掉。
 
 主线之外，接手者值得先知道的旧账（全部在 TODO，这里只挑影响判断的）：
 

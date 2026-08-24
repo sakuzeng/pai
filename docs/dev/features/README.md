@@ -84,6 +84,7 @@
 
 | 功能 | 状态 | 一句话结果 |
 |---|---|---|
+| [32-20260824-evals](32-20260824-evals/README.md) | 已交付 | 阶段 7 evals 第一梯队（方案 C 最小合体，roadmap 阶段 1-7 至此全有交付）：`./eval.sh` 独立入口 + 工件索引（runs.jsonl + 会话快照，pi 形态）；回放纵切（真 DeepSeek 铸造 v1 轨迹入库、`derive_replay` 派生 fake_provider 脚本、真 pai 子进程重放、外部世界断言——dsh llm-replay 形态）+ 真模型冒烟纵切（--llm 双门槛）。注入反证双层各红；比较机器/模型 judge 等真实压力（spec 非目标）。1365 passed |
 | [31-20260824-assembly-convergence](31-20260824-assembly-convergence/README.md) | 已交付 | 装配收敛（refactor，需求池拍板 A）：once/interactive 各自手抄的装配序列（25/28/29 三轮同步增补的重复面）合一进 `modes/assembly.py`，两模式只注入差异点；MCP 关闭 atexit→单出口 finally（29 遗留 7 销账，2 条新测试修前红）。行为逐字不变：既有测试零改动全绿 + 功能测试 28 冒烟场景复跑全过，1353 passed |
 | [29-20260823-mcp-client](29-20260823-mcp-client/README.md) | 已交付 | 阶段 6 后半程 MCP client（阶段 6 全部完成）：手写 stdio JSON-RPC（Tools only，不引 SDK——dsh D4 教训）、`mcp__<server>__<tool>` 桥接（清洗/截断/预算，D#74）、settings 两层配置 + 28 式信任门禁、权限零引擎改动（默认 ask + `mcp__s__*` 白拿，补掉 dsh 的空头期权缺口）。前置精读四篇 + 两轮反向对照（真探针三场景 + 真 DeepSeek 一跑即成），31 单测 + pty e2e，1339 passed |
 | [28-20260823-skills-trust-and-write-guard](28-20260823-skills-trust-and-write-guard/README.md) | 已交付 | skills 持久化位点与信任门槛三合一（25 复核中 2 条 + 25 遗留 1）：`.pai/skills` 段进危险写名单（写 skills 永远 ask，acceptEdits/bypass 翻不过）；项目级 skills CC 式信任门禁（interactive 真人确认持久化到项目身份目录、once 未信任不加载+warn，pty e2e 钉对话框全链）；用户级软链真身进边界、项目级刻意不解（恶意软链任意读洞）。注入反证两处各红各的 |

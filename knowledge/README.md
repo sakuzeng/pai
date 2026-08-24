@@ -18,6 +18,7 @@ tui/             终端 UI：绘制、备用屏、鼠标、输入归属、终端
 streaming/       流式输出与工具调度
 skills/          按需加载的能力扩展：发现、索引注入、渐进式披露
 mcp/             MCP client：传输、工具桥接、命名、超时预算、信任
+evals/           评测：真会话回放、打分与比较、评测工件
 model-api/       打模型 API 时要知道的事（key 取法、max_tokens 语义）
 engineering/     换个项目仍成立的通用工程方法（测试、观测、接缝、进程）
 overview/        跨主题的覆盖图与索引
@@ -144,6 +145,9 @@ dsh 的文档与源码在同一个仓库、同一个 commit 里，拆开只会�
 | [skills/pi-skills.md](skills/pi-skills.md) | pi 最小形态（R4#A4 原型）：扫描（SKILL.md 目录不再递归/根下 .md/ignore 文件/realpath 去重/先到先得）+ `<available_skills>` XML 进 system prompt + 模型用 read 加载正文（零新增工具，pi 自认不总灵）+ `/skill:name` 展开成 `<skill>` 块。⚠️ 无列表预算（三家唯一）、压缩后正文不重挂；文档说 name 必填而源码回退目录名 | 精读 | features/25、src/pai/core/memory.py |
 | [skills/cc-skills.md](skills/cc-skills.md) | CC 2.1.88 反编译：skill=command，Skill 工具调用（inline 展开 prompt / fork 子 agent 两路）；目录经 system-reminder attachment 增量注入（sentSkillNames + resume 抑制），预算窗口 1%、每条 250 字符（官方文档已放宽到 1536——版本漂移实据）；压缩重挂 `createSkillAttachmentIfNeeded`（最近优先、单个截 5k、总预算 25k、装不下整条丢）与官方数字交叉验证一致 | 精读 | features/25、src/pai/core/compaction.py |
 | [skills/dsh-skills.md](skills/dsh-skills.md) | dsh（pin 47f9438）四件套切分：registry/provider/consumer 三层 + 三层数据结构（Summary→Candidate→Definition，目录轻/正文重分离）；rank 优先级（项目赢用户）；目录注入是持久 user-role system-reminder + digest 比对替换 + 压缩隐藏后自愈重发；`skill({name})` 专用工具每次重读盘。⚠️「零新增工具」是 pi 形态，dsh 有工具——加载动作三家三分 | 精读 | features/25、roadmap 阶段 6 |
+| `evals/` | | | |
+| [evals/pi-evals.md](evals/pi-evals.md) | pi 的 evals（4c01c709）：不是另一套框架，是把真 `AgentSession` 包成 vitest 测试——隔离三件套（临时 cwd/agent 目录 + 内存 settings + thinking off）、转写归一成 TranscriptEvent、原生会话 JSONL 当一等工件（先快照再删临时目录，`.eval/runs.jsonl` 逐行索引，权限 0o700/0o600）、比较型套件 `judgeThreshold: null` 让低分是观察不是失败（硬断言只留基建契约）、lift = 通过率差（pp）+ token/延迟/成本各自配对差、三种「没有」各有名字（incomplete/unavailable/errored）。pi 只有打真模型的行为评测，无密钥回放是空白——那半边看 dsh | 精读 | roadmap 阶段 7、src/pai/core/session.py、tests/fake_provider.py |
+| [evals/dsh-testing.md](evals/dsh-testing.md) | dsh 测试策略（47f9438，文档+源码对照）：没有「evals」，五条车道（单元 692 spec / 覆盖率门禁「行覆盖是必要非充分」/ 带密钥 e2e 129 个缺钥自动跳过 / 无密钥快照回放 record-replay-refresh 三动词分离 CI 只读 / 浏览器快照）。llm-replay 是回放评测完整参考设计：fixture 就是会话 JSONL（按 (turn,step) 派生分片脚本）、回放不出的失败面用伴随文件显式补、`{{fromRequest:regex}}` 活口、嵌套 agent 按首调顺序绑脚本。方法论三条：验证外部世界而非自我报告（关键词探测会让作弊 agent 通过）、只 mock 贵或不确定边界、fixture 绝不放另一个 spec 里 | 精读 | roadmap 阶段 7、tests/fake_provider.py、src/pai/core/session.py |
 | `model-api/` | | | |
 | [model-api/pi-cc-api-keys.md](model-api/pi-cc-api-keys.md) | pi 的映射表+注入钩子 vs CC 的带来源+apiKeyHelper；结论：key 留 .env 不进 settings.json | 精读 | src/pai/config.py |
 | [model-api/reasoning-models-max-tokens.md](model-api/reasoning-models-max-tokens.md) | 推理模型的 reasoning 计进 `max_tokens`：上限设小不省钱，只会让 content 静默变空串（实测同 query 思考量差 17 倍） | 沉淀 | src/pai/core/recall.py |
