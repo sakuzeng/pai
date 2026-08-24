@@ -553,8 +553,14 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
       连带修掉 R4#1 的两个潜伏点：加这个参数当场引爆 `statusline._preview` /
       `dock._preview` 的「取第一个值」（模型把 timeout 排前面时状态行显示光秃秃的
       `300` 而非命令）；改成按主参数名取，两份重复也顺手收成一处。
-- [ ] 超时可配置（P1）：CC 走 env var，dsh 走 settings section。
-      pai 已有 `core/settings.py`，走 settings 与现有架构更一致。
+- [x] ~~超时可配置（P1）：CC 走 env var，dsh 走 settings section。
+      pai 已有 `core/settings.py`，走 settings 与现有架构更一致。~~
+      已做 2026-08-24（!小修，`feat/bash-timeout-setting`，方向即条目既定）：
+      settings `bash.timeoutSeconds`（1..600，非法值 warn 回默认、bool 单独挡），
+      assembly 装配期经 `shell.set_default_timeout` 注入、未配置显式清空；
+      模型自传 timeout 的钳制语义不变。诚实边界记代码旁：工具 schema 描述
+      文案生成于 import 期，配置后「默认 120s」字样不跟着变（只影响提示）。
+      8 条新测试（解析 6 + 装配接线含清空 1 + 既有守卫不动），修前红在 import。
 - [ ] ★ MCP 阶段必须回来处理统一超时（P2，阶段 7 前置）。
       「只有 bash 有超时」目前不是硬伤（CC 与 pi 也这样，2:1），
       但网络调用会让它变成硬伤：接了 MCP 的两家都给 MCP 单独设了超时

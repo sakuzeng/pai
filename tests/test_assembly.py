@@ -7,6 +7,8 @@
 打桩走 `pai.core.mcp` 的模块属性（与 test_mcp.py 的 `mcp_mod.…` 用法同口径）：
 装配方在调用点解析属性，测试才替换得掉。
 """
+from pathlib import Path
+
 import pytest
 from fake_llm import FakeClient
 
@@ -55,3 +57,31 @@ def test_repl_closes_mcp_sessions_when_loop_raises(monkeypatch):
                         out=lambda _s="": None, on_event=lambda _e: None,
                         no_session=True, rules=_OPEN)
     assert closed == [marker]
+
+
+def test_assemble_applies_bash_timeout_from_settings(monkeypatch, tmp_path):
+    """settings 的 bash.timeoutSeconds 经装配层落到 shell 默认超时；
+    没配置时显式清空（上一个装配的残留不许漂给下一个）。"""
+    import json
+
+    from pai.core import mcp as mcp_mod
+    from pai.core.tools import get_tools, shell
+    from pai.modes.assembly import assemble
+
+    monkeypatch.setattr(mcp_mod, "connect_configured_servers",
+                        lambda **_kw: ([], [], []))
+    home = Path.home()                      # conftest 已隔离
+    p = home / ".pai" / "settings.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps({"bash": {"timeoutSeconds": 240}}), encoding="utf-8")
+
+    assemble(client=FakeClient([]), tools=get_tools(), warn=lambda _m: None,
+             on_event=lambda _e: None, session=None, recall_model="fake",
+             mode="dontAsk", rules=_OPEN)
+    assert shell.default_timeout_seconds() == 240
+
+    p.write_text("{}", encoding="utf-8")
+    assemble(client=FakeClient([]), tools=get_tools(), warn=lambda _m: None,
+             on_event=lambda _e: None, session=None, recall_model="fake",
+             mode="dontAsk", rules=_OPEN)
+    assert shell.default_timeout_seconds() == shell.TIMEOUT_SECONDS

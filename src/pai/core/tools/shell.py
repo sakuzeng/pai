@@ -30,6 +30,23 @@ TIMEOUT_SECONDS = 120
 MAX_TIMEOUT_SECONDS = 600
 POLL_SECONDS = 0.1          # 中断响应粒度；再小只是空转，再大用户会觉得 Ctrl+C 没反应
 
+# settings 可配置的默认超时（TODO「工具调用超时」P1：CC 走 env、dsh 走
+# settings section，pai 走 settings 层）。装配层解析 `bash.timeoutSeconds`
+# 后经 set_default_timeout 写入；None = 未配置，用 TIMEOUT_SECONDS。
+_default_override: Optional[int] = None
+
+
+def set_default_timeout(seconds: Optional[int]) -> None:
+    """装配期注入配置的默认超时；传 None 显式清空（上一个装配的残留不许
+    漂给下一个）。诚实边界：工具 schema 的描述文案生成于 import 期，配置后
+    描述里的「默认 120s」不跟着变——只影响提示不影响行为。"""
+    global _default_override
+    _default_override = seconds
+
+
+def default_timeout_seconds() -> int:
+    return _default_override if _default_override is not None else TIMEOUT_SECONDS
+
 # 我们起过的进程组，退出时统一收割。
 # 为什么需要它：start_new_session 让命令脱离 pai 的进程组（那是能整组 killpg 的前提），
 # 代价就是 pai 死了它们不跟着死——`!sleep 300 &` 会在你关掉 pai 之后继续占着机器。
@@ -48,7 +65,7 @@ def clamp_timeout(requested: int) -> int:
     「schema 与代码同源」那块基石，为一个参数不值当。
     """
     if not requested:
-        return TIMEOUT_SECONDS
+        return default_timeout_seconds()
     return min(int(requested), MAX_TIMEOUT_SECONDS)
 
 
