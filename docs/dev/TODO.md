@@ -594,18 +594,23 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
 
 ### 观测流的两个术语/死事件问题 —— 2026-08-13（feature 18 期间旁生）
 
-- [ ] `TurnStart` 是个死事件：定义了、登记了、画了节点，但 `src/` 里没有一处发它
+- [x] ~~`TurnStart` 是个死事件：定义了、登记了、画了节点，但 `src/` 里没有一处发它
       （出处：features/18 T5 探针实测，事件序列只有 `AgentStart → AssistantMessage → AgentEnd`）。
       `events.py:26` 有 dataclass，`viz/collect.py:150` 声称它住在 `core/loop.py`，
       `viz/index.html:302` 配了节点映射——而 `loop.py` 从不发。
       于是 viz 时间线上那一格永远不会亮，页面上「这个环节住哪」还指着一个不存在的发射点。
       `EVENT_SRC` 的防漂移测试挡不住这类：它只校验「键集合 == 事件类名集合」，
       校验不了「这个事件真有人发」。两条出路二选一：loop 每步真发一条（那就得先想清
-      它与 `step` 的关系），或者删掉它并同步清 viz 映射。
-- [ ] 术语两套并存：事件叫 `TurnStart`，字段却是 `step`（同上出处）。
+      它与 `step` 的关系），或者删掉它并同步清 viz 映射。~~
+      已按出路二删除 2026-08-24（!小修）：定义以来从未有人发、从未有人缺它，
+      「每步真发」是没有消费方的预防性建设（真需要 per-step 分组时 viz 时间线
+      已靠配对做到了）；类/Union/EVENT_SRC/index.html 映射同步清，六处借它当
+      样本的测试换用真实事件。真发红过一次：Union 残留引用 import 即炸。
+- [x] ~~术语两套并存：事件叫 `TurnStart`，字段却是 `step`（同上出处）。
       按 K [loop/cc-loop.md](../../knowledge/loop/cc-loop.md) 第二节的对照表，
       pai 的内部一步就叫 step（pi/CC 才叫 turn）。名字与字段各说一套，
-      读事件流的人要先猜一次。与上一条一起处理。
+      读事件流的人要先猜一次。与上一条一起处理。~~
+      随上条删除一并消失 2026-08-24（矛盾的载体没了）。
 
 ### feature 18（steering 输入源）交付遗留 —— 2026-08-13
 

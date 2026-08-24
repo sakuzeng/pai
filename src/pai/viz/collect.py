@@ -150,7 +150,6 @@ NODE_SRC = {
 # 14 个事件全指同一个文件等于什么都没说。
 EVENT_SRC = {
     "AgentStart": "src/pai/core/loop.py",
-    "TurnStart": "src/pai/core/loop.py",
     "AssistantMessage": "src/pai/core/loop.py",
     "AgentEnd": "src/pai/core/loop.py",
     "ToolStart": "src/pai/core/tools/__init__.py",

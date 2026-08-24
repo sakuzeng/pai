@@ -102,9 +102,9 @@ def test_no_color_unless_asked():
 
 
 def test_other_events_are_ignored():
-    from pai.core.events import AgentStart, TurnStart
+    from pai.core.events import AgentStart, AssistantMessage
 
-    events = [AgentStart(task="x"), TurnStart(step=1), _end("bash")]
+    events = [AgentStart(task="x"), AssistantMessage(content="y", tool_call_names=()), _end("bash")]
     assert render_tool_line(events, width=80) == "✓ bash"
 
 

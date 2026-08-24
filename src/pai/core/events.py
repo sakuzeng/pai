@@ -23,11 +23,6 @@ class AgentStart:
 
 
 @dataclass(frozen=True)
-class TurnStart:
-    step: int
-
-
-@dataclass(frozen=True)
 class AssistantMessage:
     content: Optional[str]
     tool_call_names: Tuple[str, ...] = ()
@@ -181,7 +176,6 @@ class AgentEnd:
 
 AgentEvent = Union[
     AgentStart,
-    TurnStart,
     AssistantMessage,
     MessageDelta,
     PermissionDecided,

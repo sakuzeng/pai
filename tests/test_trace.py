@@ -30,7 +30,6 @@ from pai.core.events import (
     SteeringInjected,
     ToolEnd,
     ToolStart,
-    TurnStart,
 )
 from pai.core.session import SessionLog
 from pai.core.trace import EventTrace, compose
@@ -39,7 +38,6 @@ from pai.core.trace import EventTrace, compose
 # 新增事件类型时若忘了加进来，test_every_event_type_is_covered 会红。
 SAMPLES = [
     AgentStart(task="改一下 README"),
-    TurnStart(step=3),
     AssistantMessage(content="好的", tool_call_names=("read_file",)),
     PermissionDecided(tool_call_id="call_1", name="bash", kind="deny", reason="界外写入"),
     ToolStart(tool_call_id="call_1", name="read_file", args={"path": "README.md"}),
@@ -115,7 +113,7 @@ def test_write_failure_never_raises_and_warns_exactly_once(tmp_path, capsys):
     trace = EventTrace(blocker / "s.jsonl")
 
     for _ in range(5):
-        trace(TurnStart(step=1))          # 不抛就是通过
+        trace(AgentStart(task="x"))          # 不抛就是通过
 
     err = capsys.readouterr().err.strip().splitlines()
     assert len(err) == 1, f"应恰好告警一行，实际 {len(err)} 行"
@@ -125,7 +123,7 @@ def test_write_failure_never_raises_and_warns_exactly_once(tmp_path, capsys):
 def test_compose_fans_out_to_every_handler():
     seen_a, seen_b = [], []
     handler = compose(seen_a.append, seen_b.append)
-    event = TurnStart(step=7)
+    event = AgentStart(task="扇出样本")
 
     handler(event)
 
@@ -135,7 +133,7 @@ def test_compose_fans_out_to_every_handler():
 def test_compose_skips_none_handlers():
     """装配处常有「有 out 就渲染，没有就不渲染」的分支，让 None 直接传进来更好写。"""
     seen = []
-    compose(None, seen.append)(TurnStart(step=1))
+    compose(None, seen.append)(AgentStart(task="x"))
     assert len(seen) == 1
 
 
@@ -148,4 +146,4 @@ def test_compose_does_not_swallow_handler_errors():
         raise RuntimeError("渲染炸了")
 
     with pytest.raises(RuntimeError):
-        compose(boom, lambda _e: None)(TurnStart(step=1))
+        compose(boom, lambda _e: None)(AgentStart(task="x"))
