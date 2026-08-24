@@ -383,8 +383,11 @@
       装配收敛后 run_interactive 有了单出口，TUI/REPL/异常三条路统一走
       finally 的 `mcp.close_all_mcp`；atexit 注册删除。
       `tests/test_assembly.py` 两条钉住（修前红：atexit 在函数返回时不触发）。
-- [ ] dirty-stdout 丢弃不可见（29 遗留 8）：非 JSON 行静默丢、无计数——
-      丢弃行数超阈值该 warn 一次（复盘质疑四）。
+- [x] ~~dirty-stdout 丢弃不可见（29 遗留 8）：非 JSON 行静默丢、无计数——
+      丢弃行数超阈值该 warn 一次（复盘质疑四）。~~ 已修 2026-08-24
+      （!小修，可见性批清）：reader 计数、到阈值（10，未实测经验值）warn
+      恰好一次并指路「日志改走 stderr」；warn 在 reader 线程发的取舍记在
+      代码旁。`test_dirty_stdout_flood_warns_once` 钉住（修前红）。
 
 ### feature 25（skills）遗留 —— 2026-08-22
 
@@ -566,10 +569,13 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
       dsh 明确不给 read/write/edit 设超时（`docs/subsystems/filesystem.zh.md:274`）：
       本地系统调用至多尽力中止，超时无法迫使进行中的 `fsync`/`rename` 停下，
       加了就是「一条强制不了的截止时间」。这条判据直接适用于 pai。
-- [ ] 超时路径丢了 exit code（小，dsh「正交事实独立上报」只踩到一半）：
+- [x] ~~超时路径丢了 exit code（小，dsh「正交事实独立上报」只踩到一半）：
       一个命令可能 trap 了 SIGTERM 后以 0 退出、同时确实超了时。
       dsh 为此把 `timedOut`/`aborted`/`signal`/`exitCode` 做成四个独立字段。
-      pai 的改动很小：超时文案里带上 `proc.returncode`。
+      pai 的改动很小：超时文案里带上 `proc.returncode`。~~ 已修 2026-08-24
+      （!小修，可见性批清）：超时文案末尾追加「(进程退出码：N)」——
+      returncode 在 kill 后的 communicate 才有值，只能在收集后拼接。
+      `test_timeout_message_reports_exit_code` 钉住（修前红）。
 
 ### pty e2e 偶发挂死（不报错、不超时、就是不回来）—— 2026-08-13
 
@@ -615,9 +621,12 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
 - [ ] 轮末残余是「一条消息一轮」，代价没量过（18 复盘质疑二）：
       连打三句就是三次完整模型往返，CC 是一次。若发现常见，修法不是拼字符串，
       而是让 `run_agent` 收 `tasks: list[str]`（`AgentStart` 取第一条、`recall` 取拼接）。
-- [ ] 撞上 `MAX_QUEUE_ROUNDS`（8）时用户没有任何提示（18 复盘质疑三）：
+- [x] ~~撞上 `MAX_QUEUE_ROUNDS`（8）时用户没有任何提示（18 复盘质疑三）：
       剩下的会留到下一轮结束再处理（不丢），但用户不知道自己有几条话被推迟了。
-      数字 8 本身也是拍脑袋的——选错代价小，但静默是真问题。
+      数字 8 本身也是拍脑袋的——选错代价小，但静默是真问题。~~
+      静默半边已修 2026-08-24（!小修，可见性批清）：撞上限且队列非空时
+      经 commit 通道提示剩余条数与「下一轮结束时继续」；没撞上限一个字不提
+      （反向守卫钉住）。数字 8 本身仍是拍脑袋的，维持原判（选错代价小）。
 - [ ] `test_typing_while_busy_lands_in_the_queue` 是一条「不会失败的测试」
       （18 复盘「下次怎么做更好」）：它只断言两个答案都出现，
       在「排队等轮末」与「本轮就注入」两种语义下都绿，feature 18 改了语义它也没红。

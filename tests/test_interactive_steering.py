@@ -144,6 +144,24 @@ class TestAfterTurnProcessing:
             **kw,
         )
 
+    def test_hitting_round_cap_notifies_user_with_remaining_count(self):
+        """18 遗留 3：撞上 MAX_QUEUE_ROUNDS 时消息不丢（下一轮末继续），
+        但用户此前不知道自己有几条话被推迟了——静默是真问题。"""
+        q, spy = PendingMessageQueue("all"), self._spy()
+        for i in range(5):
+            q.enqueue(_msg(f"消息{i}"))
+        notes: list = []
+        assert self._run(q, spy, max_rounds=3, notify=notes.append) == 3
+        assert len(notes) == 1
+        assert "2" in notes[0], "提示里要有被推迟的条数"
+
+    def test_no_notify_when_queue_drains_within_cap(self):
+        q, spy = PendingMessageQueue("all"), self._spy()
+        q.enqueue(_msg("只有一条"))
+        notes: list = []
+        assert self._run(q, spy, notify=notes.append) == 1
+        assert notes == [], "没撞上限就一个字不提（防常驻噪音）"
+
     def test_leftover_command_is_executed_not_sent_to_the_model(self):
         q, spy = PendingMessageQueue("all"), self._spy()
         q.enqueue(_msg("/help"))

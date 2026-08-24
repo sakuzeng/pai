@@ -101,6 +101,25 @@ def test_death_during_discovery_fails_start(session=None):
     s.close()
 
 
+def test_dirty_stdout_flood_warns_once():
+    """29 遗留 8：非 JSON 行此前静默丢、无计数——「静默失败是 bug」。
+    丢弃行数到阈值 warn 一次（只一次：每行都喊会把告警通道淹掉）。"""
+    from pai.core.mcp import DIRTY_STDOUT_WARN_THRESHOLD
+
+    warns: list[str] = []
+    s = MCPSession(name="fake", command=sys.executable, args=[FAKE_SERVER],
+                   env={"FAKE_MCP_MODE": "dirty-stdout"}, warn=warns.append)
+    try:
+        s.start()                                 # initialize + tools/list：丢 2 行
+        for _ in range(DIRTY_STDOUT_WARN_THRESHOLD + 3):   # 越过阈值再多打几发
+            s.call_tool("echo_token", {})
+        flood = [w for w in warns if "fake" in w and "丢弃" in w]
+        assert len(flood) == 1, f"应恰好 warn 一次，实际 {len(flood)}：{warns}"
+        assert str(DIRTY_STDOUT_WARN_THRESHOLD) in flood[0]
+    finally:
+        s.close()
+
+
 def test_dirty_stdout_lines_are_tolerated(session):
     s = session("dirty-stdout")
     assert s.state == "connected"

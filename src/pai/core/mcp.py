@@ -32,6 +32,10 @@ CONNECT_TIMEOUT_MS = 10_000
 # CC 的默认是约 28 小时（有意近乎无限），对 pai 是挂死源，不抄。
 DEFAULT_CALL_TIMEOUT_MS = 60_000
 
+# 脏 stdout 丢弃行数到这个数 warn 一次（29 遗留 8）。未实测经验值：
+# 够小让问题被看见、够大不被单条偶发日志触发。
+DIRTY_STDOUT_WARN_THRESHOLD = 10
+
 # 每条 description 的截断上限（CC 2.1.88 同值；它见过 OpenAPI 生成的 server
 # 往 description 里倒 15-60KB 文档）。外部 description 是不可信输入。
 MAX_MCP_DESC_CHARS = 2048
@@ -76,12 +80,17 @@ class MCPSession:
 
     def __init__(self, name: str, command: str, args: Optional[List[str]] = None,
                  env: Optional[Dict[str, str]] = None,
-                 call_timeout_ms: int = DEFAULT_CALL_TIMEOUT_MS) -> None:
+                 call_timeout_ms: int = DEFAULT_CALL_TIMEOUT_MS,
+                 warn: Optional[Callable[[str], None]] = None) -> None:
         self.name = name
         self.command = command
         self.args = list(args or [])
         self.env = dict(env or {})
         self.call_timeout_ms = call_timeout_ms
+        # 运行期告警通道（29 遗留 8）。不传 = 静默（直连构造的测试路径），
+        # 装配层（connect_configured_servers）会把 warn 递进来。
+        self._warn = warn
+        self._dropped_lines = 0
         self.state = "connecting"
         self.tools: List[dict] = []           # tools/list 的原始条目（未桥接）
         self._proc: Optional[subprocess.Popen] = None
@@ -189,6 +198,17 @@ class MCPSession:
             try:
                 msg = json.loads(raw.decode("utf-8", "replace"))
             except ValueError:
+                # 29 遗留 8：静默丢没计数，用户不知道 server 在往 stdout 倒
+                # 日志。到阈值 warn 一次（每行都喊会淹掉告警通道）。
+                # 取舍如实记：warn 在 reader 线程发，TUI 忙碌期可能插行——
+                # 比静默丢好；正好一次由计数器等值判定保证。
+                self._dropped_lines += 1
+                if self._dropped_lines == DIRTY_STDOUT_WARN_THRESHOLD \
+                        and self._warn is not None:
+                    self._warn(
+                        f"MCP server `{self.name}` 往 stdout 打了至少 "
+                        f"{DIRTY_STDOUT_WARN_THRESHOLD} 行非协议内容（已丢弃）——"
+                        "协议仍正常，但该 server 的日志应改走 stderr")
                 continue
             if not isinstance(msg, dict) or "id" not in msg:
                 continue                      # server 端 notification：v1 忽略
@@ -503,7 +523,7 @@ def connect_configured_servers(*, cwd=None, home=None,
     try:
         for cfg in configs:
             session = MCPSession(cfg.name, cfg.command, cfg.args, cfg.env,
-                                 call_timeout_ms=cfg.timeout_ms)
+                                 call_timeout_ms=cfg.timeout_ms, warn=warn)
             try:
                 session.start()
             except MCPError as e:
