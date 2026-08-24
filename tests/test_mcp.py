@@ -151,6 +151,20 @@ def test_public_name_overlong_gets_deterministic_hash():
         public_tool_name("a__b", "x" * 80 + "__")
 
 
+def test_public_name_all_non_ascii_gets_hash_not_collision():
+    """功能测试 20260824 低 2：纯非 ASCII 名（如中文）归一化后信息量归零
+    （全变 `_`），同 server 任意两个必撞名、第二个被跳过——中文名 server
+    功能上只剩一个工具。这类名字也走 hash 兜底保区分；ASCII 名不受影响
+    （上两条测试钉着原行为）。"""
+    a = public_tool_name("srv", "中文工具")
+    b = public_tool_name("srv", "另个名字")
+    assert a != b, "纯中文名不该撞名"
+    assert a == public_tool_name("srv", "中文工具")          # 确定性
+    ok_chars = set("abcdefghijklmnopqrstuvwxyz0123456789_-")
+    for n in (a, b):
+        assert len(n) <= 64 and set(n) <= ok_chars           # API 合法性不回退
+
+
 def test_bridge_produces_pai_tools(session):
     s = session()
     tools = bridge_tools(s, warn=lambda _m: None)
@@ -244,7 +258,7 @@ def test_load_mcp_servers_skips_bad_entries_with_warn(tmp_path):
         "Bad Name!": {"command": "x"},                # name 不合法
         "nocmd": {},                                  # 缺 command
         "httpish": {"command": "x", "type": "http"},  # v1 只认 stdio
-        "tiny": {"command": "x", "timeout": 500},     # <1000 忽略回默认（CC 语义）
+        "tiny": {"command": "x", "timeout": 500},     # <1000 回默认（CC 语义）+ warn
         "good": {"command": "x", "type": "stdio"},
     })
     warnings: list[str] = []
@@ -253,7 +267,11 @@ def test_load_mcp_servers_skips_bad_entries_with_warn(tmp_path):
     names = sorted(s.name for s in servers)
     assert names == ["good", "tiny"]
     assert {s.name: s for s in servers}["tiny"].timeout_ms == DEFAULT_CALL_TIMEOUT_MS
-    assert len(warnings) == 3
+    # 功能测试 20260824 低 1：回默认可以，静默不行——同函数其余坏配置都 warn，
+    # 用户配 `"timeout": 500` 却按 60s 跑而不吭声，与「静默失败是 bug」相冲
+    assert any("tiny" in w and "timeout" in w for w in warnings), \
+        "timeout 非法值回默认必须 warn"
+    assert len(warnings) == 4
 
 
 def test_load_mcp_servers_bad_json_warns_layer_skipped(tmp_path):

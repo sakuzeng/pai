@@ -269,6 +269,25 @@
       引用时须在 decisions 补一条「参照源定级」。
 
 
+### 功能测试 20260824（独立功能测试，只查不改；全部低级）
+
+- [x] ~~低·MCP timeout 非法值静默回默认（出处：功能测试 20260824）~~
+      已修 2026-08-24（!小修，`fix/mcp-timeout-warn-and-cjk-tool-name`）：
+      `_parse_servers_section` 比照同函数其余坏配置加 warn（回默认语义不变，
+      CC 同款「防秒毫秒手滑」保留）；`test_load_mcp_servers_skips_bad_entries_with_warn`
+      改为断言该 warn（修前红）。原发现：`"timeout": 5` 无任何提示按 60s 跑，
+      与「静默失败是 bug」相冲。
+- [x] ~~低·纯非 ASCII 的 MCP 工具名归一化后信息量归零且必撞名（出处：功能测试
+      20260824）~~ 已修 2026-08-24（同上分支）：`public_tool_name` 在
+      「raw 归一化后全为 `_`」时同样挂 hash 后缀（原来只兜超长）；ASCII 名
+      与撞名 fail loud 路径不受影响（既有测试钉着）。修前实测 `中文工具` 与
+      `另个名字` 都归一成 `mcp__srv______`、第二个被跳过；
+      `test_public_name_all_non_ascii_gets_hash_not_collision` 钉住（修前红）。
+- [x] ~~低·feature 07 档案状态行漂移（出处：功能测试 20260824）~~
+      已修 2026-08-24（同上分支，纯文档）：状态行翻到「已交付」并注明
+      漂移始末。原发现：README:3 停在「已拍板」而结果节已记录 7 task 交付，
+      抽查 7 份档案里唯一没翻的。
+
 ### 优化检查 —— 2026-08-24（出处：优化检查 + feature 30 拍板问 3）
 
 - [ ] pytest-xdist 观察期（30 问 3·A）：已进 dev 依赖，`./test.sh -n auto`
