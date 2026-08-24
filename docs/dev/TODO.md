@@ -25,6 +25,9 @@
       `assistant_entry` 里带上 `reasoning_content`。
       注：机制未查明（为何丢弃后下轮 prompt 仍按含 reasoning 的量增长），
       只有实测事实没有解释，别编。
+      追记 2026-08-24（dsh 交叉验证，K model-api/dsh-deepseek-wire.md）：
+      dsh 真的回传且只在 tool-call 轮（官方 guides/thinking_mode.mdx 规则，
+      平轮丢弃省 token）——一旦 400 出现，修法照这个形状，别平轮也带。
 - [x] ~~并行工具调用已确认是真实场景（R#11 升级）
       探针中 DeepSeek 一次返回了 3 个并行 tool_calls；只回 1 条 tool 消息即触发 400
       （`insufficient tool messages following tool_calls message`）。
@@ -493,18 +496,27 @@
       D#68 追记而非新起一条）：「无参照」论据确被 dsh 推翻，但「无使用
       证据」仍立——dogfooding 真撞到「想排队却被注入」再升格立案，届时
       三问拿着使用证据一起答。
-- [ ] 拿 dsh 反查 pai 的两条实测坑（出处：D#69 理由①，本条从下面那条 P2 独立出来）。
-      `dsh-loop.md` 只读了 loop 与队列，没碰 DeepSeek 侧协议处理。
-- [ ] 修 `knowledge/README.md` 缺失的「外部参照」小节（出处：2026-08-13 写 dsh-loop 时发现）。
+- [x] ~~拿 dsh 反查 pai 的两条实测坑（出处：D#69 理由①，本条从下面那条 P2 独立出来）。
+      `dsh-loop.md` 只读了 loop 与队列，没碰 DeepSeek 侧协议处理。~~
+      已做 2026-08-24，与下面那条一并（同一件事的两条登记），结论见
+      K [model-api/dsh-deepseek-wire.md](../../knowledge/model-api/dsh-deepseek-wire.md)。
+- [x] ~~修 `knowledge/README.md` 缺失的「外部参照」小节（出处：2026-08-13 写 dsh-loop 时发现）。
       笔记模板（README:87-88）要求「本机绝对路径收进本页『外部参照』一节」，
       `loop/pi-loop.md` 等多篇的来源行也确实按此锚了过去——
       但 README 里根本没有这一节，那些锚点全是死链。
       两条出路：补上这一节，或改模板 + 改各篇来源行。
-      注：`dsh-loop.md` 不受影响（dsh 是公开仓库，直接用 URL + commit hash，不需要本机路径）。
-- [ ] dsh 的 DeepSeek 侧实测坑值不值得反查（出处：D#69 理由①）。
+      注：`dsh-loop.md` 不受影响（dsh 是公开仓库，直接用 URL + commit hash，不需要本机路径）。~~
+      已修 2026-08-24（走出路一·补小节）：编号以既有引用（2/4/5/6）反推回填
+      不重排，1/3 从未被引用、原始清单未曾入库，如实标空缺保留编号。
+- [x] ~~dsh 的 DeepSeek 侧实测坑值不值得反查（出处：D#69 理由①）。
       pai 有两条与文档不符的实测结论（D#33 `reasoning_content`、D#58 `include_usage` 空操作），
       dsh 作为同厂第一方实现必然也要处理——去它源码里检索这两个符号，
-      看它怎么处理的。这是三家里唯一能做这种交叉验证的一家，别浪费。
+      看它怎么处理的。这是三家里唯一能做这种交叉验证的一家，别浪费。~~
+      已反查 2026-08-24，值得：K [model-api/dsh-deepseek-wire.md](../../knowledge/model-api/dsh-deepseek-wire.md)——
+      reasoning_content dsh 真回传但只在 tool-call 轮（官方 thinking_mode
+      规则，D#33 监控条目的修法形状有出处了）；usage 两种块形状 dsh 也观察到
+      并写了形状无关读取器，与 pai「每块都看」独立收敛（D#58 置信度升级）；
+      顺手捡到 prompt_tokens 含缓存命中（上下文口径恰好对，将来成本核算必须拆开）。
 
 ### 工具调用超时 —— 2026-08-18（用户提问引出，三家参照对照）
 

@@ -151,6 +151,7 @@ dsh 的文档与源码在同一个仓库、同一个 commit 里，拆开只会�
 | `model-api/` | | | |
 | [model-api/pi-cc-api-keys.md](model-api/pi-cc-api-keys.md) | pi 的映射表+注入钩子 vs CC 的带来源+apiKeyHelper；结论：key 留 .env 不进 settings.json | 精读 | src/pai/config.py |
 | [model-api/reasoning-models-max-tokens.md](model-api/reasoning-models-max-tokens.md) | 推理模型的 reasoning 计进 `max_tokens`：上限设小不省钱，只会让 content 静默变空串（实测同 query 思考量差 17 倍） | 沉淀 | src/pai/core/recall.py |
+| [model-api/dsh-deepseek-wire.md](model-api/dsh-deepseek-wire.md) | 拿同厂第一方交叉验证 pai 两条实测坑（47f9438）：reasoning_content dsh 真回传但只在 tool-call 轮（官方 thinking_mode 规则 + 平轮丢弃省 token——D#33 监控条目的修法形状有了出处）；usage 读取 dsh 也观察到两种形状并写了形状无关读取器（推迟到 DONE），与 pai「每块都看」独立收敛，D#58 置信度升级；顺手捡到 prompt_tokens 含缓存命中——上下文口径恰好对、将来成本核算必须拆开算 | 精读 | decisions #33 #58、src/pai/core/streaming.py |
 | `engineering/` | | | |
 | [engineering/injection-seams.md](engineering/injection-seams.md) | 装配期捕获：依赖会变时闭包存的还是当时那个值，症状是「我改了但没反应」；判据、兼容写法、「改完立刻生效」的测试前后结果必须不同（否则假绿）、同一个坑会连撞两次；外加「接缝上的 bug 离线测试结构上看不见」 | 沉淀 | src/pai/core/gate.py、features/12 |
 | [engineering/instruments-lie.md](engineering/instruments-lie.md) | 观测工具骗人的四种方式：污染被测对象／全量记录器漏掉第二个写入出口／读取工具给的是复合视图／能力探测探的是另一个能力。前三种都长得像「被测代码有 bug」，第四种让你以为自己做过了一次根本没发生的观测 | 沉淀 | src/pai/tui/record.py、features/13 复盘、features/16 |
@@ -161,3 +162,22 @@ dsh 的文档与源码在同一个仓库、同一个 commit 里，拆开只会�
 | `anna/` | | | |
 | [anna/gates.md](anna/gates.md) | anna 确定性门禁方法论（含短板教训）。本地不入库（R2#1 裁决，.gitignore 排除）——克隆本仓库的读者看不到此文件 | 沉淀 | roadmap 阶段 4 |
 | [inbox.md](inbox.md) | 待消化收件箱（准入豁免区，一行一项） | 常驻 | 升格前豁免 |
+
+## 外部参照（本机路径对外部读者是死链，笔记正文以「外部参照 N」引用）
+
+本节 2026-08-24 补齐——笔记模板早就要求「本机绝对路径收进本页『外部参照』
+一节」，多篇笔记的来源行也按此锚了过来，但这一节此前从未存在（2026-08-13
+写 dsh-loop 时发现登记 TODO，今日销账）。编号以既有引用反推回填，不重排
+——重排会让 2/4/5/6 的既有锚定错位。
+
+1. （空缺）从未被任何笔记引用；原始编号清单未曾入库，无从考证，编号保留。
+2. 面试准备仓库 · agent loop 深度对照：
+   `/Users/sakuzeng/improve/job/agent/agent面试准备/01_Agent核心机制/深度_agentloop三层对照.md`
+3. （空缺）同 1。
+4. 面试准备仓库 · 权限与安全深度笔记：
+   `/Users/sakuzeng/improve/job/agent/agent面试准备/13_安全与权限/深度_权限与安全.md`
+5. pi-mono 本机 checkout：`/Users/sakuzeng/improve/coding/agent/pi-mono`
+6. CC 反编译源码本机 checkout：
+   `/Users/sakuzeng/improve/coding/agent/projects/claude-code-source-code`
+
+dsh 刻意不在此列：公开仓库，笔记直接用 URL + commit hash（dsh-loop.md 起的约定）。
