@@ -21,7 +21,7 @@ _OPEN = RuleSet.from_lists(default_decision="allow")
 def _patch_mcp(monkeypatch, closed):
     marker = object()
     monkeypatch.setattr(mcp, "connect_configured_servers",
-                        lambda **_kw: ([marker], []))
+                        lambda **_kw: ([marker], [], []))
     monkeypatch.setattr(mcp, "close_all_mcp", closed.extend)
     return marker
 

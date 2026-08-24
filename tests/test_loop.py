@@ -365,6 +365,58 @@ def test_parallel_tool_calls_mixed_known_and_unknown(tmp_path, monkeypatch):
     assert "未知工具" in tool_msgs[1]["content"]
 
 
+# ---------- 截断轮次的 tool_calls 全判失败（K loop/pi-loop.md 第五节） ----------
+
+
+def test_truncated_tool_calls_are_failed_not_executed(tmp_path, monkeypatch):
+    """finish_reason == "length" 的轮次一个工具都不许执行：截断意味着每个
+    调用的 arguments 都可能是残的，恰好截在合法 JSON 边界上时解析不报错，
+    会静默执行错参数（pi agent-loop.ts:207-216 同款判据；DeepSeek 实测
+    截断确实回 'length'——2026-08-24 探针，OpenAI 兼容口径）。"""
+    monkeypatch.chdir(tmp_path)
+    from pai.core.loop import run_agent
+    from pai.core.tools import get_tools
+
+    proof = tmp_path / "should_not_exist.txt"
+    script = [
+        {"tool_calls": [("bash", json.dumps({"command": f"touch {proof}"}))],
+         "finish_reason": "length"},
+        {"content": "done"},
+    ]
+    client = FakeClient(script)
+    run_agent("x", client=client, model="fake", tools=get_tools(),
+              on_event=lambda _: None)
+    assert not proof.exists(), "截断轮次的工具被执行了"
+    tool_msgs = [m for m in client.requests[1]["messages"] if m["role"] == "tool"]
+    assert len(tool_msgs) == 1
+    assert "截断" in tool_msgs[0]["content"]
+
+
+def test_truncated_batch_backfills_every_call_in_order(tmp_path, monkeypatch):
+    """截断 + 并行：判失败也得守配对不变量（R#11）——N 条、同序、一一配对。"""
+    monkeypatch.chdir(tmp_path)
+    from pai.core.loop import run_agent
+    from pai.core.tools import get_tools
+
+    script = [
+        {"tool_calls": [
+            ("bash", json.dumps({"command": "true"})),
+            ("bash", json.dumps({"command": "true"})),
+            ("bash", json.dumps({"command": "true"})),
+        ], "finish_reason": "length"},
+        {"content": "done"},
+    ]
+    client = FakeClient(script)
+    run_agent("x", client=client, model="fake", tools=get_tools(),
+              on_event=lambda _: None)
+    sent = client.requests[1]["messages"]
+    assistant = next(m for m in sent if m["role"] == "assistant" and m.get("tool_calls"))
+    tool_msgs = [m for m in sent if m["role"] == "tool"]
+    assert [m["tool_call_id"] for m in tool_msgs] == \
+        [tc["id"] for tc in assistant["tool_calls"]]
+    assert all("截断" in m["content"] for m in tool_msgs)
+
+
 # ---------- 压缩接线（e2e） ----------
 
 

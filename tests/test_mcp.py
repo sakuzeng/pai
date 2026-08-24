@@ -540,6 +540,50 @@ def test_once_broken_server_warns_and_continues(tmp_path, monkeypatch):
     assert not any(n.startswith("mcp__") for n in tool_names)
 
 
+def test_connect_returns_failed_server_names(tmp_path):
+    """29 遗留 6 前半：起不来的 server 名单随返回值带出（装配层要告知模型）。
+    未信任被跳过的不算失败——那是策略拦截不是故障。"""
+    from pai.core.mcp import connect_configured_servers
+    home = tmp_path / "home"
+    _write_settings(home, {"broken": {"command": "/nonexistent/no-cmd"}})
+    sessions, tools, failed = connect_configured_servers(
+        cwd=tmp_path / "proj", home=home, warn=lambda _m: None)
+    assert failed == ["broken"]
+    assert not sessions and not tools
+
+
+def test_once_tells_model_about_failed_servers(tmp_path, monkeypatch):
+    """29 遗留 6：连接失败此前只 warn 给用户，模型不知情会反复试不存在的
+    工具名。最小形态：失败名单进指令消息（搭 instructions 的车——比 TODO
+    里的 system prompt 一行更优：压缩重建后重注入，告知不丢）。"""
+    from pai.modes.once import run_once
+    _write_settings(Path.home(), {"broken": {"command": "/nonexistent/no-cmd"}})
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    monkeypatch.chdir(proj)
+    client = FakeClient([{"content": "done"}])
+    run_once("x", client=client, model="fake", no_session=True,
+             on_event=lambda _: None)
+    user_texts = "\n".join(str(m.get("content"))
+                           for m in client.requests[0]["messages"]
+                           if m["role"] == "user")
+    assert "broken" in user_texts and "连接失败" in user_texts
+
+
+def test_once_no_failure_note_when_no_server_configured(tmp_path, monkeypatch):
+    """反向守卫：没配 server / 没失败就一个字不提——常驻噪音会稀释真告警。"""
+    from pai.modes.once import run_once
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    monkeypatch.chdir(proj)
+    client = FakeClient([{"content": "done"}])
+    run_once("x", client=client, model="fake", no_session=True,
+             on_event=lambda _: None)
+    all_texts = "\n".join(str(m.get("content"))
+                          for m in client.requests[0]["messages"])
+    assert "连接失败" not in all_texts
+
+
 def test_once_config_timeout_reaches_call(tmp_path, monkeypatch):
     """29 复核低 5c：settings 的 `timeout` 字段全链生效——慢 server 在配置
     超时处快速回填错误，而不是挂到 server 睡醒。"""

@@ -80,10 +80,21 @@ def assemble(*, client, tools: Dict[str, object], warn: Callable[[str], None],
     # MCP（feature 29）：配置 → 信任门禁 → 连接（单 server 失败 warn 隔离）
     # → 桥接并表。setdefault = 不覆盖内置与先到者；并表后再过一次
     # visible_tools，deny 裸名规则对 MCP 工具照常生效。
-    mcp_sessions, mcp_tools = mcp.connect_configured_servers(ask=asker, warn=warn)
+    mcp_sessions, mcp_tools, mcp_failed = mcp.connect_configured_servers(
+        ask=asker, warn=warn)
     for mcp_tool in mcp_tools:
         tools.setdefault(mcp_tool.name, mcp_tool)
     tools = visible_tools(tools, rules)
+    # 连接失败告知模型（29 遗留 6）：只 warn 给用户的话，模型会反复试不存在的
+    # 工具名。搭 instructions 的车而不是 system prompt——零管线新增，且指令
+    # 消息在压缩重建后会重注入，告知不随压缩丢失。无失败时逐字不变。
+    base_instructions = build_context
+    if mcp_failed:
+        note = ("\n\n# MCP server 连接失败\n\n以下已配置的 MCP server 本次"
+                f"连接失败，其工具不可用：{'、'.join(mcp_failed)}"
+                "（具体原因见启动告警）。不要调用它们的工具。")
+        def base_instructions() -> str:
+            return build_context() + note
     # 用户级 skills 根进边界（25 spec 第 3 节）：否则附属文件的 read_file 被
     # 「界外 ask」拦住（once 下直接 deny）。软链真身根一并进（28 问 3·A，
     # dotfiles 受信；项目级刻意不解析）。代价如实声明：这些目录从此免问读。
@@ -110,7 +121,7 @@ def assemble(*, client, tools: Dict[str, object], warn: Callable[[str], None],
         skills_catalog=render_catalog(skills),
         # 组合指令 loader（feature 25）：压缩重建后 loop 重调 instructions，
         # 已加载 skills 的正文跟着指令消息回到上下文（重挂，零 loop 改动）
-        instructions=make_instructions(build_context, loaded_skills,
+        instructions=make_instructions(base_instructions, loaded_skills,
                                        {s.name: s for s in skills}),
         loaded_skills=loaded_skills, working_dirs=working_dirs,
         mcp_sessions=mcp_sessions, recall=recall, gate=gate)
