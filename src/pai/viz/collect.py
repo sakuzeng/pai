@@ -102,7 +102,9 @@ _PIPELINE_NODES = [
     {"id": "streaming", "label": "流式输出", "col": 1, "stage": "streaming"},
     {"id": "memory", "label": "长期记忆", "col": 1, "stage": "memory"},
     {"id": "skills", "label": "skills", "col": 1, "stage": "skills"},
-    {"id": "mcp_client", "label": "MCP client", "col": 1, "stage": "mcp_client"},
+    # stage 指向 `core/mcp.py` 的模块行（feature 32 起：交付前占位行
+    # 「mcp_client / evals · 未开始」已从 STATUS 撤下，键随之换成真实模块名）
+    {"id": "mcp_client", "label": "MCP client", "col": 1, "stage": "mcp"},
     {"id": "llm", "label": "LLM", "desc": "", "col": 2},  # desc 运行时填 model 名
     {"id": "tools", "label": "工具(自动自省)", "col": 2, "stage": "tools"},
     {"id": "session", "label": "session JSONL 落盘", "desc": "append-only,审计地基",
@@ -139,8 +141,9 @@ NODE_SRC = {
     "memory": "src/pai/core/memory.py",
     "tools": "src/pai/core/tools/__init__.py",
     "session": "src/pai/core/session.py",
-    "skills": "docs/dev/roadmap.md",
-    "mcp_client": "docs/dev/roadmap.md",
+    # 阶段 6 交付后从 roadmap 指回真实模块（feature 32 撤占位行时一并校正）
+    "skills": "src/pai/core/skills.py",
+    "mcp": "src/pai/core/mcp.py",
 }
 
 # 事件类型 → **机制住在哪**。刻意不指 events.py:那里只有 dataclass 定义,

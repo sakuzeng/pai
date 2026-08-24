@@ -19,3 +19,4 @@ docs/dev/reviews/2026-08-09-体系评审.md
 # 2026-08-11 用 `git rm --cached` 摘掉。写成 `.DS_Store` 而不是 `/.DS_Store`：
 # gitignore 里不带斜杠的模式匹配**任意层级**，子目录里冒出来的也一并挡住。
 .DS_Store
+evals/.eval/
