@@ -18,7 +18,6 @@ from pai.core.events import (
     Interrupted,
     ToolEnd,
     ToolStart,
-    TurnStart,
     render_text,
 )
 
@@ -49,7 +48,6 @@ def test_render_text_returns_none_for_silent_events():
     # 这些事件是给 REPL/状态行用的，默认不打印——否则 once 模式会凭空多出几行
     silent = [
         AgentStart(task="写个脚本"),
-        TurnStart(step=1),
         AssistantMessage(content="好的", tool_call_names=("bash",)),
         ToolStart(tool_call_id="call_1", name="bash", args={"command": "ls"}),
         AgentEnd(reason="final", text="完成"),
@@ -88,9 +86,9 @@ def test_interrupted_in_stream_does_not_claim_the_request_was_never_sent():
 
 
 def test_events_are_frozen_dataclasses():
-    event = TurnStart(step=1)
+    event = AgentStart(task="改不动")
     with pytest.raises(dataclasses.FrozenInstanceError):
-        event.step = 2
+        event.task = "改成别的"
 
 
 def test_recall_failed_renders_reason_and_says_when_it_stops_trying():

@@ -129,7 +129,7 @@ def test_sessions_lists_newest_first(sessions, viz_server):
 def test_sessions_reports_which_ones_have_an_event_stream(sessions, viz_server):
     """有没有观测流决定页面能显示多少东西,得让用户在下拉框里就看得出来。"""
     write_session(sessions, "s.jsonl", [{"ts": 1.0, "role": "user", "content": "问"}])
-    write_session(sessions, "s.events.jsonl", [{"ts": 1.5, "event": "TurnStart", "step": 1}])
+    write_session(sessions, "s.events.jsonl", [{"ts": 1.5, "event": "AgentStart", "task": "问"}])
 
     _, data = get_json(viz_server, "/api/sessions")
 
