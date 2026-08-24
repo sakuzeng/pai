@@ -25,11 +25,15 @@
       `assistant_entry` 里带上 `reasoning_content`。
       注：机制未查明（为何丢弃后下轮 prompt 仍按含 reasoning 的量增长），
       只有实测事实没有解释，别编。
-- [ ] 并行工具调用已确认是真实场景（R#11 升级）
+- [x] ~~并行工具调用已确认是真实场景（R#11 升级）
       探针中 DeepSeek 一次返回了 3 个并行 tool_calls；只回 1 条 tool 消息即触发 400
       （`insufficient tool messages following tool_calls message`）。
       pai 的 loop 逻辑上处理了（遍历所有 tc 各回一条），但无测试覆盖。
-      这条从「值得改」升级：它有真实 400 复现路径。
+      这条从「值得改」升级：它有真实 400 复现路径。~~
+      早在 2026-08-09 已完成，本条漏勾，2026-08-24 对账核销（同 R#8/R#9 两条
+      的处理）：`tests/test_loop.py` 的 `test_parallel_tool_calls_each_get_a_reply`
+      （N 条、同序、一一配对）与 `test_parallel_tool_calls_mixed_known_and_unknown`
+      （未知工具混发也回填）当天就随 commit 8a0ccd7 进库了。
 - [x] ~~重审 decisions 第 19 条（R#4）~~ 已完成 2026-08-03，结论见 D#19（推翻，原文保留）
       与 D#32（新的做法）。复核发现原论证错在两处，评审只指出了一处：
       ① 绝对预算切法下比例抵消不成立；② 偏差根本不均匀——实测短 tool 结果低估 4-5 倍
@@ -345,10 +349,15 @@
 - [ ] `${VAR}` 环境变量展开与 `.mcp.json` 生态兼容未做（29 遗留 5）：
       检入仓库的项目级配置想引 secret 时需要前者；想直接挂 CC 生态配置时
       需要后者（settings 加一个「外部 mcp 配置文件路径」项即可）。
-- [ ] 连接失败不告知模型（29 遗留 6）：v1 只 warn 给用户——模型可能反复试
+- [x] ~~连接失败不告知模型（29 遗留 6）：v1 只 warn 给用户——模型可能反复试
       不存在的工具名。反向对照 P3 证明 CC 文档的「经 ToolSearch 告知」实测
       未复现，无可抄的已验证行为，pai 要自己定形态（最小：装配期把失败
-      server 列进 system prompt 一行）。
+      server 列进 system prompt 一行）。~~ 已修 2026-08-24
+      （`fix/error-surfaces-batch`，!小修）：`connect_configured_servers` 第三
+      返回值带失败名单，assembly 折进 instructions 指令消息一段（形态偏离原
+      设想的 system prompt 一行，理由：零管线新增 + 压缩重建后重注入告知不丢；
+      未信任被跳过的刻意不算失败——策略拦截不是故障）。三条测试钉住
+      （含「无失败一个字不提」的反向守卫），修前红。
 - [x] ~~interactive 的 MCP 关闭挂 atexit 是取舍（29 遗留 7，记录性）：
       REPL/TUI 多出口不做大缩进；close 幂等 + 进程生命周期 = 会话生命周期。
       若 run_interactive 重构出单一出口，顺手改确定性关闭（复盘质疑一）。~~
@@ -592,7 +601,14 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
 
 ### loop 的健壮性缺口 —— 2026-08-13（读 pi/CC 真源码撞出来）
 
-- [ ] 被 token 上限截断的 assistant 消息，它的 tool_call 应当全部判失败（出处：
+- [x] ~~被 token 上限截断的 assistant 消息，它的 tool_call 应当全部判失败~~
+      已修 2026-08-24（`fix/error-surfaces-batch`，!小修）：动工第一步按 ⚠️
+      先实测——DeepSeek 流式截断确实回 `finish_reason == "length"`（探针
+      max_tokens=8，OpenAI 兼容口径）；`assemble` 本就保留该字段（feature 11
+      就有，loop 一直没读），loop 在派发前检查，"length" 轮次一个不执行、
+      每个 tool_call 回填 `TRUNCATED_RESULT`（配对不变量照常，文案给出路——
+      与 bash 超时同一条规矩）。两条测试钉住（单调用不执行 + 并行批配对同序），
+      修前红：截断轮次的 `touch` 真的落盘了。原文（出处：
       K [loop/pi-loop.md](../../knowledge/loop/pi-loop.md) 第五节，pi `agent-loop.ts:207-216`）：
       pi 在执行工具前先看 `message.stopReason`，为 `"length"` 时这条消息里的每个
       tool_call 直接判失败，一个都不执行。注释理由：*截断意味着每个 tool call 的

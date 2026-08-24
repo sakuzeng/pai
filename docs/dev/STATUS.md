@@ -4,7 +4,11 @@
 序列合一进 `modes/assembly.py`，MCP 关闭 atexit→单出口 finally（29 遗留 7）；
 同日独立功能测试 28 冒烟场景全过、三条低级发现 !小修 清零——mcp timeout
 静默回默认加 warn、纯中文工具名挂 hash 防撞名、07 档案状态行补翻。档案
-[features/31](features/31-20260824-assembly-convergence/README.md)）。
+[features/31](features/31-20260824-assembly-convergence/README.md)。
+随后已知错误面批清（修正路线第一层）：截断轮次（`finish_reason=="length"`）
+tool_calls 全判失败不执行（DeepSeek 实测确认字段值）、MCP 连接失败经
+instructions 告知模型（29 遗留 6）、P0 并行调用条目对账核销——测试 2026-08-09
+就在，漏勾 15 天）。
 更早（2026-08-23 夜）：feature 29 交付——阶段 6 后半程 MCP client，阶段 6
 全部完成：`core/mcp.py` 手写 stdio JSON-RPC（Tools only，四问拍板全 A）→
 `mcp__<server>__<tool>` 桥接（清洗/截断/预算，D#74 schema 同源显式破例）→
@@ -94,7 +98,7 @@ MCP client（手写 stdio JSON-RPC、`mcp__<server>__<tool>` 桥接、settings �
 
 | 模块 | 状态 | 说明 |
 |---|---|---|
-| `core/loop.py` | 可用 | agent loop：依赖注入、max_steps 兜底、每条消息落盘、usage 落盘、用量预算熔断、自动压缩触发/熔断；主循环走流式（侧查询刻意不走）、工具按批调度、权限按批前置（D#59） |
+| `core/loop.py` | 可用 | agent loop：依赖注入、max_steps 兜底、每条消息落盘、usage 落盘、用量预算熔断、自动压缩触发/熔断；主循环走流式（侧查询刻意不走）、工具按批调度、权限按批前置（D#59）；截断轮次（`finish_reason=="length"`）tool_calls 全判失败回填不执行（2026-08-24，pi 同款判据） |
 | `core/tools/` | 可用 | `@tool` 从签名生成 schema；bash / read_file / write_file / edit_file |
 | `core/compaction.py` | 可用 | 见下——阶段 1 主线（触发→切→摘→重建→熔断）全部接进 loop |
 | `modes/once.py` | 可用 | 单次任务，跑完即退出（对应 pi 的 print-mode）。client/model 可注入故可离线测；`context_window()` + `CompactionSettings()` 默认透传；装配走 `modes/assembly.py` |
@@ -176,7 +180,7 @@ MCP client（手写 stdio JSON-RPC、`mcp__<server>__<tool>` 桥接、settings �
 + feature 13 alt-screen task 1-7 + feature 16 鼠标与选区 task 1-9
 + feature 17 viz-flow task 1-3.5（事件落盘 + RecallInjected/ConversationCleared + 装配））：
 
-- `./test.sh` → 1353 passed, 3 deselected，全部离线，约 2.5 分钟。这是默认路径。
+- `./test.sh` → 1358 passed, 3 deselected，全部离线，约 2.5 分钟。这是默认路径。
   可选并行 `./test.sh -n auto`（xdist）：实测 2:07 全绿，10 核仅 1.35× 且
   挂死旧账观察期未过，默认仍串行（feature 30 问 3·A，观察期记录见 TODO）。
   R4#26 已修（2026-08-22）：Pillow 进 dev 依赖并已装，此前常驻的那条 skip 归零；

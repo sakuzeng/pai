@@ -73,6 +73,12 @@ MISSING_RESULT = "(工具结果缺失：本轮因内部错误中断，该调用�
 # 不是工具坏了」——后者会诱发重试，前者该诱发换做法。
 DENIED_PREFIX = "权限被拒绝，该工具调用未执行。原因："
 
+# 截断轮次（finish_reason == "length"）的统一回填。给模型出路而不只报状态
+# （与 bash 超时文案同一条规矩）：告诉它怎么避免再撞一次。
+TRUNCATED_RESULT = ("错误：这条回复被输出 token 上限截断，工具调用的参数可能不完整，"
+                    "本轮所有工具调用均未执行。请重试并控制回复长度"
+                    "（如减少一次发起的调用数、拆分任务）。")
+
 # 分层指令与自动记忆作为 **system 之后的第一条 user 消息**注入（照官方，D#42）。
 # 靠内容前缀认出这条消息：messages 会原样发给 provider，加自定义字段是协议外的东西。
 INSTRUCTION_HEADER = "# 项目指令与记忆（来自 PAI.md 与自动记忆）"
@@ -368,6 +374,24 @@ def run_agent(
                 _extend(messages, steering, session, ledger, on_event)
                 continue
             return finish("final", msg.content or "")
+
+        if getattr(msg, "finish_reason", None) == "length":
+            # 被输出上限截断的轮次一个工具都不执行：截断意味着每个调用的
+            # arguments 都可能是残的，恰好截在合法 JSON 边界上时解析不报错、
+            # 会静默执行错参数（pi agent-loop.ts:207-216 同款判据）。DeepSeek
+            # 实测截断回 "length"（2026-08-24 探针，OpenAI 兼容口径）；
+            # 非流式响应没有该字段（getattr 回 None），只有主循环的流式路径受此保护。
+            # 每个 tool_call 照样回填一条失败结果——配对不变量（R#11）不因判失败而破。
+            for tc in msg.tool_calls:
+                _record(messages, {"role": "tool", "tool_call_id": tc.id,
+                                   "content": TRUNCATED_RESULT}, session, ledger)
+                on_event(ToolEnd(tool_call_id=tc.id, name=tc.function.name,
+                                 args=_safe_args(tc.function.arguments),
+                                 result=TRUNCATED_RESULT, is_error=True))
+            if get_steering_messages:
+                # 与正常轮末同款注入点：判失败的轮次也不能把排队的话晾着
+                _extend(messages, get_steering_messages(), session, ledger, on_event)
+            continue
 
         interrupted = False
         # 保序贪心分批（feature 11）：连续的并发安全工具合成一批并行，其余各自成批串行。

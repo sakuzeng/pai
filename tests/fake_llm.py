@@ -67,7 +67,9 @@ def _chunks_for(turn: dict, call_id_counter):
         for c in _tool_call_chunks(turn["tool_calls"], call_id_counter):
             yield c
 
-    finish_reason = "tool_calls" if turn.get("tool_calls") else "stop"
+    # turn["finish_reason"] 可覆盖（如 "length"：截断轮次，loop 要据此判失败）
+    finish_reason = turn.get("finish_reason") or (
+        "tool_calls" if turn.get("tool_calls") else "stop")
     usage = turn.get("usage")
     if usage and turn.get("usage_shape") == "openai":
         yield _chunk(delta={}, finish_reason=finish_reason)

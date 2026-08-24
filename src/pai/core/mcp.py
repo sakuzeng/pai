@@ -487,12 +487,17 @@ def apply_mcp_trust(servers: List[MCPServerConfig], *, cwd=None, home=None,
 def connect_configured_servers(*, cwd=None, home=None,
                                ask: Optional[Callable[[str, List[str]], str]] = None,
                                warn: Callable[[str], None]
-                               ) -> "tuple[List[MCPSession], List[Tool]]":
+                               ) -> "tuple[List[MCPSession], List[Tool], List[str]]":
     """装配期一站式：读配置 → 信任门禁 → 逐个连接（单 server 失败 warn 隔离，
     不拖垮别家——CC 同款）→ 桥接成 Tool 列表。once 不传 ask（无人可问），
-    interactive 传装配期 asker。"""
+    interactive 传装配期 asker。
+
+    第三个返回值是连接失败的 server 名单（29 遗留 6）：只 warn 给用户的话
+    模型不知情，会反复试不存在的工具名——装配层拿它去告知模型。
+    未信任被跳过的不算失败（策略拦截不是故障，告知反而诱导模型劝用户信任）。"""
     sessions: List[MCPSession] = []
     tools: List[Tool] = []
+    failed: List[str] = []
     configs = apply_mcp_trust(load_mcp_servers(cwd=cwd, home=home, warn=warn),
                               cwd=cwd, home=home, ask=ask, warn=warn)
     try:
@@ -503,6 +508,7 @@ def connect_configured_servers(*, cwd=None, home=None,
                 session.start()
             except MCPError as e:
                 warn(f"{e}，已跳过该 server")
+                failed.append(cfg.name)
                 continue
             sessions.append(session)
             tools.extend(bridge_tools(session, warn=warn))
@@ -511,7 +517,7 @@ def connect_configured_servers(*, cwd=None, home=None,
         # 子进程留成孤儿——先收掉再照样往上抛，不吞
         close_all_mcp(sessions)
         raise
-    return sessions, tools
+    return sessions, tools, failed
 
 
 def close_all_mcp(sessions: List[MCPSession]) -> None:
