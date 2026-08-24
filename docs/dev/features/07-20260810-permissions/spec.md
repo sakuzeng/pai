@@ -27,6 +27,10 @@ pai 现在没有任何权限层：模型说跑 `rm -rf /` 就跑 `rm -rf /`。�
 - `Tool` 增字段 `matcher: Optional[Callable[[str, dict, bool], bool]]`，
   签名 `(specifier, args, require_all) -> bool`；没有 matcher 时用默认实现
   （对工具的第一个参数值做通配符匹配）。
+  追记 2026-08-24（D#49 复议，用户拍板追认）：实现是 4 参——多了
+  `ctx: MatchContext(anchor, cwd, home)`。本节 3 参与下方第 4 节「路径型
+  specifier 的 `/` 前缀锚到写下规则的设置文件」凑不到一起：锚点是规则的
+  属性，3 参没有它的出口。以实现为准，原文保留供对照。
 - 新增 `matcher_for(tool_func)` 装饰器，把匹配函数挂到已注册的 `Tool` 上——
   不改 `@tool` 本身（它只负责 schema 与代码同源这一件事）。
 - `require_all` 参数捕获一条真实的不对称性：
