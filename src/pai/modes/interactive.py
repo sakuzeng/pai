@@ -738,12 +738,30 @@ def _show_permissions(out: Callable[[str], None], rules, hooks=(), *,
     if not lines:
         out(f"🔒 权限：没有任何规则，一律按默认决策 `{rules.default_decision}`。"
             "规则写在 ~/.pai/settings.json 或 ./.pai/settings.json 的 permissions 里。")
+        _show_boundary_caveats(out)     # 新用户恰好走这条分支，真话不能省
         return
     out("🔒 权限规则（求值顺序 deny → ask → allow，第一个匹配决定）：")
     for line in lines:
         out(line)
     out(f"  没有规则命中时按默认决策 `{rules.default_decision}`")
     _show_hooks(out, hooks)
+    _show_boundary_caveats(out)
+
+
+def _show_boundary_caveats(out: Callable[[str], None]) -> None:
+    """feature 33（09 遗留 1 提示半边 + 遗留 3）：两件此前不可见的真话。
+
+    bash 那条是本权限功能的主要失效模式（D#52）：洞不在默认路径（bash 默认
+    ask），而在用户为了可用性必然配的 allow 白名单上——配了 `Bash(cat *)`，
+    `cat ../../etc/passwd` 就畅通无阻。不说出来，用户会以为白名单是安全的。
+    """
+    from pai.core.boundary import dangerous_writes_description
+
+    out("⚠️ bash 不参与工作目录边界（D#52）：给 bash 配 allow 白名单 = 白名单内")
+    out("   的命令可以越界读写任何路径。要限制范围就别给 bash 配宽 allow。")
+    out("🛡 危险写清单（写入永远确认，acceptEdits/bypass 都翻不过）：")
+    for item in dangerous_writes_description():
+        out(f"   - {item}")
 
 
 def _show_hooks(out: Callable[[str], None], hooks) -> None:
@@ -851,7 +869,8 @@ def _run_tui(*, out, client, model, tools, messages, ledger, anchors, state, ste
                                      transcript=transcript, scroll=scroll,
                                      selection=selection)
     else:
-        renderer = DockRenderer(write=write, width=lambda: term.columns)
+        renderer = DockRenderer(write=write, width=lambda: term.columns,
+                                rows=lambda: term.rows)
     app = TuiApp(renderer=renderer, transcript=transcript, scroll=scroll,
                  selection=selection, history=_history_lines(history), color=color)
     app.editor.color = color

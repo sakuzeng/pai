@@ -1,154 +1,268 @@
 # pai
 
-从零手写的最小编码 agent harness（Python）。架构参照精读 pi（github.com/earendil-works/pi，MIT）、
-对 Claude Code 的实现分析、以及 deepseek-harness（github.com/deepseek-ai/deepseek-harness，MIT）
-得出的设计，零代码依赖三者——所有实现都是独立写的，取舍见 docs/dev/decisions.md。
+从零手写的最小编码 agent harness（Python，目标运行期 3.9+）。架构参照精读
+pi（github.com/earendil-works/pi，MIT）、对 Claude Code 的实现分析、以及
+deepseek-harness（github.com/deepseek-ai/deepseek-harness，MIT）得出的设计，
+零代码依赖三者——所有实现都是独立写的，取舍见 docs/dev/decisions.md。
+
+功能全貌：agent loop（流式、并发工具调度、预算熔断）、上下文自动压缩、
+REPL 与整屏 TUI（鼠标、选区、输入折行）、分层指令与自动记忆（含按查询召回）、
+权限三态与工作目录边界、skills（渐进式披露）、MCP client（stdio）、
+会话落盘与 `--resume`、回放评测与真模型冒烟（`./eval.sh`）、
+本地可视化（`pai-viz`）。
 
 ## 安装与运行
 
 ```bash
-mkvirtualenv pai            # 本机统一用 virtualenvwrapper
-cd ~/improve/coding/agent/projects/pai
+python3 -m venv .venv && source .venv/bin/activate   # 或 mkvirtualenv pai
 pip install -e ".[dev]"
-cp .env.example .env        # 填入 DEEPSEEK_API_KEY（或放 ~/.pai/.env，在任何目录都生效）
+cp .env.example .env        # 填 DEEPSEEK_API_KEY（或放 ~/.pai/.env，任何目录都生效）
 
-pai                         # 不带参数 → 交互模式 REPL
-pai "在当前目录创建 hello.txt 写入 hello world 并读出来确认"   # 带任务 → 单次执行，跑完即退
+pai                         # 不带参数 → 交互模式（真终端进 TUI，管道/CI 退回纯 REPL）
+pai "在当前目录创建 hello.txt 写入 hello world 并读出来确认"   # 带任务 → 单次执行
 ```
 
-交互模式里：`/help` 看命令、`/status` 看上下文与熔断状态、`/memory` 看加载了哪些指令文件、
-`!命令` 直接跑 shell（不打模型）、行尾 `\` 续行、`Ctrl+C` 中断当前工作、`Ctrl+D` 退出。
+命令行参数：
 
-测试（默认不打真实 API——花钱的副作用不能是默认行为）：
+```
+pai [任务] [--max-steps N] [--max-tokens N] [--no-session]
+    [--resume [ID或路径]] [--permission-mode MODE] [--dangerously-skip-permissions]
+```
+
+- `--max-tokens`：本次任务的累计 token 预算，超过即停（默认 200000，0 = 不限）——
+  平台侧没有消费限额，这是唯一的自动烧钱熔断。
+- `--resume`：恢复会话接着聊（交互模式）。不带参数 = 本项目最近一次；
+  也可给会话 id 前缀或会话文件路径。
+- `--permission-mode`：`default` / `acceptEdits` / `dontAsk` / `bypassPermissions`
+  （默认读 settings.json 的 `defaultMode`；见下方「权限与安全」）。
+- `--dangerously-skip-permissions`：等价 `bypassPermissions`。deny 规则、
+  显式 ask 规则与危险写清单**仍然生效**。
+
+模型与端点用环境变量换（`.env` 或 `~/.pai/.env`）：
 
 ```bash
-./test.sh              # 离线，1069 passed
-./test.sh --llm        # 额外跑真实 API 冒烟，会产生费用
+DEEPSEEK_API_KEY=sk-...
+PAI_BASE_URL=https://api.deepseek.com   # 任何 OpenAI 兼容端点都行
+PAI_MODEL=deepseek-v4-flash
+PAI_RECALL_MODEL=...                    # 可选：记忆召回的侧查询用便宜模型
+PAI_CONTEXT_WINDOW=1000000              # 可选：上下文窗口（压缩触发的分母）
 ```
 
-可视化(本地网页，看**架构**与**运行时流转**)：
+## 交互模式
 
-```bash
-pai-viz                 # 默认端口 7777，自动打开浏览器
-pai-viz --port 8080      # 换端口
-pai-viz --no-open       # 不自动打开浏览器
+真终端下是整屏 TUI（上方滚动 transcript、下方 pai 接管的 dock）；
+管道 / CI / 注入输入时自动退回纯行式 REPL，行为一致。
+
+```
+/help         命令表
+/status       上下文估算、锚点数、压缩熔断状态
+/memory       本次加载了哪些指令文件 + 自动记忆目录
+/mode         查看/切换权限模式（TUI 里 shift+tab 轮转）
+/permissions  当前生效的权限规则、来源、危险写清单与 bash 边界提示
+/compact      手动压缩当前对话
+/skill        列出可用 skills；`/skill <名> [参数]` 加载并执行
+/clear        清空对话（保留 system）
+/exit         退出（等同 Ctrl+D）
+!命令          直接跑 shell，不打模型
+行尾 \        续行
 ```
 
-页面**纯观察，没有对话输入**——交互归 TUI，浏览器只负责看。三块内容：
+键位与鼠标（TUI）：`Ctrl+C` 两级中断（干活时打断当前轮，空闲时第一次清输入、
+第二次退出）；`shift+tab` 轮转权限模式；`Ctrl+O` 展开/收起最近的工具结果；
+`Ctrl+L` 重画；滚轮滚 transcript、拖选自动进剪贴板、点击输入行定位光标
+（长行折行后点续排行也定位正确）；折行/多行输入里 `↑`/`↓` 先在显示行间移动
+光标，到顶/到底才翻历史。**干活期间打的字不会丢**：默认本轮就注入（模型立刻
+看到），排队数量在状态行可见。
 
-**① 运行时结构图**：agent loop 的数据流 + 工具卡片(从 `@tool` 注册表自动自省——新加一个
-工具，刷新页面就出现，含参数 schema)。未来环节(skills/MCP)预画成虚线灰卡，状态跟
-STATUS.md 联动，做完一块图上亮一块。**每处都标着它住在哪个文件**(工具的 `file:line`
-是 `inspect` 自省出来的，不是手写)，点一下用 VS Code / Cursor 打开——
-CLI 不在 PATH 也行，会退回 `vscode://file/...` URL scheme 跳到已开着的窗口：
+## 权限与安全
 
-![运行时结构图](docs/assets/pai-viz-structure.jpg)
+三态规则 + 工作目录边界，求值顺序 `deny → ask → allow`，第一个匹配决定；
+没有规则命中时走边界兜底：读界内放行、读界外问、写一律问。四种模式：
 
-**② 回合时间线**：终端里跑 pai，浏览器 2 秒内自己长出新回合(不用刷新)，结构图上对应
-节点依次点亮。展开看每一步：模型名、上下文大小、缓存命中、工具参数与结果与耗时、
-以及 **harness 内部事件**(权限判定/压缩/召回/熔断/中断)——这些此前只在终端一闪而过，
-现在留了下来。会话下拉框可回放历史(跨项目，`✦` 表示该会话有 harness 事件)：
+| 模式 | 行为 |
+|---|---|
+| `default` | 按规则与边界，需要确认就问真人（单次模式无人可问 → 拒绝） |
+| `acceptEdits` | 界内写免确认，其余同 default |
+| `dontAsk` | 一切需要确认的直接拒绝（单次模式的默认） |
+| `bypassPermissions` | 兜底放行；deny / 显式 ask / 危险写**免疫**，仍然拦 |
 
-![回合时间线](docs/assets/pai-viz-timeline.jpg)
+两句必须知道的真话（`/permissions` 里也会显示）：
 
-token 显示三个**加起来有意义**的数：`上下文`(末步输入量，离窗口上限多远)、
-`未命中`(缓存命中便宜 50 倍，这才是真正花钱的)、`输出`(不打折)。
-**不显示金额**——定价会变，token 才是 ground truth。
+- bash 不参与工作目录边界：给 bash 配了 allow 白名单（如 `Bash(cat *)`），
+  白名单内的命令就能越界读写任何路径。
+- 危险写清单永远确认、任何模式翻不过：shell 配置文件（`.bashrc` 等）、
+  `~/.ssh/`、任意 `.git/hooks`、任意 `.pai/skills`、任意 `.pai/settings.json`。
 
-**③ 阶段路线图**：解析 STATUS.md「模块现状」表，绿=可用 / 黄=部分 / 灰=未开始。
-STATUS.md 是唯一事实来源，更新表格即变色(viz 自己也在图里)：
+## settings.json 参考
 
-![阶段路线图](docs/assets/pai-viz-roadmap.jpg)
+两层：`~/.pai/settings.json`（用户级）与 `<项目>/.pai/settings.json`
+（项目级，同名段项目赢；权限规则是两层追加不覆盖）。全部键：
 
-数据来自 pai 自己落的两个文件：会话 JSONL(审计流，不可再生)与并排的
-`<同名>.events.jsonl`(观测流，harness 事件，可再生)。
+```jsonc
+{
+  "permissions": {
+    "allow": ["Bash(ls *)", "read_file(/docs/**)"],   // 工具名(说明符)；裸工具名也行
+    "ask":   ["Bash(git push *)"],                    // 显式 ask：bypass 下仍然问
+    "deny":  ["Bash(rm -rf *)", "write_file"],        // 裸名 deny 的工具不摆给模型
+    "defaultMode": "default",                         // 见上表；once 模式用不上时会告警
+    "additionalDirectories": ["~/notes"]              // 边界的额外允许根
+  },
+  "hooks": {
+    "PreToolUse": [                                   // 外部命令门禁：退出码 0 放行、
+      { "matcher": "Bash",                            // 2 拦下、其他不表态；崩溃/超时
+        "hooks": [{ "type": "command", "command": "python3 guard.py" }] }   // = 拦下
+    ]
+  },
+  "bash": { "timeoutSeconds": 120 },                  // bash 默认超时（1..600；模型可传
+                                                      // timeout 参数覆盖，上限 600 真钳制）
+  "tui": { "altScreen": true, "mouse": true },        // 整屏/鼠标开关（个别终端不兼容时关）
+  "mcpServers": {                                     // 见「MCP」节
+    "docs": { "command": "python3", "args": ["server.py"],
+              "env": {"K": "V"}, "timeout": 60000 }
+  }
+}
+```
+
+路径说明符的锚点：用户层规则里的 `/x/**` 锚在 `~/.pai/`，项目层锚在项目根；
+`~/` 展开家目录；裸文件名匹配任意深度。
+
+## 指令与记忆
+
+- 分层指令：`~/.pai/PAI.md`（用户级）→ 项目根到当前目录沿途的 `PAI.md` /
+  `PAI.local.md`（个人，建议 gitignore），支持 `@path` 导入；压缩后自动
+  从磁盘重读重注入，长会话里指令不失效。
+- 自动记忆：模型用 `remember` 工具一事一文件写进
+  `~/.pai/projects/<项目>/memory/`，索引自动重建；每轮一次侧查询按当前任务
+  召回 ≤5 篇注入（失败会明说，连续失败自动停用）。
+
+## skills
+
+一个 skill = 一个目录包 `<名字>/SKILL.md`（或扁平 `<名字>.md`）：
+
+```markdown
+---
+name: code-review
+description: 按团队规范做代码评审（模型按这句话决定何时使用）
+---
+这里是正文：只在被加载时进入上下文（渐进式披露，目录常驻、正文按需）。
+```
+
+放两处任一：`~/.pai/skills/`（用户级，跟人走）或 `<git根>/.pai/skills/`
+（项目级，进版本库）。同名项目级赢。frontmatter 加
+`disable-model-invocation: true` 则模型不可自主调用、只有 `/skill` 显式通道。
+项目级 skills 有信任门禁：首次遇到会请你确认（skills 会指挥模型行为，
+只信任 review 过的）；单次模式无人可问则不加载并提示。写入任何 `.pai/skills`
+永远需要确认——写 skill 等于拿到后续会话的指挥权。
+
+## MCP
+
+settings 的 `mcpServers` 段配置 stdio server（v1 只有 stdio 传输）：工具以
+`mcp__<server>__<工具名>` 进模型工具集，默认走确认（`allow: ["mcp__docs__*"]`
+可整 server 放行）。server 起不来 / 中途死 / 超时 / 返回错误都不会连累会话，
+失败的 server 会在指令里告知模型「别再调它的工具」。项目级 server 配置
+与 skills 同款信任门禁。工具描述与输出有预算与 Unicode 清洗（外部内容不可信）。
 
 ## 数据存哪
 
-pai 会在**用户目录**下留东西，不碰你的项目目录（布局对齐 Claude Code）：
+pai 只写用户目录，不碰你的项目目录（布局对齐 Claude Code）：
 
 ```
 ~/.pai/
-  .env                                  可选：放在这里的 key 在任何目录都生效
-  PAI.md                                可选：用户级指令（所有项目都加载）
-  history/<cwd 哈希>                     REPL 输入历史（↑/↓ 翻的就是它，按工作目录分）
-  projects/-Users-you-path-to-proj/     一个项目一个目录，名字是可读的全路径
-    memory/MEMORY.md                    自动记忆索引（模型用 remember 工具写）
-    memory/<主题>.md                     主题笔记，按需读
-    sessions/20260810-221805-36c2fc1a.jsonl          会话记录（每条带 sessionId 与 cwd）
-    sessions/20260810-221805-36c2fc1a.events.jsonl   harness 事件（pai-viz 用；删了不损失历史）
+  .env                     可选：任何目录都生效的环境变量
+  PAI.md                   可选：用户级指令
+  settings.json            可选：用户级设置（见上）
+  skills/                  用户级 skills
+  history/<cwd 哈希>        REPL 输入历史（按工作目录分）
+  projects/<可读路径 slug>/
+    skills_trusted / mcp_trusted     项目级信任标记（不进仓库，塞不进来）
+    memory/                自动记忆（MEMORY.md 索引 + 一事一文件）
+    sessions/<时间戳-id>.jsonl           会话记录（--resume 读它；审计流）
+    sessions/<同名>.events.jsonl         harness 事件（pai-viz 用；可再生）
 ```
 
-项目里可以放 `PAI.md`（团队共享，进版本控制）与 `PAI.local.md`（个人，gitignore）——
-从当前目录向上逐级加载，支持 `@path` 导入。
+## 测试与评测
 
-## 结构与阶段映射
+```bash
+./test.sh              # 全部离线（假模型/假 provider/假 MCP server），默认不花一分钱
+./test.sh -n auto      # 并行（可选，观察期中，默认串行）
+./test.sh --llm        # 追加打真实 API 的冒烟，会产生费用（需 key + 显式开关）
 
-模块按阶段切分，一个阶段一个模块；阶段定义与顺序以 docs/dev/roadmap.md 为准（本仓库唯一路线图），/code-check 按此验收：
+./eval.sh              # 评测：真轨迹回放（无密钥、确定性，判分走外部世界断言）
+./eval.sh --llm        # 追加真模型评测；工件落 evals/.eval/<时间戳>/runs.jsonl
+```
+
+准确的测试数字以 docs/dev/STATUS.md 为准（那里有机器对账，README 不抄数字
+——抄了必漂）。
+
+## 可视化（pai-viz）
+
+```bash
+pai-viz                 # 本地网页，默认端口 7777；--port 换端口，--no-open 不自动开浏览器
+```
+
+页面纯观察，无对话输入。三块：运行时结构图（工具卡片从 `@tool` 注册表自省，
+每处标 `file:line` 可点开编辑器）、回合时间线（终端里跑 pai，浏览器 2 秒内
+自己长出新回合，含权限判定/压缩/召回/熔断等 harness 内部事件，会话可回放）、
+阶段路线图（解析 STATUS.md，绿=可用）。
+
+![运行时结构图](docs/assets/pai-viz-structure.jpg)
+![回合时间线](docs/assets/pai-viz-timeline.jpg)
+
+另有 `pai-replay <录制文件> -o 图.png`：配合 `PAI_TUI_RECORD=<路径>` 录下的
+终端字节回放成 PNG（让 AI 自己看得见界面）。
+
+## 结构
+
+模块按学习阶段切分（阶段定义见 docs/dev/roadmap.md），核心边界两条：
+工具错误不 throw（转字符串回填）、新模块只依赖事件与注入回调不 import loop 内部。
 
 ```
 src/pai/
-  cli.py           命令行入口：只管参数解析与分发，不含业务逻辑
-  config.py        env / client 工厂（OpenAI 兼容协议，默认 DeepSeek）
-  core/            业务核心——不关心是单次执行还是 REPL
-    loop.py        agent loop（依赖注入、事件流、双队列注入点、中断、压缩接线、预算熔断）
-    events.py      结构化事件（frozen dataclass 扁平联合）+ 默认渲染器
-    queue.py       steering / followUp 两条待注入消息队列
-    interrupt.py   中断标志（Ctrl+C 只置标志，执行侧自己找地方收尾）
-    paths.py       用户级路径唯一事实源：~/.pai/projects/<可读 slug>/{memory,sessions}
-    session.py     JSONL 会话落盘（每条带 sessionId 与 cwd）——审计流，不可再生
-    trace.py       观测流落盘：harness 事件进 <会话同名>.events.jsonl，供 pai-viz 回放
-    compaction.py  上下文压缩（触发→切→摘→重建→熔断，已全链接进 loop）
-    memory.py      分层指令加载（PAI.md）+ 自动记忆索引 + @path 导入
-    tools/         工具系统：__init__.py 注册表 + @tool 装饰器
-                   fs.py（原子写）/ shell.py（可中断到进程组）/ ask.py / memory_tool.py
-    ── 以下按 roadmap 阶段生长（阶段号见 docs/dev/roadmap.md，此处不重复维护）──
-    permissions.py before_tool_call 钩子 + 权限
-    streaming.py   流式
-    skills.py      skills
-    mcp_client.py  MCP client
-  tui/             终端 UI（阶段 2 后半程）：scrollback 在上、pai 接管的 dock 在下
-                   **只有 renderer.py 与 terminal.py 碰终端**，其余全是纯函数或纯状态机——
-                   这条边界是本模块可测性的全部来源
-    component.py   Component 契约（render(width) -> list[str]）/ Container / CURSOR_MARKER
-    renderer.py    dock 整块重绘 + commit（dock 与 scrollback 之间唯一的通道）
-    keys.py        字节 → 按键（带状态：多字节字符与转义序列会被拆成两次 read 送达）
-    editor.py      行编辑器（纯状态机，替掉 readline）
-    arbiter.py     **输入归属仲裁**——治「一个输入流两个消费者抢」的病
-    dialog.py      权限 ask 与 AskUserQuestion 共用一套
-    dock.py        活动区 / 队列区 / 状态行 / footer
-    theme.py       配色与字形（**不用 emoji**：字体缺字 + 宽度不确定）
-    logo.py        启动 logo 与流光动画（同一份字形，每帧只改配色）
-    terminal.py    raw mode 进出 / SIGWINCH / 退出无条件复原 / 非 tty 闸门
-    screen.py      终端模拟器（字节 → 屏幕）——**测试断言与回放出图共用同一份**
-    record.py      PAI_TUI_RECORD 录下写给终端的字节
-    replay.py      回放成屏幕并出 PNG（pai-replay），让 AI 自己看得见界面
-  modes/           交互形态——同一套 core，不同的进入与输出方式（学 pi 的 modes/）
-    once.py        单次任务，跑完即退出（对应 pi 的 print-mode）
-    interactive.py 交互模式接线：真 tty 走 TUI，非 tty 退回纯 REPL（行为一个字不变）
-    statusline.py  工具调用状态行（纯函数 render，按终端列宽算中文宽度）
-  viz/             可视化：pai-viz 起本地网页——结构图（工具自动自省）+ 回合时间线（读会话与事件 JSONL，2s 轮询实时点亮）+ 阶段路线图（解析 STATUS.md）
-    flow.py        两个 JSONL 归并成回合：分组、tool_call_id 配对、未完成回合标红
-evals/             评测集与跑批
-tests/             pytest。两套假 provider 分工是硬的：fake_llm.py 是**注入式**假客户端（测装配与逻辑），
-                   fake_provider.py **起真 HTTP 服务**说 OpenAI 兼容协议，让真 pai 进程经 PAI_BASE_URL 打进来，
-                   于是 test_e2e_tui.py 能在真 pty 里跑完整回合并断言屏幕上有什么
-test.sh            统一测试入口，默认不打真实 API
-docs/dev/          开发记录：decisions（为什么这么选）/ devlog（做了什么）/ STATUS（现在到哪）/ TODO / roadmap（阶段地图）/ reviews
-knowledge/         学习沉淀：官方文档精读、源码走读、方法论回流（索引与规约见 knowledge/README.md）
-refs/              外部参考资料（DeepSeek 文档快照，不入库，用脚本生成）
+  cli.py / config.py    入口与 env/client 工厂（OpenAI 兼容协议）
+  core/
+    loop.py             agent loop：流式、按批工具调度、压缩接线、预算熔断、截断防护
+    events.py           结构化事件（frozen dataclass 联合）+ 默认渲染器
+    streaming.py        流式装配（tool_calls 按 index 归并、usage 每块都看）
+    scheduler.py        保序贪心分批：连续并发安全工具并行，其余串行
+    compaction.py       上下文压缩：触发→切→摘→重建→熔断（锚定真实 usage）
+    session.py          会话格式 v1 落盘 / 加载 / 重建 / 回放（--resume 的地基）
+    trace.py            观测流：harness 事件落 .events.jsonl（pai-viz 用）
+    memory.py / recall.py       分层指令 + 自动记忆 + 按查询召回
+    permissions.py / boundary.py / hooks.py / gate.py   三态规则 / 目录边界与危险写 / 外部门禁 / 装配
+    settings.py         两层 settings.json 统一读取 + 通用信任门禁
+    skills.py           skills：扫描 / 目录渲染 / 正文加载 / 压缩后重挂
+    mcp.py              MCP client：stdio JSON-RPC、工具桥接、清洗与预算
+    queue.py / interrupt.py     排队消息 / 进程级中断标志
+    tools/              @tool 注册表；bash / read_file / write_file / edit_file /
+                        ask_user_question / remember / skill
+  modes/
+    assembly.py         once 与 interactive 共用的装配序列（一份实现）
+    once.py             单次任务；interactive.py  REPL 与 TUI；echo.py / statusline.py 输出
+  tui/                  只有 renderer/altscreen/terminal 碰终端，其余纯函数或纯状态机：
+                        component / keys / editor（折行）/ arbiter（输入归属）/ dialog /
+                        dock / transcript / scroll / selection / mouse / clipboard /
+                        sanitize / screen（模拟器）/ record / replay / theme / logo / app / driver
+  evals/                评测的可复用逻辑：runs.jsonl 工件索引、轨迹→回放脚本派生
+  viz/                  pai-viz 网页与数据装配
+evals/                  评测套件本体（./eval.sh 跑；fixtures/ 是签入的真实轨迹）
+tests/                  pytest 全离线；fake_llm（注入式假客户端）与 fake_provider
+                        （真 HTTP 假服务）分工是硬的，另有 fake_mcp_server
+docs/dev/               开发记录：decisions / devlog / STATUS / TODO / roadmap / features 档案
+knowledge/              学习沉淀（pi / CC / dsh 三家对照精读）
 ```
 
-## 已知缺口（刻意的，按路线图逐阶段补）
+## 已知问题（真话，全部登记在 docs/dev/TODO.md）
 
-**没有 skills / MCP**（阶段 6）、**没有评测集**（阶段 7）、**没有会话恢复**（`--resume`）。
+- bash 不参与工作目录边界（见「权限与安全」）——这是权限功能的主要失效模式，
+  刻意取舍（CC 靠分类器模型解决，pai 不做分类器）。
+- TUI 拖选在某些真机上卡顿，成因未确诊（离线复现不了）；pty e2e 偶发挂死
+  （测试基建问题，不影响使用）。
+- 压缩阈值、skills/MCP 的预算常量是从参照实现借的经验值，未经真实使用校准。
+- 会话中途增删 skill 不生效（装配期扫描一次）；MCP 仅 stdio 传输、无重连。
 
-TUI 已交付（阶段 2 后半程，tag `tui-v1`）：scrollback 在上、pai 接管的 dock 在下——
-输入归属由一个仲裁函数算出来、`/mode` 与 shift+tab 切权限模式、干活时打的字排队、
-并发按动作聚合可见。**但它只接管底部**，所以**工具结果不能点、transcript 不能滚**——
-那要整屏归 pai（alt-screen），已单独立项 [features/13](docs/dev/features/13-20260811-alt-screen/README.md)。
-权限（阶段 4）与流式（阶段 5）也已交付。
+## 开发记录去哪看
 
-每补一块，在 `docs/dev/decisions.md` 记一条「pi/CC 怎么做的、我怎么做的、为什么」；
-每个需求一个档案在 `docs/dev/features/`（需求→方案→拍板问答→红绿数字→复盘），
-待办唯一入口是 `docs/dev/TODO.md`，用户提的想法先进 `docs/dev/需求池.md`。
+`docs/dev/STATUS.md`（现在到哪）、`decisions.md`（为什么这么选）、
+`devlog.md`（做了什么）、`features/`（一个需求一个档案：需求→拍板问答→
+红绿数字→复盘）、`TODO.md`（待办唯一入口）。每与 pi/CC/dsh 不同的取舍
+都有编号决策可查。

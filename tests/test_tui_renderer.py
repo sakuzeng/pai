@@ -200,3 +200,33 @@ def test_next_redraw_uses_the_cursor_row_as_its_base_not_the_last_line():
     r.draw(Container([Text("活动区"), _Focused("› hi", 4), Text("状态行")]))
     r.draw(Container([Text("活动区2"), _Focused("› hey", 5), Text("状态行2")]))
     assert screen.visible() == ["活动区2", "› hey", "状态行2"]
+
+
+def test_dock_taller_than_terminal_is_clamped_to_the_tail():
+    """feature 33（21 遗留 3）：dock 行数超过终端高度时，`\\r\\n` 逐行写会让
+    终端滚动，随后的相对光标上移指到滚进 scrollback 的行——整块漂移、擦不掉。
+    钳制到「终端高度 - 1」且保尾部：输入行与状态行住在 dock 底部。"""
+    writes = []
+    r = DockRenderer(write=writes.append, width=lambda: 40, rows=lambda: 5)
+
+    class Tall:
+        def render(self, width):
+            return [f"line{i}" for i in range(10)]
+
+    r.draw(Tall())
+    joined = "".join(writes)
+    assert r.height == 4                       # 5 - 1
+    assert "line9" in joined and "line6" in joined
+    assert "line0" not in joined and "line5" not in joined
+
+
+def test_dock_within_terminal_height_is_untouched():
+    writes = []
+    r = DockRenderer(write=writes.append, width=lambda: 40, rows=lambda: 24)
+
+    class Small:
+        def render(self, width):
+            return ["a", "b"]
+
+    r.draw(Small())
+    assert r.height == 2

@@ -116,7 +116,10 @@ class KeyDecoder:
             self._pasting = False
             if not payload:
                 return []                  # 一个字节都没到，别吐空事件
-            return [Key("paste", payload.decode("utf-8", errors="replace"))]
+            # feature 33（19 遗留 2）：自愈不再静默——内容可能只有半截，跟一个
+            # 恢复信号让上层给用户一行提示（editor 不认识这个名字，会原样忽略）
+            return [Key("paste", payload.decode("utf-8", errors="replace")),
+                    Key("paste_recovered")]
         return []
 
     def _quiet_for(self, seconds: float) -> bool:

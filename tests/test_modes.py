@@ -666,3 +666,36 @@ def test_cli_turns_resume_errors_into_plain_words(monkeypatch, capsys):
     with pytest.raises(SystemExit):
         cli.main()
     assert "没有任何会话可恢复" in capsys.readouterr().err
+
+
+def test_once_warns_when_configured_default_mode_cannot_apply(tmp_path, monkeypatch, capsys):
+    """feature 33（09 遗留 2）：settings 配了 defaultMode 而 once 无人可问、
+    强制走 dontAsk——行为对但此前静默，用户会以为自己的配置生效了。"""
+    import json
+
+    from pai.modes.once import run_once
+
+    from pathlib import Path
+
+    conf = Path.home() / ".pai" / "settings.json"
+    conf.parent.mkdir(parents=True, exist_ok=True)
+    conf.write_text(json.dumps({"permissions": {"defaultMode": "default"}}),
+                    encoding="utf-8")
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    monkeypatch.chdir(proj)
+    run_once("x", client=FakeClient([{"content": "done"}]), model="fake",
+             no_session=True, on_event=lambda _: None)
+    out = capsys.readouterr().out
+    assert "defaultMode" in out and "dontAsk" in out
+
+
+def test_once_stays_silent_when_no_default_mode_configured(tmp_path, monkeypatch, capsys):
+    from pai.modes.once import run_once
+
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    monkeypatch.chdir(proj)
+    run_once("x", client=FakeClient([{"content": "done"}]), model="fake",
+             no_session=True, on_event=lambda _: None)
+    assert "defaultMode" not in capsys.readouterr().out

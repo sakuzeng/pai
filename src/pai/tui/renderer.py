@@ -35,9 +35,13 @@ class DockRenderer:
     """
 
     def __init__(self, *, write: Callable[[str], None],
-                 width: Callable[[], int]) -> None:
+                 width: Callable[[], int],
+                 rows: Optional[Callable[[], int]] = None) -> None:
         self._write = write
         self._width = width
+        # 终端行数提供者（feature 33，21 遗留 3）。不传 = 不钳制（旧行为，
+        # 组件测试与 alt 屏路径不需要）；传了就把 dock 钳到「终端高度 - 1」。
+        self._rows = rows
         self._height = 0            # dock 当前占了几行
         self._cursor_offset = 0     # 硬件光标此刻在 dock 的第几行（0 = 第一行）
 
@@ -49,7 +53,7 @@ class DockRenderer:
 
     def draw(self, root: Component) -> None:
         """整块重画 dock。"""
-        lines = root.render(self._width())
+        lines = self._clamp(root.render(self._width()))
         lines, cursor = _extract_cursor(lines)
         self._write(SYNC_START + self._repaint(lines, cursor) + SYNC_END)
         self._height = len(lines)
@@ -72,6 +76,17 @@ class DockRenderer:
         self._height = 0
         if root is not None:
             self.draw(root)
+
+    def _clamp(self, lines: List[str]) -> List[str]:
+        """dock 超过终端高度时保尾部（feature 33，21 遗留 3）：`\\r\\n` 逐行写
+        超过屏高会让终端滚动，随后的相对上移指到滚进 scrollback 的行——整块
+        漂移且擦不掉。留 1 行余量给 `_to_top` 的相对移动；保尾不保头，
+        输入行与状态行住在 dock 底部。CURSOR_MARKER 若在被剪掉的头部，
+        本帧没有硬件光标定位（IME 锚点缺一帧，比整块漂移轻得多）。"""
+        if self._rows is None:
+            return lines
+        limit = max(1, self._rows() - 1)
+        return lines if len(lines) <= limit else lines[-limit:]
 
     def clear(self) -> None:
         """擦掉 dock，把那几行还给终端（退出路径用）。"""

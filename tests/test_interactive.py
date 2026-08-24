@@ -544,3 +544,14 @@ def test_manual_compact_survives_a_network_error():
 
     assert messages == before, "失败了就不该动历史"
     assert any("压缩失败" in line for line in said), f"要告诉用户为什么，实际：{said}"
+
+
+def test_slash_permissions_tells_the_whole_truth():
+    """feature 33（09 遗留 1 提示半边 + 遗留 3）：/permissions 必须说出
+    两件此前不可见的事——bash 不参与目录边界（配 allow 白名单即可越界，
+    本功能的主要失效模式 D#52）、危险写清单（硬编码不可配，用户此前撞上才知道）。"""
+    _, printed = _run(["/permissions"], [])
+    assert "bash" in printed and "边界" in printed
+    assert ".git/hooks" in printed
+    assert ".ssh" in printed
+    assert "settings.json" in printed

@@ -239,3 +239,32 @@ def test_the_copy_notice_sits_above_the_dock_border():
     notice = next(i for i, line in enumerate(lines) if "已复制" in line)
     rule = next(i for i, line in enumerate(lines) if "─" * 10 in line)
     assert notice < rule
+
+
+def test_point_at_display_maps_wrapped_rows(feature33=None):
+    """21 遗留 1：折行后「显示行 ≠ 逻辑行」，point_at 按逻辑行换算会把
+    点第二段定位到错误字符。point_at_display 按 render 同一套折行几何换算，
+    列参数含前缀（由它自己按行减，续行前缀宽可以与 prompt 不同）。"""
+    editor = LineEditor(prompt="> ")            # 前缀 2 列
+    editor.set_text("abcdefghij")               # width=7 → room=5 → ab cde|fghij
+    # 显示行 0 = abcde，显示行 1 = fghij（room = 7-2 = 5）
+    assert editor.point_at_display(0, 2, 7) == 0    # 前缀后第 0 列 → 'a'
+    assert editor.point_at_display(1, 2, 7) == 5    # 第二段第 0 列 → 'f'
+    assert editor.point_at_display(1, 4, 7) == 7    # 第二段第 2 列 → 'h'
+    assert editor.point_at_display(9, 99, 7) == 10  # 越界行/列 → 末尾
+
+
+def test_point_at_display_counts_wide_chars_by_columns():
+    editor = LineEditor(prompt="> ")
+    editor.set_text("你好世界谢谢")               # 每字 2 列
+    # width=8 → room=6 → 每显示行 3 个汉字
+    assert editor.point_at_display(1, 2, 8) == 3    # 第二段第 0 列 → 「界」
+    assert editor.point_at_display(1, 4, 8) == 4
+
+
+def test_point_at_display_handles_continuation_lines():
+    editor = LineEditor(prompt="> ", continuation="    ")   # 续行前缀 4 列
+    editor.set_text("first\nsecond")
+    # 不折（width 大）：显示行 1 = 续行，列要按续行前缀（4）减，不是 prompt（2）
+    assert editor.point_at_display(1, 4, 40) == 6   # 前缀后第 0 列 → 's'
+    assert editor.point_at_display(1, 6, 40) == 8

@@ -437,3 +437,14 @@ def test_collapsed_history_is_bounded():
         app.on_event(ToolEnd(tool_call_id=str(i), name="bash", args={},
                              result="a\nb"))
     assert len(app._collapsed) <= 32
+
+
+def test_paste_recovered_key_surfaces_a_notice():
+    """feature 33（19 遗留 2）：粘贴自愈可能只吐出半截内容，app 收到
+    `paste_recovered` 要给一行提示——静默按成功处理与「静默失败是 bug」相冲。"""
+    from pai.tui.keys import Key
+
+    app, _screen = make()
+    app._key(Key("paste_recovered"))
+    assert app.dock.has_notice()
+    assert "粘贴" in app.dock.notice_line(48)

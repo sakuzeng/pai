@@ -138,3 +138,34 @@ def test_bash_timeout_seconds_invalid_warns_and_falls_back(bad):
     assert bash_timeout_seconds({"bash": {"timeoutSeconds": bad}},
                                 warn=warns.append) is None
     assert warns and "timeoutSeconds" in warns[0]
+
+
+# ---------------------------------------------------------------- additionalDirectories
+
+def test_additional_directories_parses_and_expands_home():
+    from pai.core.settings import additional_directories
+
+    dirs = additional_directories(
+        {"permissions": {"additionalDirectories": ["/tmp/extra", "~/notes"]}},
+        warn=lambda _m: None)
+    assert dirs[0] == "/tmp/extra"
+    assert dirs[1].endswith("/notes") and not dirs[1].startswith("~")
+
+
+def test_additional_directories_missing_is_empty():
+    from pai.core.settings import additional_directories
+
+    assert additional_directories({}, warn=lambda _m: None) == ()
+
+
+def test_additional_directories_invalid_warns_and_ignores():
+    """feature 33（H9）：这个键在 boundary 的 docstring 与 STATUS 里都声称
+    存在，实际从没接进装配——用户配了静默不生效，比没有这个键更糟。
+    接上之余，非法形状照 fail-loud 约定 warn。"""
+    from pai.core.settings import additional_directories
+
+    warns: list = []
+    assert additional_directories(
+        {"permissions": {"additionalDirectories": "not-a-list"}},
+        warn=warns.append) == ()
+    assert warns and "additionalDirectories" in warns[0]
