@@ -170,7 +170,7 @@ MCP client（手写 stdio JSON-RPC、`mcp__<server>__<tool>` 桥接、settings �
 + feature 13 alt-screen task 1-7 + feature 16 鼠标与选区 task 1-9
 + feature 17 viz-flow task 1-3.5（事件落盘 + RecallInjected/ConversationCleared + 装配））：
 
-- `./test.sh` → 1350 passed, 3 deselected，全部离线，约 2.5 分钟。这是默认路径。
+- `./test.sh` → 1351 passed, 3 deselected，全部离线，约 2.5 分钟。这是默认路径。
   可选并行 `./test.sh -n auto`（xdist）：实测 2:07 全绿，10 核仅 1.35× 且
   挂死旧账观察期未过，默认仍串行（feature 30 问 3·A，观察期记录见 TODO）。
   R4#26 已修（2026-08-22）：Pillow 进 dev 依赖并已装，此前常驻的那条 skip 归零；

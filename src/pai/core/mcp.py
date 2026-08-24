@@ -268,10 +268,13 @@ def public_tool_name(server: str, raw: str) -> str:
     """
     joined = f"mcp__{server}__{raw}".lower()
     normalized = _NAME_BAD.sub("_", joined)
-    if len(normalized) <= _MAX_PUBLIC_NAME:
+    # raw 归一化后信息量归零（纯中文名等全变 `_`）也走 hash：不然同 server
+    # 任意两个这样的名字必撞名、第二个被跳过——撞名 warn 只解决可见性，
+    # 救不回可用性（功能测试 20260824 低 2；dsh 对「归一化有改动」全 hash，
+    # pai 仍只在超长与信息量归零两档 hash：ASCII 撞名保留 fail loud 路径）
+    lost_all = not _NAME_BAD.sub("_", raw.lower()).strip("_")
+    if len(normalized) <= _MAX_PUBLIC_NAME and not lost_all:
         return normalized
-    # hash 只兜超长（dsh 对「归一化有改动」也 hash，pai 不抄：归一化撞名走
-    # 桥接层的「跳过 + warn」fail loud 路径，比静默换成 hash 名对用户更可见）
     digest = hashlib.sha256(f"{server}\0{raw}".encode("utf-8")).hexdigest()[:_HASH_LEN]
     return f"{normalized[:_MAX_PUBLIC_NAME - _HASH_LEN - 1]}_{digest}"
 
@@ -416,7 +419,11 @@ def _parse_servers_section(data: dict, source: str,
             continue
         timeout = entry.get("timeout", DEFAULT_CALL_TIMEOUT_MS)
         if not isinstance(timeout, int) or timeout < 1000:
-            # <1000 忽略回默认（CC 同语义：防手滑把秒写成毫秒）
+            # <1000 回默认（CC 同语义：防手滑把秒写成毫秒）——但要出声：
+            # 同函数其余坏配置都 warn，静默回默认会让用户以为配置生效了
+            # （功能测试 20260824 低 1）
+            warn(f"MCP server `{name}` 的 timeout 应是 ≥1000 的整数（毫秒），"
+                 f"收到 {timeout!r}，按默认 {DEFAULT_CALL_TIMEOUT_MS}ms 处理")
             timeout = DEFAULT_CALL_TIMEOUT_MS
         out.append(MCPServerConfig(
             name=str(name), command=command,
