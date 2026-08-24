@@ -1057,7 +1057,8 @@ def _run_tui(*, out, client, model, tools, messages, ledger, anchors, state, ste
                         # （`AgentEnd` 事件也会触发一次 poll）。followUp 删掉之后
                         # 没人兜它们了，这里就是 CC `useQueueProcessor` 那一档。
                         _process_queue_after_turn(steering, run_turn=turn,
-                                                  dispatch=queued_command)
+                                                  dispatch=queued_command,
+                                                  notify=commit)
                     except (EOFError, KeyboardInterrupt):
                         raise
                     except Exception as e:      # noqa: BLE001 - 对话留着
@@ -1149,7 +1150,8 @@ def _steering_source(queue, *, after_drain: Optional[Callable[[int], None]] = No
 
 def _process_queue_after_turn(queue, *, run_turn: Callable[[str], None],
                               dispatch: Callable[[str], bool],
-                              max_rounds: int = MAX_QUEUE_ROUNDS) -> int:
+                              max_rounds: int = MAX_QUEUE_ROUNDS,
+                              notify: Optional[Callable[[str], None]] = None) -> int:
     """本轮结束后清空队列，返回处理了几件。
 
     对应 CC 的 `useQueueProcessor`（turn 之间那一档）。两种东西两种去处：
@@ -1177,6 +1179,11 @@ def _process_queue_after_turn(queue, *, run_turn: Callable[[str], None],
             run_turn(text)
         elif dispatch(text):
             break
+    if rounds >= max_rounds and queue.has_items() and notify is not None:
+        # 18 遗留 3：撞上限时消息不丢（下一轮末继续处理），但不吭声用户
+        # 就不知道自己有几条话被推迟了——静默是真问题。没撞上限一个字不提。
+        notify(f"⏸ 排队的消息还剩 {_queue_size(queue)} 条，本轮先处理到这"
+               f"（单轮上限 {max_rounds}），下一轮结束时继续。")
     return rounds
 
 

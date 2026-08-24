@@ -134,6 +134,19 @@ def test_timeout_message_tells_the_model_what_to_do_next(monkeypatch):
     assert "read_file" in result      # 以及之后怎么把输出取回来
 
 
+def test_timeout_message_reports_exit_code(monkeypatch):
+    """dsh「正交事实独立上报」的后一半（TODO 工具调用超时节末条）：
+    命令可能 trap 了 SIGTERM 后以 0 退出、同时确实超了时——超时与退出码是
+    两个独立事实，文案里都得有，模型才分得清「被杀」与「自己退了但超时」。"""
+    from pai.core.tools import shell
+
+    monkeypatch.setattr(shell, "TIMEOUT_SECONDS", 1, raising=False)
+    result = shell.bash(command="sleep 5")
+
+    assert "超时" in result
+    assert "退出码" in result
+
+
 def test_interrupt_message_does_not_offer_the_timeout_way_out(monkeypatch):
     """中断是**用户主动喊停**，不是「跑太久」——给它出路等于劝模型绕过用户。
 

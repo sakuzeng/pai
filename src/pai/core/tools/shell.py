@@ -103,12 +103,17 @@ def _wait(proc: subprocess.Popen, seconds: int) -> Tuple[Optional[str], Optional
             # 机制，所以给的是穷人版：起到后台 + 分次读日志。
             # 这段话只挂在超时上，**不挂在中断上**——中断是用户主动喊停，
             # 给它出路等于劝模型绕过用户（test_interrupt_message_does_not_offer_the_timeout_way_out）。
-            raise _Killed(_kill_and_collect(
+            collected = _kill_and_collect(
                 proc,
                 f"(命令超时 {seconds}s，命令与其整个进程组已被终止。"
                 f"若这条命令本来就需要跑更久：拆成几段分别执行，"
                 f"或改写成 `nohup 原命令 > /tmp/out.log 2>&1 &` 起到后台，"
-                f"再用 read_file 分次查看 /tmp/out.log)"))
+                f"再用 read_file 分次查看 /tmp/out.log)")
+            # 超时与退出码是两个正交事实，独立上报（dsh 四字段拆分的
+            # pai 最小版）：命令可能 trap 了 SIGTERM 以 0 退出、同时确实
+            # 超了时——只报「杀了」模型分不清这两种情况。returncode 在
+            # _kill_and_collect 的 communicate 之后才有值，故只能在此拼接。
+            raise _Killed(f"{collected}\n(进程退出码：{proc.returncode})")
 
 
 class _Killed(Exception):
