@@ -42,17 +42,12 @@ from pai.core.events import (
     AgentEvent,
     Compacted,
     ConversationCleared,
-    MemoryWritten,
-    RecallFailed,
-    RecallInjected,
     ToolEnd,
     ToolStart,
     render_text,
 )
-from pai.core.boundary import WorkingDirs
+from pai.core import mcp
 from pai.core.interrupt import InterruptFlag, set_current
-from pai.core.gate import make_before_tool_call
-from pai.core.hooks import load_hooks
 from pai.core.loop import build_system_prompt, run_agent
 from pai.core.permissions import (
     DEFAULT_MODE,
@@ -60,10 +55,8 @@ from pai.core.permissions import (
     MODES,
     PermissionModeState,
     RuleSet,
-    load_rules,
-    visible_tools,
 )
-from pai.core.paths import sessions_dir, user_skills_dir
+from pai.core.paths import sessions_dir
 from pai.core.memory import (
     LOCAL_FILE,
     MEMORY_INDEX,
@@ -74,14 +67,13 @@ from pai.core.memory import (
     memory_dir,
 )
 from pai.core.queue import PendingMessageQueue
-from pai.core.recall import RecallState, make_recall
 from pai.core.session import SessionLog
-from pai.core.skills import (apply_project_trust, make_instructions, read_skill_body,
-                             render_catalog, scan_skills, user_skill_link_roots)
+from pai.core.skills import read_skill_body
 from pai.core.trace import EventTrace, compose
 from pai.core.settings import alt_screen_enabled, load_settings, mouse_enabled
-from pai.core.tools import Tool, ask, get_tools, memory_tool
+from pai.core.tools import Tool, ask, get_tools
 from pai.core.tools import skill as skill_tool
+from pai.modes.assembly import assemble
 from pai.modes.echo import make_stream_echo
 from pai.modes.statusline import StatusLinePrinter
 from pai.tui.app import (
@@ -383,60 +375,23 @@ def run_interactive(
     # 装配期只放一个**可变持有者**：TUI 起来后要把它换成对话框通道。
     asker_ref = AskerRef(_make_asker(reader, out, asker_state))
     ask.set_asker(asker_ref)
-    # 权限（feature 07）。REPL 有真人，所以 ask 走真人通道而不是降级为 deny（拍板问 1）。
-    rules = rules if rules is not None else load_rules(warn=out)
-    hooks = load_hooks(warn=out)
-    tools = visible_tools(tools, rules)            # 裸名 deny 的工具压根不摆给模型
     # 模式必须是**可变持有者**：传字符串会被烤进 gate 的闭包，`/mode` 与 shift+tab
     # 就永远改不动了（feature 12 T5 动工前撞见的结构问题）。
     mode_state = PermissionModeState(mode or DEFAULT_MODE)
-    # skills（feature 25）：装配期扫一次；模型没有任何可调的 skill（一个没有，
-    # 或全被 disable-model-invocation）时把工具收走（同 once，25 复核低 3）——
-    # /skill 用户通道不受影响，它走 get_catalog 不走工具集。
-    # 用户级 skills 根进边界，否则用户级 skill 的附属文件被界外 ask 拦住。
-    # 信任门禁（feature 28 问 2·B）：首遇未信任的项目级 skills 走真人确认，
-    # 选「信任」持久化到项目身份目录；其余回答按拒绝处理、下次再问。
-    # 此刻还在装配期、TUI 未起，asker_ref 里是 reader 版真人通道，可用。
-    skills = apply_project_trust(scan_skills(warn=out), ask=asker_ref, warn=out)
-    loaded_skills = skill_tool.LoadedSkills()
-    skill_tool.set_catalog({s.name: s for s in skills} if skills else None)
-    skill_tool.set_tracker(loaded_skills)
-    if not any(s.model_invocable for s in skills):
-        tools = {n: t for n, t in tools.items() if n != "skill"}
-    # MCP（feature 29）：配置 → 信任门禁（装配期 asker 问真人）→ 连接 → 并表；
-    # 并表后再过一次 visible_tools 让 deny 裸名规则对 MCP 工具生效。
-    # 关闭挂 atexit 而非 try/finally：REPL/TUI 有多个退出口（return/break/raise），
-    # 大缩进包住 400 行不值；close 幂等、进程生命周期 = 会话生命周期。
-    import atexit
-
-    from pai.core.mcp import close_all_mcp, connect_configured_servers
-    mcp_sessions, mcp_tools = connect_configured_servers(ask=asker_ref, warn=out)
-    for mcp_tool in mcp_tools:
-        tools.setdefault(mcp_tool.name, mcp_tool)
-    tools = visible_tools(tools, rules)
-    atexit.register(close_all_mcp, mcp_sessions)
-    skills_catalog = render_catalog(skills)
-    instructions = make_instructions(build_context, loaded_skills,
-                                     {s.name: s for s in skills})
-    # 软链用户级 skill 的真身根一并进边界（feature 28 问 3·A；项目级刻意不解析）
-    working_dirs = WorkingDirs.from_startup(
-        None, additional=((str(user_skills_dir()),) + user_skill_link_roots(skills))
-        if skills else ())
-    gate = make_before_tool_call(
-        rules, hooks=hooks, tools=tools, asker=asker_ref, warn=out, mode=mode_state,
-        working_dirs=working_dirs)
-    directory = memory_dir()
-    memory_tool.set_memory_dir(directory)
-    memory_tool.set_notifier(
-        lambda topic, path: on_event(MemoryWritten(topic=topic, path=str(path))))
-    memory_tool.set_origin_session(session.session_id if session is not None else None)
-    # 召回状态**跨轮持有**（同 anchors / state）：REPL 每轮调一次 run_agent，
-    # 状态不由这一层拿着，去重与失败熔断都会每轮清零。
-    recall = make_recall(client=client, model=recall_model_name,
-                         directory=directory, state=RecallState(),
-                         on_failure=lambda f: on_event(RecallFailed(
-                             reason=f.reason, detail=f.detail, disabled=f.disabled)),
-                         on_selected=lambda names: on_event(RecallInjected(names=names)))
+    # 共用装配（feature 31，序列住 modes/assembly.py，与 once 一份实现）。
+    # REPL 有真人：权限 ask 与 skills/MCP 信任门禁都走 asker_ref——此刻还在
+    # 装配期、TUI 未起，asker_ref 里是 reader 版真人通道，可用。
+    # 召回状态在 assemble 里创建后跨轮持有（同 anchors / state）：REPL 每轮
+    # 调一次 run_agent，去重与失败熔断不能每轮清零。
+    # MCP 关闭不再挂 atexit：装配收敛后本函数有了单出口，走下方 finally
+    # 确定性关闭（29 遗留 7 的解除条件由本次重构兑现）。
+    asm = assemble(client=client, tools=tools, warn=out, on_event=on_event,
+                   session=session, recall_model=recall_model_name,
+                   mode=mode_state, asker=asker_ref, rules=rules)
+    rules, hooks, tools = asm.rules, asm.hooks, asm.tools
+    gate, recall = asm.gate, asm.recall
+    skills_catalog, instructions = asm.skills_catalog, asm.instructions
+    mcp_sessions = asm.mcp_sessions
 
     common = dict(
         client=client, model=model, tools=tools, messages=messages, ledger=ledger,
@@ -448,98 +403,104 @@ def run_interactive(
         history=history, asker_state=asker_state, asker_ref=asker_ref, trace=trace,
         skills_catalog=skills_catalog, instructions=instructions,
     )
-    if _use_tui(reader):
-        _run_tui(out=out, **common)
-        return
+    try:
+        if _use_tui(reader):
+            _run_tui(out=out, **common)
+            return
 
-    if _is_real_terminal_input(reader):
-        _read_history_into_readline(history)
+        if _is_real_terminal_input(reader):
+            _read_history_into_readline(history)
 
-    out("pai 交互模式。/help 看命令，Ctrl+D 退出。")
-    pending_exit = False
-    while True:
-        try:
-            line = _read_line(reader)
-        except EOFError:
-            break
-        except KeyboardInterrupt:
-            # 空闲时的两级 Ctrl+C（官方语义）：第一次清输入，第二次退出
-            if pending_exit:
-                break
-            pending_exit = True
-            out("(输入已清空，再按一次 Ctrl+C 退出)")
-            continue
+        out("pai 交互模式。/help 看命令，Ctrl+D 退出。")
         pending_exit = False
-
-        line = line.strip()
-        if not line:
-            continue
-
-        if line.startswith("/"):
-            if line.split()[0] == "/skill":
-                expanded = _expand_skill_line(line, out)
-                if expanded is not None:
-                    _append_history(history, line)      # 历史记原命令，不记展开的大块
-                    with _interruptible(flag):
-                        try:
-                            _run_turn(expanded, client=client, model=model, tools=tools,
-                                      messages=messages, ledger=ledger, anchors=anchors,
-                                      state=state, steering=steering, flag=flag,
-                                      session=session, on_event=on_event, out=out,
-                                      max_steps=max_steps,
-                                      max_total_tokens=max_total_tokens,
-                                      context_window=context_window,
-                                      compaction=compaction, before_tool_call=gate,
-                                      recall=recall, skills_catalog=skills_catalog,
-                                      instructions=instructions)
-                        except KeyboardInterrupt:
-                            out("⛔ 已中断")
-                continue
-            if _handle_command(line, out=out, messages=messages, anchors=anchors,
-                               state=state, tools=tools, client=client, model=model,
-                               compaction=compaction, context_window=context_window,
-                               rules=rules, hooks=hooks, mode_state=mode_state,
-                               on_event=on_event, session=session, ledger=ledger):
+        while True:
+            try:
+                line = _read_line(reader)
+            except EOFError:
                 break
-            continue
+            except KeyboardInterrupt:
+                # 空闲时的两级 Ctrl+C（官方语义）：第一次清输入，第二次退出
+                if pending_exit:
+                    break
+                pending_exit = True
+                out("(输入已清空，再按一次 Ctrl+C 退出)")
+                continue
+            pending_exit = False
 
-        _append_history(history, line)
+            line = line.strip()
+            if not line:
+                continue
 
-        if line.startswith("!"):
-            # 也要进可中断作用域：Ctrl+C 打断 `!sleep 300` 时让 bash 看见标志、
-            # 自己杀掉进程组并回填结果，而不是抛 KeyboardInterrupt 掀掉整个 REPL
-            with _interruptible(flag):
-                try:
-                    _run_shell(line[1:].strip(), messages=messages,
-                               session=session, out=out,
-                               system_prompt=build_system_prompt(
-                                   tools, skills_catalog=skills_catalog),
-                               ledger=ledger)
-                except KeyboardInterrupt:
-                    # 信号可能落在装处理器之前/之后的缝隙里（或非主线程装不上），
-                    # 这是最后一道：宁可少收一条输出，也不能让 REPL 死掉
-                    out("⛔ 已中断")
-            continue
+            if line.startswith("/"):
+                if line.split()[0] == "/skill":
+                    expanded = _expand_skill_line(line, out)
+                    if expanded is not None:
+                        _append_history(history, line)      # 历史记原命令，不记展开的大块
+                        with _interruptible(flag):
+                            try:
+                                _run_turn(expanded, client=client, model=model, tools=tools,
+                                          messages=messages, ledger=ledger, anchors=anchors,
+                                          state=state, steering=steering, flag=flag,
+                                          session=session, on_event=on_event, out=out,
+                                          max_steps=max_steps,
+                                          max_total_tokens=max_total_tokens,
+                                          context_window=context_window,
+                                          compaction=compaction, before_tool_call=gate,
+                                          recall=recall, skills_catalog=skills_catalog,
+                                          instructions=instructions)
+                            except KeyboardInterrupt:
+                                out("⛔ 已中断")
+                    continue
+                if _handle_command(line, out=out, messages=messages, anchors=anchors,
+                                   state=state, tools=tools, client=client, model=model,
+                                   compaction=compaction, context_window=context_window,
+                                   rules=rules, hooks=hooks, mode_state=mode_state,
+                                   on_event=on_event, session=session, ledger=ledger):
+                    break
+                continue
 
-        try:
-            _run_turn(line, client=client, model=model, tools=tools, messages=messages,
-                      ledger=ledger,
-                      anchors=anchors, state=state, steering=steering, flag=flag,
-                      session=session, on_event=on_event, out=out, max_steps=max_steps,
-                      max_total_tokens=max_total_tokens, context_window=context_window,
-                      compaction=compaction, before_tool_call=gate, recall=recall,
-                      skills_catalog=skills_catalog, instructions=instructions)
-        except (EOFError, KeyboardInterrupt):
-            raise                       # Ctrl+D / Ctrl+C 是正常控制流，不吞
-        except Exception as e:          # noqa: BLE001 - REPL 这一层的价值就是「对话留着」
-            # 06 遗留「同类问题第三次」：401 炸会话、Ctrl+C 打断 `!命令` 炸会话，
-            # 两次都是「某条路径漏了保护」。兜在这里，让「哪条路径漏了」不再需要逐条排查。
-            out(f"❌ 本轮出错：{type(e).__name__}: {e}\n（对话已保留，可以直接重试）")
+            _append_history(history, line)
 
-        if asker_state["exit"]:      # 用户在模型提问时选了 /exit——本轮收尾后再退
-            break
+            if line.startswith("!"):
+                # 也要进可中断作用域：Ctrl+C 打断 `!sleep 300` 时让 bash 看见标志、
+                # 自己杀掉进程组并回填结果，而不是抛 KeyboardInterrupt 掀掉整个 REPL
+                with _interruptible(flag):
+                    try:
+                        _run_shell(line[1:].strip(), messages=messages,
+                                   session=session, out=out,
+                                   system_prompt=build_system_prompt(
+                                       tools, skills_catalog=skills_catalog),
+                                   ledger=ledger)
+                    except KeyboardInterrupt:
+                        # 信号可能落在装处理器之前/之后的缝隙里（或非主线程装不上），
+                        # 这是最后一道：宁可少收一条输出，也不能让 REPL 死掉
+                        out("⛔ 已中断")
+                continue
 
-    out("再见。")
+            try:
+                _run_turn(line, client=client, model=model, tools=tools, messages=messages,
+                          ledger=ledger,
+                          anchors=anchors, state=state, steering=steering, flag=flag,
+                          session=session, on_event=on_event, out=out, max_steps=max_steps,
+                          max_total_tokens=max_total_tokens, context_window=context_window,
+                          compaction=compaction, before_tool_call=gate, recall=recall,
+                          skills_catalog=skills_catalog, instructions=instructions)
+            except (EOFError, KeyboardInterrupt):
+                raise                       # Ctrl+D / Ctrl+C 是正常控制流，不吞
+            except Exception as e:          # noqa: BLE001 - REPL 这一层的价值就是「对话留着」
+                # 06 遗留「同类问题第三次」：401 炸会话、Ctrl+C 打断 `!命令` 炸会话，
+                # 两次都是「某条路径漏了保护」。兜在这里，让「哪条路径漏了」不再需要逐条排查。
+                out(f"❌ 本轮出错：{type(e).__name__}: {e}\n（对话已保留，可以直接重试）")
+
+            if asker_state["exit"]:      # 用户在模型提问时选了 /exit——本轮收尾后再退
+                break
+
+        out("再见。")
+    finally:
+        # 单出口确定性关闭（feature 31 / 29 遗留 7）：正常退出、EOF、异常
+        # 上抛三条路都走这里；close 幂等，TUI 路径 return 也被 finally 覆盖。
+        # 走 mcp. 模块属性：调用点解析，测试打得了桩（test_assembly.py）。
+        mcp.close_all_mcp(mcp_sessions)
 
 
 @contextlib.contextmanager

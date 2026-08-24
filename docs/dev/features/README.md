@@ -84,6 +84,7 @@
 
 | 功能 | 状态 | 一句话结果 |
 |---|---|---|
+| [31-20260824-assembly-convergence](31-20260824-assembly-convergence/README.md) | 已交付 | 装配收敛（refactor，需求池拍板 A）：once/interactive 各自手抄的装配序列（25/28/29 三轮同步增补的重复面）合一进 `modes/assembly.py`，两模式只注入差异点；MCP 关闭 atexit→单出口 finally（29 遗留 7 销账，2 条新测试修前红）。行为逐字不变：既有测试零改动全绿 + 功能测试 28 冒烟场景复跑全过，1353 passed |
 | [29-20260823-mcp-client](29-20260823-mcp-client/README.md) | 已交付 | 阶段 6 后半程 MCP client（阶段 6 全部完成）：手写 stdio JSON-RPC（Tools only，不引 SDK——dsh D4 教训）、`mcp__<server>__<tool>` 桥接（清洗/截断/预算，D#74）、settings 两层配置 + 28 式信任门禁、权限零引擎改动（默认 ask + `mcp__s__*` 白拿，补掉 dsh 的空头期权缺口）。前置精读四篇 + 两轮反向对照（真探针三场景 + 真 DeepSeek 一跑即成），31 单测 + pty e2e，1339 passed |
 | [28-20260823-skills-trust-and-write-guard](28-20260823-skills-trust-and-write-guard/README.md) | 已交付 | skills 持久化位点与信任门槛三合一（25 复核中 2 条 + 25 遗留 1）：`.pai/skills` 段进危险写名单（写 skills 永远 ask，acceptEdits/bypass 翻不过）；项目级 skills CC 式信任门禁（interactive 真人确认持久化到项目身份目录、once 未信任不加载+warn，pty e2e 钉对话框全链）；用户级软链真身进边界、项目级刻意不解（恶意软链任意读洞）。注入反证两处各红各的 |
 | [27-20260823-skill-boundary-exempt](27-20260823-skill-boundary-exempt/README.md) | 已交付 | 修 25 复核高 2（子目录启动 skill 被边界拦）：CC 反编译走读证实「读 SKILL.md 路径」建模是三家孤例（CC 的 SkillTool 无 getPath、dsh 门在 isModelInvocable），skill 工具退出路径边界改走 `Tool.boundary_exempt` 显式豁免位（D#73，只作用兜底、deny/ask 规则在前），「未知名回 cwd」绕法连带删除；软链正文顺带修好，子目录场景进回归测试 |

@@ -1,6 +1,11 @@
 # 当前状态快照
 
-最后更新：2026-08-23（夜：feature 29 交付——阶段 6 后半程 MCP client，阶段 6
+最后更新：2026-08-24（feature 31 交付——装配收敛：once/interactive 的装配
+序列合一进 `modes/assembly.py`，MCP 关闭 atexit→单出口 finally（29 遗留 7）；
+同日独立功能测试 28 冒烟场景全过、三条低级发现 !小修 清零——mcp timeout
+静默回默认加 warn、纯中文工具名挂 hash 防撞名、07 档案状态行补翻。档案
+[features/31](features/31-20260824-assembly-convergence/README.md)）。
+更早（2026-08-23 夜）：feature 29 交付——阶段 6 后半程 MCP client，阶段 6
 全部完成：`core/mcp.py` 手写 stdio JSON-RPC（Tools only，四问拍板全 A）→
 `mcp__<server>__<tool>` 桥接（清洗/截断/预算，D#74 schema 同源显式破例）→
 settings `mcpServers` 两层配置 + 28 式信任门禁 → 权限零引擎改动（默认 ask 落
@@ -92,7 +97,8 @@ MCP client（手写 stdio JSON-RPC、`mcp__<server>__<tool>` 桥接、settings �
 | `core/loop.py` | 可用 | agent loop：依赖注入、max_steps 兜底、每条消息落盘、usage 落盘、用量预算熔断、自动压缩触发/熔断；主循环走流式（侧查询刻意不走）、工具按批调度、权限按批前置（D#59） |
 | `core/tools/` | 可用 | `@tool` 从签名生成 schema；bash / read_file / write_file / edit_file |
 | `core/compaction.py` | 可用 | 见下——阶段 1 主线（触发→切→摘→重建→熔断）全部接进 loop |
-| `modes/once.py` | 可用 | 单次任务，跑完即退出（对应 pi 的 print-mode）。client/model 可注入故可离线测；`context_window()` + `CompactionSettings()` 默认透传 |
+| `modes/once.py` | 可用 | 单次任务，跑完即退出（对应 pi 的 print-mode）。client/model 可注入故可离线测；`context_window()` + `CompactionSettings()` 默认透传；装配走 `modes/assembly.py` |
+| `modes/assembly.py` | 可用 | 共用装配序列（feature 31）：rules/hooks → skills 信任 → MCP 信任与并表 → boundary → gate → memory → recall 一份实现，once/interactive 只注入差异点（asker / 权限模式 / 事件通道）；不 import loop 内部，MCP 关闭归各模式单出口 finally |
 | `viz/` | 可用 | `pai-viz` 本地网页：运行时流转可视化（feature 17）——结构图（工具自省上图、阶段状态解析本表、每处标代码位置可点击跳编辑器）+ 回合时间线（读会话 JSONL 与并排的 `.events.jsonl`，分组配对成回合，2s 游标轮询实时点亮）。页面纯观察，无对话输入 |
 | `core/trace.py` | 可用 | 观测流落盘：`EventTrace` 当 `on_event` 用，事件（类型数以 `core/events.py` 的 `AgentEvent` Union 为准，勿在文档里抄数）追加进 `<会话同名>.events.jsonl`（`MessageDelta` 刻意不落）；写失败吞掉且只告警一次——观测流挂了不连累正事。`compose()` 扇出渲染器与落盘器 |
 | `cli.py` / `config.py` | 可用 | cli 只做参数解析与分发；OpenAI 兼容协议打 DeepSeek；`context_window()` 读 `PAI_CONTEXT_WINDOW`，默认 1_000_000（v4-flash） |
@@ -170,7 +176,7 @@ MCP client（手写 stdio JSON-RPC、`mcp__<server>__<tool>` 桥接、settings �
 + feature 13 alt-screen task 1-7 + feature 16 鼠标与选区 task 1-9
 + feature 17 viz-flow task 1-3.5（事件落盘 + RecallInjected/ConversationCleared + 装配））：
 
-- `./test.sh` → 1351 passed, 3 deselected，全部离线，约 2.5 分钟。这是默认路径。
+- `./test.sh` → 1353 passed, 3 deselected，全部离线，约 2.5 分钟。这是默认路径。
   可选并行 `./test.sh -n auto`（xdist）：实测 2:07 全绿，10 核仅 1.35× 且
   挂死旧账观察期未过，默认仍串行（feature 30 问 3·A，观察期记录见 TODO）。
   R4#26 已修（2026-08-22）：Pillow 进 dev 依赖并已装，此前常驻的那条 skip 归零；
