@@ -260,9 +260,14 @@ feature 12 又撞出六条，其中一条改写了一条已登记遗留的定性
 ## 阶段 7 · evals
 
 - 目标：真实会话轨迹回放评测 + 跑批（evals/ 目录已预留）。
-- 参照：pi `packages/evals/`（vitest-evals 驱动）；面试准备 `07_评测与可观测性`（外部参照）。
+- 参照：pi `packages/evals/`（vitest-evals 驱动，打真模型的行为评测）；
+  dsh `docs/testing.zh.md` + `packages/test-support/llm-replay`（分层车道 +
+  会话 JSONL 回放，D#69 补记 2026-08-24——两家正好各占「跑批」与「回放」半边）；
+  面试准备 `07_评测与可观测性`（外部参照）。
 - 前置精读：
-  - [ ] 届时定（评测无单一官方章节，以面试准备专题为索引）。
+  - [x] pi `packages/evals/` 源码走读 → K [evals/pi-evals.md](../../knowledge/evals/pi-evals.md)（2026-08-24）
+  - [x] dsh testing 文档 + llm-replay（含源码对照：五车道/契约回归测试实存）→
+        K [evals/dsh-testing.md](../../knowledge/evals/dsh-testing.md)（2026-08-24）
   - [ ] 反向对照：拿 N 个真实场景跑一遍，把与文档/源码不符的地方记进 evidence
 - 流程：superpowers 全链路。
 

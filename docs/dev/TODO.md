@@ -451,7 +451,11 @@
 
 ### 第三参照源 deepseek-harness 接进流程 —— 2026-08-13（D#69 衍生）
 
-- [ ] roadmap 剩余阶段的「参照」栏与「前置精读」清单补 dsh 条目（出处：D#69）。
+- [x] roadmap 剩余阶段的「参照」栏与「前置精读」清单补 dsh 条目（出处：D#69）。
+      全部补齐：skills 半段 2026-08-22（见下）；mcp_client 半段 2026-08-23
+      （feature 29 动工日，「dsh api-gateway」线索实测是空的、已按实况改正）；
+      evals 半段 2026-08-24（阶段 7 动工日：参照栏补 dsh testing + llm-replay，
+      前置精读两篇落 K evals/，原文如下）。
       至少三处对得上：~~阶段 6 skills → dsh `docs/capability-seams.zh.md` 与 `tool-catalog.zh.md`~~
       已补 2026-08-22（feature 25 动工日：参照栏三家全补，笔记
       K skills/dsh-skills.md，另发现 R4#A4 引的 "skills.zh.md" 实际路径是
