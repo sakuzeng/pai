@@ -149,6 +149,18 @@ _DANGEROUS_HOME_DIRS = (".ssh",)
 _DANGEROUS_ANYWHERE = (os.path.join(".git", "hooks"), os.path.join(".pai", "skills"))
 
 
+def dangerous_writes_description() -> list:
+    """危险写清单的人话版（feature 33，09 遗留 3）：清单硬编码且此前完全
+    不可见，用户撞上才知道——至少 `/permissions` 该列出来。逐条与
+    `is_dangerous_write` 的判定同源（改判定记得改这里，有测试互钉）。"""
+    return [
+        f"~/ 下的 shell 配置文件：{'、'.join(_DANGEROUS_HOME_FILES)}",
+        f"~/ 下整个目录：{'、'.join(_DANGEROUS_HOME_DIRS)}",
+        f"任意位置含此路径段：{'、'.join(_DANGEROUS_ANYWHERE)}",
+        "pai 自己的设置：任意 .pai/settings.json（否则改自己权限就是提权路径）",
+    ]
+
+
 def is_dangerous_write(path: str, home: Optional[str] = None) -> bool:
     """这个路径是不是「写进去就等于拿到后续执行权」的持久化位点。
 

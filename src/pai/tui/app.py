@@ -243,6 +243,11 @@ class TuiApp:
             return [(CYCLE_MODE, None)]
         if name == "mouse":
             return self._mouse(key.mouse)
+        if name == "paste_recovered":
+            # 粘贴自愈的可见性（feature 33，19 遗留 2）：`201~` 丢失后按静默
+            # 判据恢复，内容可能只有半截——不吭声等于把「可能截断」伪装成成功
+            self.dock.set_notice("⚠ 粘贴结束符丢失，已按收到的内容恢复——请检查粘贴是否完整")
+            return []
         if name in _SCROLL_KEYS:
             # **只在 alt 屏下管用**：main-screen 下滚动归终端，pai 假装自己能滚
             # 只会让「屏幕没反应」变成「屏幕乱跳」。
@@ -313,13 +318,16 @@ class TuiApp:
         height = len(self.editor.render(self._width()))
         line = event.row - top
         inside = 0 <= line < height
-        col = event.col - self.editor.prompt_width()
+        # 列不在这里减前缀：折行后前缀宽按目标行所属逻辑行取（首行 prompt、
+        # 续行 continuation），由 point_at_display 自己按行减（feature 33，
+        # 21 遗留 1——旧的 point_at 把显示行当逻辑行换算，点第二段定位错）
+        col = event.col
         if event.kind == "press":
             if not inside:
                 return False
             self._finish_drag()
             self._grab = "input"                    # 这次手势归输入框
-            index = self.editor.point_at(line, col)
+            index = self.editor.point_at_display(line, col, self._width())
             self.editor.cursor = index
             self.editor.start_selection(index)      # 只记锚点；裸点击不选中任何东西
             return True
@@ -330,7 +338,8 @@ class TuiApp:
         if event.kind == "drag":
             self._drag_at = self._now()
             self.editor.extend_selection(
-                self.editor.point_at(max(0, min(height - 1, line)), col))
+                self.editor.point_at_display(
+                    max(0, min(height - 1, line)), col, self._width()))
             return True
         if event.kind == "release":
             self._finish_drag()

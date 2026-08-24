@@ -1,6 +1,12 @@
 # 当前状态快照
 
-最后更新：2026-08-24（夜：feature 32 交付——阶段 7 evals 第一梯队（方案 C），
+最后更新：2026-08-24（深夜：feature 33 交付——usability-hardening，用户指示
+「不加新功能、已有功能健全到能让人使用」：九个修复面（折行点击定位、↑↓
+显示行移动、粘贴自愈提示、/permissions 说全真话、once defaultMode 告警、
+MCP 非对象 schema 拦截、超高 dock 钳制、additionalDirectories 首次接线）+
+README 全面重写。档案
+[features/33](features/33-20260824-usability-hardening/README.md)）。
+更早（夜）：feature 32 交付——阶段 7 evals 第一梯队（方案 C），
 roadmap 阶段 1-7 至此全部有交付：`./eval.sh` 独立评测入口 + runs.jsonl 工件
 索引；回放纵切（真 API 铸造 v1 轨迹入库 → `derive_replay` 派生 fake_provider
 脚本 → 真 pai 子进程重放 → 外部世界断言）+ 真模型冒烟纵切（--llm 双门槛）。
@@ -185,7 +191,7 @@ MCP client（手写 stdio JSON-RPC、`mcp__<server>__<tool>` 桥接、settings �
 + feature 13 alt-screen task 1-7 + feature 16 鼠标与选区 task 1-9
 + feature 17 viz-flow task 1-3.5（事件落盘 + RecallInjected/ConversationCleared + 装配））：
 
-- `./test.sh` → 1377 passed, 3 deselected，全部离线，约 2.5 分钟。这是默认路径。
+- `./test.sh` → 1395 passed, 3 deselected，全部离线，约 2.5 分钟。这是默认路径。
 - `./eval.sh` → 评测另一条入口（feature 32，不进上面的收集范围）：默认无密钥
   回放评测；`--llm` 追加真模型评测。工件落 `evals/.eval/<时间戳>/`。
   可选并行 `./test.sh -n auto`（xdist）：实测 2:07 全绿，10 核仅 1.35× 且

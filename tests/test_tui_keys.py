@@ -223,7 +223,9 @@ def test_a_lost_paste_end_does_not_kill_the_keyboard():
 
     clock.advance(2.0)                     # 键盘静默够久，201~ 显然不会来了
     recovered = d.flush()
-    assert [k.name for k in recovered] == ["paste"]
+    # feature 33（19 遗留 2）：自愈不再静默——内容可能只有半截，跟一个
+    # `paste_recovered` 信号，上层据此给用户一行提示
+    assert [k.name for k in recovered] == ["paste", "paste_recovered"]
     assert recovered[0].text == "粘了一半x"
 
     # 复位之后键盘要活过来

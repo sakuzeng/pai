@@ -8,7 +8,7 @@ import pytest
 from pai.modes.statusline import display_width
 from pai.tui.component import CURSOR_MARKER
 from pai.tui.editor import LineEditor
-from pai.tui.keys import KeyDecoder
+from pai.tui.keys import Key, KeyDecoder
 
 
 def press(editor, data):
@@ -261,3 +261,53 @@ def test_selection_highlight_is_balanced_on_every_wrapped_row():
     assert any(REVERSE in ln for ln in lines)
     for ln in lines:
         assert ln.count(REVERSE) == ln.count(UNREVERSE), f"这行反显不配平：{ln!r}"
+
+
+# ---------------------------------------------------------------- 折行行上的 ↑/↓（21 遗留 2）
+
+def _rendered(editor, width):
+    """↑/↓ 的显示行语义依赖最近一次 render 的宽度（TUI 每帧先画后收键）。"""
+    editor.render(width)
+    return editor
+
+
+def test_up_moves_within_wrapped_line_before_history():
+    """CC 同款语义：光标不在首个显示行时 ↑ 是移动光标，不是翻历史——
+    此前「想上移光标却换出历史」是折行交付最容易撞的缺陷。"""
+    editor = LineEditor(prompt="> ", history=["旧命令"])
+    editor.set_text("abcdefghij")               # width=7 → abcde / fghij 两个显示行
+    _rendered(editor, 7)
+    assert editor.cursor == 10                  # set_text 落在末尾（第二显示行）
+    editor.handle(Key("up"))
+    assert editor.text == "abcdefghij", "不该翻出历史"
+    # 目标位置本是段末（下标 5），但那个位置在视觉上属于下一显示行
+    # （render 插标规则），收在段末前一字符——光标必须真的落在目标行上
+    assert editor.cursor == 4
+
+
+def test_up_at_first_display_row_still_reaches_history():
+    editor = LineEditor(prompt="> ", history=["旧命令"])
+    editor.set_text("abcdefghij")
+    _rendered(editor, 7)
+    editor.cursor = 2                           # 第一显示行
+    editor.handle(Key("up"))
+    assert editor.text == "旧命令"
+
+
+def test_down_moves_between_display_rows_then_does_nothing():
+    editor = LineEditor(prompt="> ")
+    editor.set_text("abcdefghij")
+    _rendered(editor, 7)
+    editor.cursor = 1                           # 第一显示行第 1 列
+    editor.handle(Key("down"))
+    assert editor.cursor == 6                   # 第二显示行同视觉列
+    editor.handle(Key("down"))
+    assert editor.cursor == 6, "已在末行且不在翻历史：↓ 无事发生（既有语义）"
+
+
+def test_vertical_movement_without_render_falls_back_to_history():
+    """没渲染过（纯 REPL 注入路径）不知道宽度，↑ 维持翻历史的旧行为。"""
+    editor = LineEditor(history=["旧命令"])
+    editor.set_text("abcdefghij")
+    editor.handle(Key("up"))
+    assert editor.text == "旧命令"

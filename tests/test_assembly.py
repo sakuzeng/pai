@@ -85,3 +85,28 @@ def test_assemble_applies_bash_timeout_from_settings(monkeypatch, tmp_path):
              on_event=lambda _e: None, session=None, recall_model="fake",
              mode="dontAsk", rules=_OPEN)
     assert shell.default_timeout_seconds() == shell.TIMEOUT_SECONDS
+
+
+def test_assemble_wires_additional_directories_into_boundary(monkeypatch, tmp_path):
+    """feature 33（H9）：settings 的 permissions.additionalDirectories 落到
+    WorkingDirs——此前只存在于文档里，配了静默不生效。"""
+    import json
+
+    from pai.core import mcp as mcp_mod
+    from pai.core.tools import get_tools
+    from pai.modes.assembly import assemble
+
+    monkeypatch.setattr(mcp_mod, "connect_configured_servers",
+                        lambda **_kw: ([], [], []))
+    extra = tmp_path / "extra-root"
+    extra.mkdir()
+    p = Path.home() / ".pai" / "settings.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(
+        {"permissions": {"additionalDirectories": [str(extra)]}}),
+        encoding="utf-8")
+
+    asm = assemble(client=FakeClient([]), tools=get_tools(), warn=lambda _m: None,
+                   on_event=lambda _e: None, session=None, recall_model="fake",
+                   mode="dontAsk", rules=_OPEN)
+    assert str(extra) in asm.working_dirs.additional

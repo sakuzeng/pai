@@ -629,3 +629,23 @@ def test_once_config_timeout_reaches_call(tmp_path, monkeypatch):
     tool_msgs = [m for m in client.requests[-1]["messages"] if m.get("role") == "tool"]
     assert tool_msgs and tool_msgs[0]["content"].startswith("错误：")
     assert "超时" in tool_msgs[0]["content"]
+
+
+def test_bridge_skips_non_object_root_schema_with_warn():
+    """feature 33（29 复核 R6）：根级非对象 inputSchema 原样透传会直达 API
+    被拒（400 落在调用时，离配错的 server 十万八千里）。挡在桥接层：
+    warn + 跳过该工具，别的工具照常。缺 inputSchema（None）仍走兜底空对象。"""
+    stub = _StubSession([
+        {"name": "bad_string", "description": "根是 string",
+         "inputSchema": {"type": "string"}},
+        {"name": "bad_shape", "description": "根不是 dict", "inputSchema": "nope"},
+        {"name": "good", "description": "正常", "inputSchema": {"type": "object"}},
+        {"name": "no_schema", "description": "没给 schema"},
+    ])
+    warnings: list[str] = []
+    tools = bridge_tools(stub, warn=warnings.append)
+    names = [t.name for t in tools]
+    assert names == ["mcp__stub__good", "mcp__stub__no_schema"]
+    assert len(warnings) == 2
+    assert any("bad_string" in w for w in warnings)
+    assert any("bad_shape" in w for w in warnings)

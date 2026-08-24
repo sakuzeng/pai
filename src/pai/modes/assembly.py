@@ -30,7 +30,8 @@ from pai.core.recall import RecallState, make_recall
 from pai.core.skills import (LoadedSkills, Skill, apply_project_trust,
                              make_instructions, render_catalog, scan_skills,
                              user_skill_link_roots)
-from pai.core.settings import bash_timeout_seconds, load_settings
+from pai.core.settings import (additional_directories, bash_timeout_seconds,
+                               load_settings)
 from pai.core.tools import memory_tool
 from pai.core.tools import shell
 from pai.core.tools import skill as skill_tool
@@ -70,8 +71,10 @@ def assemble(*, client, tools: Dict[str, object], warn: Callable[[str], None],
     hooks = load_hooks(warn=warn)
     # bash 默认超时可配置（settings `bash.timeoutSeconds`）。未配置传 None
     # 显式清空——上一个装配的残留不许漂给下一个。
-    shell.set_default_timeout(bash_timeout_seconds(load_settings(warn=warn),
-                                                   warn=warn))
+    merged_settings = load_settings(warn=warn)
+    shell.set_default_timeout(bash_timeout_seconds(merged_settings, warn=warn))
+    # 边界的额外允许根（feature 33 H9：文档声称已久、实际首次接线）
+    extra_dirs = additional_directories(merged_settings, warn=warn)
     tools = visible_tools(tools, rules)      # 裸名 deny 的工具压根不摆给模型
     # skills（feature 25/28）：装配期扫一次；项目级过信任门禁；模型没有任何
     # 可调的 skill（一个没有，或全被 disable-model-invocation）时把工具收走
@@ -105,8 +108,9 @@ def assemble(*, client, tools: Dict[str, object], warn: Callable[[str], None],
     # 「界外 ask」拦住（once 下直接 deny）。软链真身根一并进（28 问 3·A，
     # dotfiles 受信；项目级刻意不解析）。代价如实声明：这些目录从此免问读。
     working_dirs = WorkingDirs.from_startup(
-        None, additional=((str(user_skills_dir()),) + user_skill_link_roots(skills))
-        if skills else ())
+        None, additional=extra_dirs
+        + (((str(user_skills_dir()),) + user_skill_link_roots(skills))
+           if skills else ()))
     gate = make_before_tool_call(rules, hooks=hooks, tools=tools, asker=asker,
                                  warn=warn, working_dirs=working_dirs, mode=mode)
     # 记忆（阶段 3 + feature 10）：目录/通知/会话回指都走注入点。

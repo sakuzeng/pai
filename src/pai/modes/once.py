@@ -53,6 +53,14 @@ def run_once(
         client=client, tools=get_tools(), warn=print, on_event=on_event,
         session=session, recall_model=model or recall_model(),
         mode=mode if mode is not None else DONT_ASK, asker=None, rules=rules)
+    # feature 33（09 遗留 2）：settings 配了 defaultMode 而 once 用不上时说一声
+    # ——行为不变（无人可问只能 dontAsk），但静默会让用户以为配置生效了。
+    if mode is None and asm.rules.mode_source is not None \
+            and asm.rules.mode != DONT_ASK:
+        print(f"⚠️ settings 配置的 defaultMode `{asm.rules.mode}`"
+              f"（{asm.rules.mode_source}）在单次模式下未采用：无人可问，"
+              "本次按 dontAsk 执行（需确认的调用一律拒绝）。"
+              "要放开：进交互模式，或显式传 --permission-mode。")
     try:
         return run_agent(
             task,

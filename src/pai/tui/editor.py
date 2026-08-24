@@ -61,6 +61,10 @@ class LineEditor(Component):
         self._history: List[str] = list(history) if history else []
         self._hpos: Optional[int] = None      # None = 不在翻历史
         self._draft = ""                      # 翻历史前正在打的那半句
+        # 最近一次 render 的宽度：↑/↓ 的显示行移动（feature 33）要按它算折行
+        # 几何。TUI 每帧先画后收键，所以收键时它总是新鲜的；从没画过（纯 REPL
+        # 注入路径）= None，↑/↓ 退回翻历史的旧行为。
+        self._last_width: Optional[int] = None
 
     # --- 输入 ---------------------------------------------------------
 
@@ -110,9 +114,14 @@ class LineEditor(Component):
         elif name == "word_right":
             self.cursor = self._word_end()
         elif name == "up":
-            self._history_step(-1)
+            # CC 同款语义（feature 33，21 遗留 2）：折行/多行时 ↑ 先在显示行间
+            # 移动光标，只有已在首个显示行才翻历史——否则「想上移光标」会被
+            # 误解成「换出历史」，正在编辑的长行凭空被顶掉。
+            if not self._cursor_vertical(-1):
+                self._history_step(-1)
         elif name == "down":
-            self._history_step(1)
+            if not self._cursor_vertical(1):
+                self._history_step(1)
         # 其余（unknown / ctrl_c / esc / shift_tab …）不归编辑器管，交给上层仲裁
         return None
 
@@ -146,6 +155,86 @@ class LineEditor(Component):
     def selected_text(self) -> str:
         span = self.selection_range()
         return "" if span is None else self.text[span[0]:span[1]]
+
+    def _room(self, line_index: int, width: int) -> Optional[int]:
+        """第 line_index 个逻辑行的正文可用列数——render 与显示行几何共用一份公式。"""
+        raw_prefix = self.prompt if line_index == 0 else self.continuation
+        return max(1, width - display_width(raw_prefix)) if width > 0 else None
+
+    def _display_rows(self, width: int) -> List[tuple]:
+        """显示行结构 `[(逻辑行号, 段起, 段止, 该行首字符的全文偏移)]`，
+        与 render 同一套折行几何（feature 33：点击定位与 ↑/↓ 都要用它，
+        21 遗留 1 的病根就是拿逻辑行当显示行换算）。"""
+        rows: List[tuple] = []
+        base = 0
+        for i, line in enumerate(self.text.split("\n")):
+            for lo, hi in _wrap_spans(line, self._room(i, width)):
+                rows.append((i, lo, hi, base))
+            base += len(line) + 1
+        return rows
+
+    def point_at_display(self, row: int, col: int, width: int) -> int:
+        """(显示行, 显示列, 渲染宽度) → 全文字符下标。
+
+        列**含前缀**：前缀宽按目标行所属逻辑行取（首行 prompt、续行
+        continuation，两者可以不等宽——旧调用点统一按 prompt 减是第二处病）。
+        """
+        rows = self._display_rows(width)
+        row = max(0, min(len(rows) - 1, row))
+        i, lo, hi, base = rows[row]
+        line = self.text.split("\n")[i]
+        col -= display_width(self.prompt if i == 0 else self.continuation)
+        if col <= 0:
+            return base + lo
+        used = 0
+        for k in range(lo, hi):
+            w = display_width(line[k])
+            if used + w > col:
+                return base + k
+            used += w
+        return base + hi
+
+    def _cursor_vertical(self, delta: int) -> bool:
+        """↑/↓ 在显示行间移动光标。返回 False = 移不了（单显示行 / 已到边界 /
+        没渲染过不知宽度），调用方退回翻历史。目标列取当前视觉列（含前缀）；
+        不做跨多次移动的 goal-column 记忆（CC 有，属体验优化非正确性）。"""
+        width = self._last_width
+        if width is None:
+            return False
+        rows = self._display_rows(width)
+        if len(rows) <= 1:
+            return False
+        r = self._cursor_display_row(rows)
+        target = r + delta
+        if not 0 <= target < len(rows):
+            return False
+        i, lo, hi, base = rows[r]
+        line = self.text.split("\n")[i]
+        col = display_width(self.prompt if i == 0 else self.continuation) \
+            + display_width(line[lo:self.cursor - base])
+        idx = self.point_at_display(target, col, width)
+        ti, tlo, thi, tbase = rows[target]
+        last_of_line = target == len(rows) - 1 or rows[target + 1][0] != ti
+        if not last_of_line and idx >= tbase + thi:
+            # 非末段的段末位置在视觉上属于下一显示行（render 的插标规则），
+            # 回退一个字符保证光标真的落在目标行上
+            idx = max(tbase + tlo, tbase + thi - 1)
+        self.cursor = idx
+        return True
+
+    def _cursor_display_row(self, rows: List[tuple]) -> int:
+        """光标此刻在第几个显示行——判据与 render 的插标规则逐字一致：
+        `lo <= col < hi`，或 `col == hi` 且该段是所属逻辑行的最后一段。"""
+        before = self.text[:self.cursor]
+        row_line = before.count("\n")
+        col = len(before) - (before.rfind("\n") + 1)
+        for ridx, (i, lo, hi, _base) in enumerate(rows):
+            if i != row_line:
+                continue
+            last = ridx == len(rows) - 1 or rows[ridx + 1][0] != i
+            if lo <= col < hi or (col == hi and last):
+                return ridx
+        return len(rows) - 1
 
     def point_at(self, line_index: int, col: int) -> int:
         """(第几行, 显示列) → **整段文本里的字符下标**。
@@ -267,6 +356,7 @@ class LineEditor(Component):
         选区反显对**每个显示行内配平**——alt 屏按行 diff 重绘，跨行悬空的 SGR
         会在只重绘其中一行时漏出来。折行按字符边界不做词级（pi 的词级回退是
         体验优化非正确性，中文也没词边界）。"""
+        self._last_width = width if width > 0 else None
         lines = self.text.split("\n")
         before = self.text[:self.cursor]
         row = before.count("\n")
@@ -278,8 +368,7 @@ class LineEditor(Component):
             raw_prefix = self.prompt if i == 0 else self.continuation
             prefix = theme.paint(raw_prefix, theme.CYAN, color=self.color)
             pad = " " * display_width(raw_prefix)
-            room = max(1, width - display_width(raw_prefix)) if width > 0 else None
-            chunks = _wrap_spans(line, room)
+            chunks = _wrap_spans(line, self._room(i, width))
             for k, (lo_c, hi_c) in enumerate(chunks):
                 body = line[lo_c:hi_c]
                 # 光标在本段内（或在行尾且这是最后一段）才插标记

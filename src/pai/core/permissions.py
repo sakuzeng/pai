@@ -138,6 +138,9 @@ class RuleSet:
     allow: list[Rule] = field(default_factory=list)
     default_decision: str = WORKING_DIR
     mode: str = DEFAULT_MODE
+    # defaultMode 来自哪个设置文件；None = 用户没配（feature 33，09 遗留 2：
+    # once 强制 dontAsk 时要能分清「默认」与「用户配了但用不上」，后者得告警）
+    mode_source: Optional[str] = None
 
     def bucket(self, kind: str) -> list[Rule]:
         return getattr(self, kind)
@@ -422,6 +425,7 @@ def load_rules(
         if wanted_mode is not None:
             if wanted_mode in MODES:
                 merged.mode = wanted_mode
+                merged.mode_source = str(path)
             elif warn:
                 warn(f"未知权限模式 {wanted_mode!r}（{path}），按 `{DEFAULT_MODE}` 处理；"
                      f"可选：{MODES}")

@@ -87,6 +87,27 @@ def bash_timeout_seconds(settings: Dict[str, Any],
     return value
 
 
+def additional_directories(settings: Dict[str, Any],
+                           warn: Optional[Callable[[str], None]] = None
+                           ) -> tuple:
+    """`permissions.additionalDirectories`：工作目录边界的额外允许根。
+
+    feature 33（H9）接线：这个键在 boundary 的 docstring 与 STATUS 里声称
+    存在，实际从没接进装配——配了静默不生效，比没有更糟。`~` 展开；
+    非列表 / 非字符串条目 warn 后忽略（fail-loud 约定）。
+    """
+    value = (settings.get("permissions") or {}).get("additionalDirectories")
+    if value is None:
+        return ()
+    if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+        if warn:
+            warn(f"settings 里 permissions.additionalDirectories 应是字符串列表，"
+                 f"收到 {value!r}，已忽略")
+        return ()
+    import os
+    return tuple(os.path.expanduser(v) for v in value)
+
+
 def _read(path: Path, warn: Optional[Callable[[str], None]]) -> Dict[str, Any]:
     try:
         text = path.read_text(encoding="utf-8")

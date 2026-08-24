@@ -366,8 +366,18 @@ def bridge_tools(session, *, warn: Callable[[str], None]) -> List[Tool]:
                  f"`{seen[name]}` 同名（{name}），已跳过")
             continue
         seen[name] = raw
+        # 根级非对象 schema 挡在这里（feature 33，29 复核 R6）：原样透传会直达
+        # API 被拒，400 落在调用时、离配错的 server 十万八千里。缺 schema 走
+        # 兜底空对象；给了但根不是对象的跳过 + warn（CC 2.1.195 起是拍平成
+        # 组合器，pai 取更小的动作——等真实需要再学拍平）。
+        schema = entry.get("inputSchema")
+        if schema is not None and (not isinstance(schema, dict)
+                                   or schema.get("type", "object") != "object"):
+            warn(f"MCP 工具 `{raw}`（server `{session.name}`）的 inputSchema "
+                 f"根级不是对象（{schema!r}），API 会拒绝，已跳过该工具")
+            continue
         description = _sanitize(str(entry.get("description", "")))[:MAX_MCP_DESC_CHARS]
-        parameters = _sanitize_schema(entry.get("inputSchema")
+        parameters = _sanitize_schema(schema
                                       or {"type": "object", "properties": {}})
 
         def make_runner(session=session, raw=raw, public=name):
