@@ -298,9 +298,13 @@
 - [ ] 启动侧无肉（记录性结论，防将来想当然去「优化启动」）：2026-08-23 实测
       装配全环节 <1ms（scan_skills 20 包 0.7ms）、MCP 连接+发现 16ms/server、
       冷 import 0.47s（大头是解释器）。启动性能不立优化项，除非实测数字变了。
-- [ ] interactive.py 装配巨石（1254 行，次大文件近两倍）：抽独立 assembly
+- [x] ~~interactive.py 装配巨石（1254 行，次大文件近两倍）：抽独立 assembly
       模块的候选已评估未做（改动面大风险中）；做时顺带把 MCP 关闭从 atexit
-      改单出口 finally（29 遗留 7 联动）。等下次要在装配段加第三样东西时一起。
+      改单出口 finally（29 遗留 7 联动）。等下次要在装配段加第三样东西时一起。~~
+      已做 2026-08-24（[feature 31](features/31-20260824-assembly-convergence/README.md)，
+      用户拍板 A 提前兑现时机）：共用序列抽进 `modes/assembly.py` 的
+      `assemble`，once/interactive 只注入差异点；29 遗留 7 联动（见该条）。
+      行为逐字不变：既有测试零改动全绿 + 功能测试 28 冒烟场景复跑全过。
 
 ### 29 复核发现 —— 2026-08-23（出处：29 复核；全部低级，无高中级）
 
@@ -345,9 +349,13 @@
       不存在的工具名。反向对照 P3 证明 CC 文档的「经 ToolSearch 告知」实测
       未复现，无可抄的已验证行为，pai 要自己定形态（最小：装配期把失败
       server 列进 system prompt 一行）。
-- [ ] interactive 的 MCP 关闭挂 atexit 是取舍（29 遗留 7，记录性）：
+- [x] ~~interactive 的 MCP 关闭挂 atexit 是取舍（29 遗留 7，记录性）：
       REPL/TUI 多出口不做大缩进；close 幂等 + 进程生命周期 = 会话生命周期。
-      若 run_interactive 重构出单一出口，顺手改确定性关闭（复盘质疑一）。
+      若 run_interactive 重构出单一出口，顺手改确定性关闭（复盘质疑一）。~~
+      已改 2026-08-24（[feature 31](features/31-20260824-assembly-convergence/README.md)）：
+      装配收敛后 run_interactive 有了单出口，TUI/REPL/异常三条路统一走
+      finally 的 `mcp.close_all_mcp`；atexit 注册删除。
+      `tests/test_assembly.py` 两条钉住（修前红：atexit 在函数返回时不触发）。
 - [ ] dirty-stdout 丢弃不可见（29 遗留 8）：非 JSON 行静默丢、无计数——
       丢弃行数超阈值该 warn 一次（复盘质疑四）。
 
