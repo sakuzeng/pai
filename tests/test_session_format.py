@@ -250,6 +250,40 @@ def test_resolve_resume_target_picks_the_latest_session(tmp_path):
     assert resolve_resume_target(None, directory=tmp_path) == b.path
 
 
+def test_resolve_resume_target_breaks_mtime_ties_deterministically(tmp_path,
+                                                                  monkeypatch):
+    """同秒 mtime 时 latest 此前未定义（24 复盘质疑四）。
+
+    排序键只有 `st_mtime`（秒），两个会话同秒落盘就并列；`sorted` 是稳定的，
+    于是「最近一次」实际取决于 `glob` 的目录列出顺序——换个文件系统就换个答案，
+    而 `--resume` 不带参数走的正是这条路。文件名本身带 `%Y%m%d-%H%M%S-<id8>`，
+    拿它当第二排序键即可（真同秒时至少答案稳定且可解释）。
+
+    这里把 glob 顺序钉成最坏情况（旧的排前面），断言答案不随它变。
+    """
+    import os
+    from pathlib import Path
+
+    from pai.core.session import resolve_resume_target
+
+    old_p = tmp_path / "20260825-120000-aaaaaaaa.jsonl"
+    new_p = tmp_path / "20260825-120001-bbbbbbbb.jsonl"
+    for f in (old_p, new_p):
+        f.write_text('{"type": "message"}\n', encoding="utf-8")
+        os.utime(f, ns=(1_700_000_000_000_000_000, 1_700_000_000_000_000_000))
+
+    real_glob = Path.glob
+    monkeypatch.setattr(Path, "glob",
+                        lambda self, pat: iter([old_p, new_p])
+                        if self == tmp_path else real_glob(self, pat))
+    assert resolve_resume_target(None, directory=tmp_path) == new_p
+
+    monkeypatch.setattr(Path, "glob",
+                        lambda self, pat: iter([new_p, old_p])
+                        if self == tmp_path else real_glob(self, pat))
+    assert resolve_resume_target(None, directory=tmp_path) == new_p
+
+
 def test_resolve_resume_target_by_id_prefix_and_by_path(tmp_path):
     from pai.core.session import SessionLog, resolve_resume_target
 

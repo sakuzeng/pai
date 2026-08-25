@@ -178,6 +178,26 @@ def _read_line(reader: Callable[..., str]) -> str:
     return line
 
 
+class EventSink:
+    """**可变**的事件通道。存在的理由与 `AskerRef` 同构。
+
+    装配层（`assemble`）把 `on_event` 烤进记忆通知与召回失败的闭包里，而 TUI 是
+    装配**之后**才建起来的，它自建的 `on_event`（走 `app.on_event`）从此换不进去——
+    于是 TUI 下 MemoryWritten / RecallFailed 走默认渲染器直接 print 到 stdout，
+    弄花 dock（feature 17 T3.5 发现，feature 12/13 就存在）。
+    换进持有者之后，`_run_tui` 一处 set，装配期的所有闭包一起跟着走。
+    """
+
+    def __init__(self, fn: Callable[[AgentEvent], None]) -> None:
+        self._fn = fn
+
+    def set(self, fn: Callable[[AgentEvent], None]) -> None:
+        self._fn = fn
+
+    def __call__(self, event: AgentEvent) -> None:
+        self._fn(event)
+
+
 class AskerRef:
     """**可变**的真人问答通道。
 
@@ -385,7 +405,10 @@ def run_interactive(
     # 调一次 run_agent，去重与失败熔断不能每轮清零。
     # MCP 关闭不再挂 atexit：装配收敛后本函数有了单出口，走下方 finally
     # 确定性关闭（29 遗留 7 的解除条件由本次重构兑现）。
-    asm = assemble(client=client, tools=tools, warn=out, on_event=on_event,
+    # 事件通道同样是**可变持有者**（理由见 EventSink）：TUI 起来后 `_run_tui`
+    # 把它换成走 app.on_event 的那个，装配期烤进闭包的记忆/召回事件才跟着走。
+    event_sink = EventSink(on_event)
+    asm = assemble(client=client, tools=tools, warn=out, on_event=event_sink,
                    session=session, recall_model=recall_model_name,
                    mode=mode_state, asker=asker_ref, rules=rules)
     rules, hooks, tools = asm.rules, asm.hooks, asm.tools
@@ -402,6 +425,7 @@ def run_interactive(
         recall=recall, rules=rules, hooks=hooks, mode_state=mode_state,
         history=history, asker_state=asker_state, asker_ref=asker_ref, trace=trace,
         skills_catalog=skills_catalog, instructions=instructions,
+        event_sink=event_sink,
     )
     try:
         if _use_tui(reader):
@@ -673,9 +697,11 @@ def _handle_command(line: str, *, out, messages, anchors, state, tools, client, 
             on_event(ConversationCleared(kept=len(messages)))
         out("🧹 已清空对话（保留 system）")
     elif command == "/status":
-        anchor, anchor_index = anchors.latest()
+        latest = anchors.latest()
         schemas = [t.schema() for t in tools.values()]
-        estimated = context_tokens(messages, schemas, anchor=anchor, anchor_index=anchor_index)
+        estimated = context_tokens(messages, schemas,
+                                   anchor=None if latest.index is None else latest.tokens,
+                                   anchor_index=latest.index or 0)
         breaker = "已熔断" if state.tripped else f"正常（失败 {state.failures} 次）"
         out(f"📊 消息 {len(messages)} 条 | 估算 {estimated} token / 窗口 {context_window}"
             f" | 锚点 {len(anchors.entries)} 个 | 压缩：{breaker}")
@@ -844,7 +870,8 @@ def _manual_compact(*, messages, anchors, state, client, model, compaction, out,
 def _run_tui(*, out, client, model, tools, messages, ledger, anchors, state, steering,
              flag, session, max_steps, max_total_tokens, context_window, compaction,
              gate, recall, rules, hooks, mode_state, history, asker_state, asker_ref,
-             trace=None, skills_catalog=None, instructions=None) -> None:
+             trace=None, skills_catalog=None, instructions=None,
+             event_sink=None) -> None:
     """scrollback 在上、dock 在下。
 
     与纯 REPL 的**唯一**语义差别在输入层：谁拥有键盘由 `InputArbiter` 算出来，
@@ -888,9 +915,10 @@ def _run_tui(*, out, client, model, tools, messages, ledger, anchors, state, ste
 
     def refresh_context() -> None:
         """上下文占用：pai 早就在算（压缩用的就是它），只是此前没给人看。"""
-        anchor, anchor_index = anchors.latest()
+        latest = anchors.latest()
         used = context_tokens(messages, [t.schema() for t in tools.values()],
-                              anchor=anchor, anchor_index=anchor_index)
+                              anchor=None if latest.index is None else latest.tokens,
+                              anchor_index=latest.index or 0)
         app.dock.set_context(used, context_window)
 
     refresh_context()
@@ -974,6 +1002,11 @@ def _run_tui(*, out, client, model, tools, messages, ledger, anchors, state, ste
                 app.expand_last()
             elif kind == REDRAW:
                 app.refresh()
+
+    # **一处换、装配期所有闭包生效**（同 asker_ref 上面那句）：记忆通知与召回失败
+    # 是装配期就烤好的闭包，不换这一下它们会绕过 app 直接 print 进 dock。
+    if event_sink is not None:
+        event_sink.set(on_event)
 
     term.start()
     # **不能用 out（print）**：终端此刻在 raw mode，`\n` 不回列首，会打成阶梯状。
@@ -1220,12 +1253,8 @@ def _for_model(message: dict) -> bool:
 
 
 def _queue_size(queue) -> int:
-    """队列没有暴露长度（05 的 API 只有 enqueue/has_items/drain），这里只读内部表。
-
-    不给 PendingMessageQueue 加公开方法：它是 05 交付的东西，
-    「只加不改语义」的范围里，为一个显示需求改它的公开面不划算。
-    """
-    return len(queue._messages)
+    """dock 上「排队 N 条」的数字。队列自己报（`__len__`，12 复盘质疑一已修）。"""
+    return len(queue)
 
 
 def _stdout_write(data: str) -> None:

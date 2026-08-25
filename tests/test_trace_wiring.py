@@ -11,6 +11,8 @@ test_trace.py 测的是 EventTrace 自己；这里测**接线**——同 test_mo
 from __future__ import annotations
 
 import json
+
+import pytest
 from pathlib import Path
 
 from fake_llm import FakeClient
@@ -205,3 +207,49 @@ def test_tui_command_dispatch_carries_on_event(tmp_path):
     assert quit_ is False
     assert [type(e) for e in seen] == [ConversationCleared]
     assert len(messages) == 1        # system 留着,其余清掉
+
+
+def test_the_tui_path_swaps_the_event_sink(tmp_path, monkeypatch):
+    """记忆/召回的事件通道在 TUI 起来之后必须换成走 app.on_event。
+
+    两段各钉一头：装配处真把 EventSink 递给了 `_run_tui`（间谍替身，同上一条），
+    以及 `_run_tui` 真的换了它——后半段靠在 `term.start()` 上引爆来跑到那一行，
+    它之前全是纯构造。不断言源码文本（R4#T3 的教训），断言的是换完之后
+    sink 指向谁。
+    """
+    from pai.modes import interactive
+
+    handed = {}
+    real_run_tui = interactive._run_tui        # 间谍装上之前先留住真身
+    monkeypatch.setattr(interactive, "_use_tui", lambda reader: True)
+    monkeypatch.setattr(interactive, "_run_tui", lambda **kw: handed.update(kw))
+    interactive.run_interactive(client=object(), model="fake-model",
+                                out=lambda s: None,
+                                history_path=tmp_path / "hist")
+    sink = handed.get("event_sink")
+    assert isinstance(sink, interactive.EventSink), \
+        f"TUI 分支拿到的 event_sink 不是可换持有者：{sink!r}"
+
+    seen = []
+    sink.set(seen.append)
+
+    class _Stop(RuntimeError):
+        pass
+
+    # pytest 捕获的 stdin 没有 fileno()，而 TuiDriver 构造时就要一个——
+    # 给个真 fd（不会被读：term.start() 就引爆了）
+    class _Stdin:
+        def fileno(self):
+            return 0
+
+    monkeypatch.setattr(interactive.sys, "stdin", _Stdin())
+    monkeypatch.setattr(interactive.TerminalSession, "start",
+                        lambda self: (_ for _ in ()).throw(_Stop()))
+    handed.pop("out", None)
+    with pytest.raises(_Stop):
+        real_run_tui(out=lambda _s="": None, **handed)
+
+    from pai.core.events import MemoryWritten
+
+    sink(MemoryWritten(topic="t", path="/tmp/x.md"))
+    assert seen == [], "换过之后 sink 还指着测试自己的列表，说明 _run_tui 没换"

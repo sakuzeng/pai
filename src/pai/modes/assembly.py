@@ -18,6 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional
 
+from pai.core.protocols import ChatClient
 from pai.core import mcp
 from pai.core.boundary import WorkingDirs
 from pai.core.events import MemoryWritten, RecallFailed, RecallInjected
@@ -54,7 +55,8 @@ class Assembly:
     gate: Callable
 
 
-def assemble(*, client, tools: Dict[str, object], warn: Callable[[str], None],
+def assemble(*, client: ChatClient, tools: Dict[str, object],
+             warn: Callable[[str], None],
              on_event: Callable, session, recall_model: str, mode,
              asker=None, rules: Optional[RuleSet] = None) -> Assembly:
     """共用装配序列。参数即两模式的差异点：

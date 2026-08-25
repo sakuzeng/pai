@@ -45,6 +45,14 @@ class PendingMessageQueue:
     def has_items(self) -> bool:
         return bool(self._messages)
 
+    def __len__(self) -> int:
+        """队列长度是公开面（12 复盘质疑一的落点）。
+
+        此前 modes 层读 `queue._messages`，理由是「不给 05 交付的类加公开面」——
+        站不住：读私有表把「内部用 list 存」泄漏进了 modes，换个内部实现当场坏。
+        """
+        return len(self._messages)
+
     def drain(self, where: Optional[Callable[[dict], bool]] = None) -> List[dict]:
         """按模式取出消息；空队列返回 []（不抛、不返回 None）。
 

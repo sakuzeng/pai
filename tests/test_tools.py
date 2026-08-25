@@ -857,3 +857,22 @@ def test_the_previous_probe_did_not_leak_into_this_test():
     assert "_leak_probe" not in get_tools()
     assert set(get_tools()) == {"bash", "read_file", "write_file", "edit_file",
                                 "remember", "skill"}, "内置工具集之外不该有别的"
+
+
+def test_read_file_truncation_tells_the_model_how_to_get_the_rest(tmp_path):
+    """截断提示要给出路，不能只报状态（R#17）。
+
+    只说「截断，共 N 字符」的话，模型拿着残缺视图直接去 edit_file——
+    它并不知道自己看到的不是全文，也不知道还能怎么读。零成本的修法就是
+    在提示语里点名 bash 分段读（同 bash 超时文案那条规矩：报状态之外给做法）。
+    """
+    from pai.core.tools.fs import MAX_OUTPUT_CHARS, read_file
+
+    p = tmp_path / "big.txt"
+    p.write_text("x" * (MAX_OUTPUT_CHARS + 1234), encoding="utf-8")
+    out = read_file(path=str(p))
+
+    assert "截断" in out
+    assert str(MAX_OUTPUT_CHARS + 1234) in out          # 总量照旧说清
+    assert "sed" in out or "bash" in out, "提示语里没有「怎么读到剩下的」"
+    assert "edit_file" in out, "没有提醒模型别拿残缺视图去改文件"
