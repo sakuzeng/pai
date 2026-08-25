@@ -967,9 +967,12 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
       期间用户打的字在 dock 上完全看不见（字符没丢，在内核 tty 缓冲区，但屏幕不动）——
       用户会以为键盘死了。在最需要反馈的时候没有反馈。
       解法要么独立输入线程（本轮明确不做），要么工具执行期也定时 poll。建议下一轮就处理。
-- [ ] `_queue_size` 读了 `PendingMessageQueue` 的私有表（12 复盘质疑一）：
+- [x] ~~`_queue_size` 读了 `PendingMessageQueue` 的私有表（12 复盘质疑一）：
       当时的理由「不给 05 交付的类加公开面」站不住——`len(queue._messages)` 比加个
-      `__len__` 更耦合，它把「内部用 list 存」泄漏进了 modes 层。
+      `__len__` 更耦合，它把「内部用 list 存」泄漏进了 modes 层。~~
+      已修 2026-08-25（feature 34，`fix/34-todo-backlog-batch`）：`PendingMessageQueue.__len__` 加上，
+      `_queue_size` 改成 `len(queue)`；两条测试覆盖（含"被谓词留在队列里的命令
+      要照样计数"——dock 上那个数字说的就是它们）。
 - [ ] `tui/driver.py` 一条测试都没有（12 复盘质疑五）：唯一碰真 tty/select 的文件，
       靠 `pai_playground/tui-probe/p5_tui_smoke.py` 冒烟顶着，而冒烟脚本不在 `./test.sh` 里——
       改坏它不会有任何东西变红。至少该给 `poll()` 的分支注入假 fd 测一测。
@@ -1255,8 +1258,12 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
       once 续跑未做（出处：24 README 遗留）。
 - [ ] resume 只恢复对话不恢复设置：权限模式/模型/system prompt 取当前环境，
       dsh 明确警告「恢复不同构图的组合是错误」而 pai 连警告都没有（同上）。
-- [ ] `resolve_resume_target` 同秒 mtime tie 时 latest 未定义：排序键补
-      st_mtime_ns 或文件名即可，一行的事（出处：24 复盘质疑四）。
+- [x] ~~`resolve_resume_target` 同秒 mtime tie 时 latest 未定义：排序键补
+      st_mtime_ns 或文件名即可，一行的事（出处：24 复盘质疑四）。~~
+      已修 2026-08-25（feature 34，`fix/34-todo-backlog-batch`）：排序键改 `(st_mtime_ns, f.name)`，
+      两件事一起做——秒改纳秒（本来就该分得出先后），真同秒时再按文件名
+      （前缀是 `%Y%m%d-%H%M%S-<id8>`）给一个稳定且可解释的答案。
+      测试把 glob 顺序钉成最坏情况正反各跑一次，断言答案不随列出顺序变。
 - [ ] 观测流 `.events.jsonl` 仍是旧平铺格式：一对文件两种形状，viz 靠读边
       归一化弥合；events 侧换不换信封等 evals 立项时定（出处：24 README 遗留）。
 - [ ] resume 重录全量历史进新文件：自包含的代价是每 resume 复制一份历史，
@@ -1382,42 +1389,92 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
       `TerminalSession.start()` 在非主线程时明确告警而不是静默退化，测试钉死。
 
 
-- [ ] verify_compaction 的 tripped 单向性补测试（02 终审延后项）：置位后降线不回落，
-      实现已双重审查确认正确（表达式 + 熔断后触发块整体跳过），3 行测试即可。
-- [ ] AnchorBook.latest() 返回序与 entries 存储序相反（02 终审 Minor#6）：
-      (tokens, index) vs (index, tokens)，未来调用者的坑；namedtuple 或统一序。
-- [ ] context_window() 对非法 PAI_CONTEXT_WINDOW 裸抛 ValueError（02 终审 Minor#7）：
-      make_client 有清晰报错先例，对齐。
-- [ ] 压缩后 session 审计流不含重建摘要消息（02 终审 Minor#8）：可由 cut+summary
-      重建，但「每条消息落盘」字面已不成立，补一行注释说明重建规则。
-- [ ] 压缩后首个响应无 usage 时 awaiting_verify 永挂（02 终审 Minor#9）：与预算
-      退化取舍一致属预期，补注释说明这是设计而非事故。
+- [x] ~~verify_compaction 的 tripped 单向性补测试（02 终审延后项）：置位后降线不回落，
+      实现已双重审查确认正确（表达式 + 熔断后触发块整体跳过），3 行测试即可。~~
+      已补 2026-08-25（feature 34，`fix/34-todo-backlog-batch`）：`test_tripped_is_one_way`
+      （tripped=True 时喂一个降回线内的 prompt_tokens，failures 清零而 tripped 不落）。
+      实现本来就对，所以做了注入反证：拿掉 `state.tripped or` 这一半即变红，
+      装回即绿——这条测试不是走过场。
+- [x] ~~AnchorBook.latest() 返回序与 entries 存储序相反（02 终审 Minor#6）：
+      (tokens, index) vs (index, tokens)，未来调用者的坑；namedtuple 或统一序。~~
+      已修 2026-08-25（feature 34，`fix/34-todo-backlog-batch`），用户拍板选 NamedTuple：
+      新增 `Anchor(index, tokens)`，entries 与 latest() 是同一种东西，调用方按名取。
+      三处调用点（loop 触发块、`/status`、dock 的 refresh_context）一并改。
+      顺带钉住一条此前无人保护的退化路径：无锚时判据必须是 `index is None`，
+      拿 `tokens == 0` 当锚传下去会让工具 schema 那几百 token 从账上消失
+      （`test_no_anchor_is_index_none_not_tokens_zero`）。
+- [x] ~~context_window() 对非法 PAI_CONTEXT_WINDOW 裸抛 ValueError（02 终审 Minor#7）：
+      make_client 有清晰报错先例，对齐。~~ 已修 2026-08-25（feature 34，`fix/34-todo-backlog-batch`）：
+      非整数与非正数都在门口 `sys.exit` 说清是哪个 env、当前值是什么、该怎么配。
+      顺带挡住 0 与负数——语法合法但会让 `window - reserve` 算出负预算，
+      于是每轮都判"该压缩"，比当场崩溃难查得多。
+- [x] ~~压缩后 session 审计流不含重建摘要消息（02 终审 Minor#8）：可由 cut+summary
+      重建，但「每条消息落盘」字面已不成立，补一行注释说明重建规则。~~
+      2026-08-25 对账核销（feature 34 复核）：已由 feature 24 会话格式 v1 关掉，
+      本条漏勾。压缩落的是一条 typed `compaction` 条目（含 `summary` 与
+      `firstKeptEntryId`），重建规则写在 `session.build_messages` 的 docstring
+      里并有测试；摘要消息的 entry id 就取该条目自己的 id（pi 同款）。
+- [x] ~~压缩后首个响应无 usage 时 awaiting_verify 永挂（02 终审 Minor#9）：与预算
+      退化取舍一致属预期，补注释说明这是设计而非事故。~~
+      2026-08-25 对账核销（feature 34 复核）：注释早已在 `loop.py` 的验证块上
+      （"已知洞（R4#23，记档备参照）…DeepSeek 恒回 usage 故不触发；换 provider 时再兜"），
+      本条漏勾。
 
-- [ ] SYSTEM_PROMPT 硬编码四个工具名，与依赖注入矛盾（R3#5）：get_tools() 子集
-      被真用到的第一天，提示词就在向模型撒谎。改为从 tools 注册表生成清单行。
+- [x] ~~SYSTEM_PROMPT 硬编码四个工具名，与依赖注入矛盾（R3#5）：get_tools() 子集
+      被真用到的第一天，提示词就在向模型撒谎。改为从 tools 注册表生成清单行。~~
+      2026-08-25 对账核销（feature 34 复核）：已由 feature 22 的 `build_system_prompt`
+      关掉（按实际工具集生成，指导语按"有没有这个工具"条件化），本条漏勾。
+      三条生产路径（once、REPL、TUI）全部传 `system_prompt=build_system_prompt(...)`；
+      常量只剩"不传 system_prompt 直调 run_agent"的兜底，且刻意逐字不变（护缓存前缀）。
 - [ ] 截断逻辑 fs/shell 两处重复（R3#6）：第三个产出文本的工具出现时抽
       `truncate_output()` 进 tools/__init__.py，现在抽是过度设计。
-- [ ] design_gate.py 与 once.py 补类型注解（R3#8）：修 R#14 时顺手一并带上。
+- [x] ~~design_gate.py 与 once.py 补类型注解（R3#8）：修 R#14 时顺手一并带上。~~
+      已修 2026-08-25（feature 34，`fix/34-todo-backlog-batch`）：design_gate 的 `decide` / `main` / 内层
+      `read` 都带上（`Optional[str]` 那两个参数正是"文件不存在"的语义所在）；
+      once.py 的 `client=None` 随 R#14 的 `ChatClient` 一起补。
 - [ ] loop 预算 fallback（R3#15，未核实）：provider 不回 total_tokens 时预算静默
       失效，可 fallback prompt+completion。DeepSeek 会回，仅记档。
-- [ ] 风格杂项（R3#16）：FROZEN_TOOL_SCHEMAS 缩进、test_loop 混用
+- [x] ~~风格杂项（R3#16）：FROZEN_TOOL_SCHEMAS 缩进、test_loop 混用
       TemporaryDirectory、collect.py 裸 list 注解、loop 重复注释（R3#11）、
-      server.py 冗余字符串注解（R3#12）。顺手为之，不单独立项。
+      server.py 冗余字符串注解（R3#12）。顺手为之，不单独立项。~~
+      五条全清 2026-08-25（feature 34，`fix/34-todo-backlog-batch`）：缩进整段拉平（改完用
+      `ast.literal_eval` 比对 HEAD，值逐字未变——冻结夹具改缩进也得证明没改内容）；
+      `test_anchor_does_not_double_count_the_assistant_message` 换 `tmp_path`；
+      collect.py 五处裸 `list` 补成 `list[dict]` / `list[str]`；
+      loop 的 usage 透传理由改成指向 `usage_fields` 的 docstring，不再抄第二遍；
+      server.py 四处字符串注解拆掉（文件本就有 `from __future__ import annotations`）。
 
-- [ ] decisions 第 8 条与第 6 条自相矛盾（R#5）
+- [x] ~~decisions 第 8 条与第 6 条自相矛盾（R#5）
       第 6 条说「低估是唯一会炸窗口的方向」，第 8 条却让未知 role 静默记 0——
-      0 是最极端的低估。改为按 content 估算（宁可高估）或留告警路径。
-- [ ] decisions 第 9 条理由不成立（R#6）
+      0 是最极端的低估。改为按 content 估算（宁可高估）或留告警路径。~~
+      已修 2026-08-25（feature 34，`fix/34-todo-backlog-batch`），用户拍板选"按 content 估算"：
+      `estimate_tokens` 一概不看 role，未知 role 与已知 role 同算法（含 tool_calls）。
+      拍平那一半原样保留（`serialize_conversation` 仍跳过未知 role）——秤问
+      "占不占窗口"、拍平问"要不要塞进摘要请求"，是两个问题。
+      [D#8](decisions.md) 已记推翻，原理由划掉保留。
+- [x] ~~decisions 第 9 条理由不成立（R#6）
       「严格大于防阈值横跳」防不了——边界上 `>` 与 `>=` 只差 1 token。真防横跳的是
       压缩后落点远离警戒线。结论无害但理由错。
       改法：保留原理由作为划掉的记录，不要删除——决策文档里「曾经这么想、后来被指出
-      为什么错」的痕迹，是「我的决策可被挑战」最有说服力的证据。
-- [ ] decisions 第 7 条引用链未回收（R#20）
-      其理由引用的「400 字符=100 token 心智模型」已被第 15 条废弃（结论仍成立）。
-- [ ] 单轮多 tool_calls 无测试覆盖（R#11）
+      为什么错」的痕迹，是「我的决策可被挑战」最有说服力的证据。~~
+      已改 2026-08-25（feature 34，`fix/34-todo-backlog-batch`）：[D#9](decisions.md) 原理由划掉保留，
+      下面补上为什么它不成立、以及保留严格大于的真实（且更小的）理由。代码未动。
+- [x] ~~decisions 第 7 条引用链未回收（R#20）
+      其理由引用的「400 字符=100 token 心智模型」已被第 15 条废弃（结论仍成立）。~~
+      已改 2026-08-25（feature 34，`fix/34-todo-backlog-batch`）：[D#7](decisions.md) 补记引用链回收，
+      写明结论仍成立但不该再用作废的心智模型去论证它。原论证保留。
+- [x] ~~单轮多 tool_calls 无测试覆盖（R#11）
       所有测试脚本每轮只有一个 tool_call；「N 条 tool 消息按序配对」「合法+未知工具混同轮」
-      两个配对不变量无测试。DeepSeek 会发并行工具调用，非假想场景。
-- [ ] `session.py` 文件名精确到秒（R#15）：同秒创建两个 SessionLog 会写同一文件。
+      两个配对不变量无测试。DeepSeek 会发并行工具调用，非假想场景。~~
+      2026-08-25 对账核销（feature 34 复核）：与本文件 P0 节那条同一件事，那边
+      2026-08-24 已核销、这边漏勾。测试 2026-08-09 随 commit 8a0ccd7 进库：
+      `test_parallel_tool_calls_each_get_a_reply` 与
+      `test_parallel_tool_calls_mixed_known_and_unknown`。
+- [x] ~~`session.py` 文件名精确到秒（R#15）：同秒创建两个 SessionLog 会写同一文件。~~
+      2026-08-25 对账核销（feature 34 复核）：文件名早已是
+      `{%Y%m%d-%H%M%S}-{session_id[:8]}.jsonl`，同秒的两个 SessionLog 各带自己的
+      随机 id 短码，撞不到一起（要撞得 uuid4 前 8 位相同）。本条漏勾。
+      同秒真正还剩的问题是 `--resume` 挑"最近一次"时并列，已单独修（见 24 遗留那条）。
 - [ ] 抽出共享测试夹具层（对照 pi 的 `test/harness/session-test-utils.ts`、`test/utils/`）
       现状：5 个测试文件平铺，夹具各自为战——`REAL_TRAJECTORY` / `REAL_USAGE_TRAJECTORY` /
       `REAL_USAGE_STEPS` 在 test_compaction.py，`USAGE` / `_budget_script` 在 test_loop.py，
@@ -1430,12 +1487,43 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
       pi 的 compaction.ts 到 893 行才拆。等 `summarize` 落地（预计 +300 行）再拆，
       拆法照 pi：`estimate` / `serialize` / `cut_point` / `summarize` + `__init__.py` 统一导出。
 
+### feature 34（TODO 存量批清）复盘引出 —— 2026-08-25
+
+档案：[features/34](features/34-20260825-todo-backlog-batch/README.md)、
+[复盘](features/34-20260825-todo-backlog-batch/复盘.md)
+
+- [ ] 第三个可变持有者出现时抽成泛型 `Ref[T]`（34 复盘质疑一）：`AskerRef` 与
+      `EventSink` 现在是两个几乎一模一样的 `get/set/__call__`。两份还不构成模式，
+      第三份就该抽——形状已经想好，触发条件是「又一个装配期烤进闭包、运行期要换的东西」。
+- [ ] 装配为什么必须在 TUI 之前（34 复盘质疑二）：两个可变持有者可能都是同一个
+      更深问题的症状——装配期就要用真人通道（skills/MCP 信任门禁要问人），
+      于是 UI 还没建好。顺序若能反过来，两个持有者都不需要。
+      目前只是怀疑，没有证据支撑到能提方案，先记着。
+- [ ] `read_file` 的截断提示没有真模型验证（34 复盘质疑三）：本轮按 R#17 的
+      「零成本做法」写了提示语，但「模型会不会真按提示去 `sed -n` 分段读」完全没验过——
+      离线测试只能断言提示语里有那几个字。倾向于 offset 参数才是正解（那是可测的），
+      零成本做法只是把成本转移给了模型。验收要么一次 `--llm` 冒烟，要么老实做 offset。
+- [ ] 给「漏勾」建一条可执行检查（34 复盘「下次怎么做更好」）：三次交付里都出现过
+      「其实早就修了、只是没回来划掉」（2026-08-09 / 2026-08-24 / 2026-08-25 各一批）。
+      不是记性问题是流程缺口——修的时候在别的档案里，销账要回全局 TODO，而那是纯自觉动作。
+      做法：写复盘前拿 `git diff --name-only` 的文件名/函数名去 grep TODO 的开放条目，
+      逐条问「这次是不是顺手把它关掉了」。五分钟的事，且正对着漏勾发生的机制。
+
 ## P3 · 可选
 
-- [ ] `loop` 的 `client` / `response` 无类型注解，违反自家规矩（R#14）。
-      可给最小 Protocol（`chat.completions.create`），顺带静态约束 FakeClient 同构性。
-- [ ] `read_file` 截断后无分页/offset，模型可能基于残缺视图去 edit（R#17）。
-      零成本做法：在截断提示语里建议模型用 bash 分段读。
+- [x] ~~`loop` 的 `client` / `response` 无类型注解，违反自家规矩（R#14）。
+      可给最小 Protocol（`chat.completions.create`），顺带静态约束 FakeClient 同构性。~~
+      已修 2026-08-25（feature 34，`fix/34-todo-backlog-batch`）：新增 `core/protocols.py` 的
+      `ChatClient`（runtime_checkable Protocol，只描述 `chat.completions.create`
+      这一条路径），接进 `run_agent` / `summarize` / `compact` / `make_recall` /
+      `assemble` / `run_once` 六处；两条测试钉住 FakeClient 合规、以及
+      Protocol 没宽到什么都通过。`response` 如实写 `Any` 并说明为什么
+      （流式装配后是 pai 自己的结构、各家 SDK 类型不通用，写死任何一个都是撒谎）。
+- [x] ~~`read_file` 截断后无分页/offset，模型可能基于残缺视图去 edit（R#17）。
+      零成本做法：在截断提示语里建议模型用 bash 分段读。~~
+      已修 2026-08-25（feature 34，`fix/34-todo-backlog-batch`）（取零成本做法）：提示语改成说清
+      "以上是前 N 字符 / 全文共 M 字符"、点名 `sed -n '起始,结束p'` 分段读、
+      并明说别拿这份残缺内容直接去 edit_file。真正的分页/offset 参数仍没做。
 - [ ] `session=None` 时也每步计算 `estimated`，纯浪费（R#18，量极小）。
 - [ ] `estimate_tokens` 假设 content 是 str/None；OpenAI 协议 content 可为分段列表，
       接多模态前要处理（R#19）。
@@ -1494,13 +1582,24 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
       不是本轮 viz 范围。
       2026-08-13 更新：会话回放已由 feature 17 交付（跨项目会话下拉 + 逐步展开 +
       未完成回合标红）；用量聚合仪表盘仍未立项（17 只做单会话内的每步用量）。
-- [ ] TUI 下 `MemoryWritten` / `RecallFailed` 直接打进 stdout，可能弄花 dock
+- [x] ~~TUI 下 `MemoryWritten` / `RecallFailed` 直接打进 stdout，可能弄花 dock
       （2026-08-13，P2，出处：17 的 T3.5 顺带发现）：`memory_tool.set_notifier` 与 recall 的
       `on_failure` 闭包用的是外层 `on_event`（默认渲染器），而 TUI 自建了走
       `app.on_event` 的本地版本。feature 12/13 就存在的老问题，非 17 引入；
-      修它要动 TUI 的事件路由，超出 17 范围。
+      修它要动 TUI 的事件路由，超出 17 范围。~~
+      已修 2026-08-25（feature 34，`fix/34-todo-backlog-batch`）：事件通道改走可变持有者
+      `EventSink`（与 2026-08-11 那次 asker 卡死同一个形状，所以照 `AskerRef` 的样子做），
+      装配层收 sink，`_run_tui` 建好 app 之后一处 `set`，装配期烤进闭包的
+      记忆通知 / 召回失败 / 召回命中三条一起跟着走。
+      两头各钉一条测试：sink 换完之后事件不再流回旧通道；以及 `_run_tui` 真的换了它
+      （在 `term.start()` 上引爆跑到那一行，不断言源码文本）。
+      注入反证：拿掉那句 `event_sink.set(on_event)` 即变红。
+      本条与下面第二处是同一件事重复登记，那一处已合并删除。
 - [ ] 事件流文件（`*.events.jsonl`）无上限增长、无清理策略（2026-08-13，P2，
-      出处：17 的 T1-T3）：长会话会一直长。观测流是可再生数据，可考虑按大小或天数轮转/清理。
+      出处：17 的 T1-T3）：`<session>.events.jsonl` 与会话同寿，长会话会一直长；
+      也没有「删旧会话」的入口。观测流是可再生数据，删了不损失历史，
+      所以清理策略是纯运维问题，17 不做。
+      （2026-08-25 去重：本文件下方原有第二条同内容登记，已合并到这里。）
 - [x] ~~`viz/collect.py` 的 `_stage_key` 剥反引号只剥两端（2026-08-12，P1，出处：17 立项
       时对真实 STATUS.md 实跑发现）：`` `core/tools/` 的 matcher `` 这行解析出
       `key="\` 的 matcher"` 垃圾键；`strip("\`")` 碰不到中间的反引号。现有一致性测试只查
@@ -1509,19 +1608,14 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
       改为先剥全部反引号再拆路径，散文式单元格取最后一个标识符样的词当 key
       （`matcher`），整句留给 label；新增反向断言测试
       `test_stage_keys_are_clean_identifiers`。
-- [ ] 事件流文件无上限增长、无清理策略（2026-08-13，P2，出处：feature 17 T3）：
-      `<session>.events.jsonl` 与会话同寿，长会话会一直长；也没有「删旧会话」的入口。
-      观测流是可再生数据，删了不损失历史，所以清理策略是纯运维问题，17 不做。
-- [ ] TUI 下 MemoryWritten / RecallFailed 直接打到 stdout，可能弄花 dock
-      （2026-08-13，P2，出处：feature 17 T3.5 顺带发现，非本轮引入）：
-      `memory_tool.set_notifier` 与 recall 的 `on_failure` 用的是外层 `on_event`
-      （默认渲染器），而 TUI 自建的 `on_event` 才是走 `app.on_event` 的那个。
-      feature 12/13 就存在；修它要动 TUI 事件路由，超出 17 范围。
-- [ ] `@tool` 注册表是进程级全局，测试注册的工具会漏进后续测试
+- [x] ~~`@tool` 注册表是进程级全局，测试注册的工具会漏进后续测试
       （2026-08-13，P2，出处：feature 17 T6）：`tests/test_tools.py` 的探针工具
       （如 `_cap_bool_probe`）会出现在别的测试文件看到的 `get_tools()` 里，
       于是「单跑绿、全跑红」。本轮绕开（断言只针对四个内置工具），
-      根治要给注册表加测试级隔离 fixture。
+      根治要给注册表加测试级隔离 fixture。~~
+      2026-08-25 对账核销（feature 34 复核）：根治已于 2026-08-19 做完（R4#T5），
+      本条漏勾——`tests/conftest.py` 的 autouse fixture `isolate_tool_registry`
+      按测试隔离 REGISTRY，注释里连"此前靠字母序苟活"都写着。
 - [ ] viz 时间线不显示金额、也无会话级合计（2026-08-13，P3，出处：feature 17 T8 用户裁决）：
       刻意不建价格表（定价会变，token 才是 ground truth）；会话级合计用户明确说不加。
       若日后要看成本趋势，先立「用量聚合」独立档案。

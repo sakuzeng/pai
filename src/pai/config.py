@@ -65,5 +65,22 @@ def recall_model() -> str:
 
 
 def context_window() -> int:
+    """上下文窗口大小。非法值不裸抛 ValueError——`invalid literal for int()`
+    说不出是哪个 env 配错了（02 终审 Minor#7，对齐 make_client 的报错先例）。
+
+    非正数同样挡在门口：语法合法但会让阈值公式 `window - reserve` 算出负预算，
+    于是每轮都判「该压缩」，比当场崩溃难查得多。
+    """
     _load_env()
-    return int(os.environ.get("PAI_CONTEXT_WINDOW", 1_000_000))
+    raw = os.environ.get("PAI_CONTEXT_WINDOW")
+    if raw is None or raw == "":
+        return 1_000_000
+    try:
+        value = int(raw)
+    except ValueError:
+        sys.exit(f"PAI_CONTEXT_WINDOW 不是整数：{raw!r}。"
+                 "它是上下文窗口的 token 数，例如 PAI_CONTEXT_WINDOW=1000000")
+    if value <= 0:
+        sys.exit(f"PAI_CONTEXT_WINDOW 必须是正整数：{raw!r}。"
+                 "非正数会让压缩阈值算出负预算，于是每轮都触发压缩")
+    return value

@@ -116,3 +116,44 @@ def test_recall_model_env_overrides(monkeypatch):
     monkeypatch.setenv("PAI_MODEL", "主模型")
     monkeypatch.setenv("PAI_RECALL_MODEL", "便宜档")
     assert recall_model() == "便宜档"
+
+
+# ---- PAI_CONTEXT_WINDOW 非法值：报清楚，不裸抛 ValueError（02 终审 Minor#7） ----
+
+
+def test_context_window_rejects_non_numeric_with_a_clear_message(monkeypatch, clean_env):
+    """裸 int() 抛的 `invalid literal for int()` 说不出「是哪个 env 配错了」。
+
+    对齐 make_client 的先例：报错要说清是谁、当前值是什么、该怎么改。
+    """
+    from pai.config import context_window
+
+    monkeypatch.setattr("pai.config._load_env", lambda: None)
+    monkeypatch.setenv("PAI_CONTEXT_WINDOW", "1_000_000 tokens")
+    with pytest.raises(SystemExit) as exc:
+        context_window()
+    message = str(exc.value)
+    assert "PAI_CONTEXT_WINDOW" in message
+    assert "1_000_000 tokens" in message
+
+
+def test_context_window_rejects_non_positive(monkeypatch, clean_env):
+    """0 与负数在语法上是合法整数，但阈值公式 `window - reserve` 会算出负预算，
+    should_compact 从此每轮都触发——比崩溃更难查。"""
+    from pai.config import context_window
+
+    monkeypatch.setattr("pai.config._load_env", lambda: None)
+    monkeypatch.setenv("PAI_CONTEXT_WINDOW", "0")
+    with pytest.raises(SystemExit) as exc:
+        context_window()
+    assert "PAI_CONTEXT_WINDOW" in str(exc.value)
+
+
+def test_context_window_accepts_valid_values(monkeypatch, clean_env):
+    from pai.config import context_window
+
+    monkeypatch.setattr("pai.config._load_env", lambda: None)
+    monkeypatch.setenv("PAI_CONTEXT_WINDOW", "65536")
+    assert context_window() == 65536
+    monkeypatch.delenv("PAI_CONTEXT_WINDOW", raising=False)
+    assert context_window() == 1_000_000

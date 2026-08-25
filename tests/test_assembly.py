@@ -110,3 +110,49 @@ def test_assemble_wires_additional_directories_into_boundary(monkeypatch, tmp_pa
                    on_event=lambda _e: None, session=None, recall_model="fake",
                    mode="dontAsk", rules=_OPEN)
     assert str(extra) in asm.working_dirs.additional
+
+
+# ---- 事件通道是可换的持有者：TUI 起来之后记忆/召回的事件要跟着走 ----
+
+
+def test_memory_and_recall_events_follow_the_swapped_sink(monkeypatch):
+    """TUI 下 MemoryWritten / RecallFailed 曾直打 stdout，弄花 dock
+    （出处：feature 17 T3.5 顺带发现，feature 12/13 就存在）。
+
+    根因是装配期把 `on_event` 烤进了闭包：TUI 是在装配之后才建起来的，
+    它自建的 `on_event`（走 app.on_event）换不进去。与 2026-08-11 那次
+    asker 卡死同一个形状，所以修法也照 AskerRef —— 事件通道走可变持有者。
+    """
+    from pai.core import mcp as mcp_mod
+    from pai.core.tools import get_tools, memory_tool
+    from pai.modes.assembly import assemble
+    from pai.modes.interactive import EventSink
+
+    monkeypatch.setattr(mcp_mod, "connect_configured_servers",
+                        lambda **_kw: ([], [], []))
+    early: list = []
+    late: list = []
+    sink = EventSink(early.append)
+
+    asm = assemble(client=FakeClient([]), tools=get_tools(), warn=lambda _m: None,
+                   on_event=sink, session=None, recall_model="fake",
+                   mode="dontAsk", rules=_OPEN)
+
+    sink.set(late.append)                      # TUI 起来了，换通道
+
+    memory_tool._NOTIFY("话题", Path("/tmp/x.md"))
+    assert [type(e).__name__ for e in late] == ["MemoryWritten"]
+    assert early == [], "换了通道之后不该再有事件流回旧的（默认渲染器 = 打进 stdout）"
+
+    # 召回失败走同一条通道（on_failure 闭包也是装配期烤进去的）
+    from pai.core.recall import RecallFailure
+
+    def _fail(_query, _memories, *, on_failure=None, **_kw):
+        on_failure(RecallFailure(reason="request_failed", detail="侧查询炸了",
+                                 disabled=False))
+        return [], {}
+
+    monkeypatch.setattr("pai.core.recall.select_memories", _fail)
+    asm.recall("随便问一句")
+    assert [type(e).__name__ for e in late] == ["MemoryWritten", "RecallFailed"]
+    assert early == []

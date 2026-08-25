@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Set, Tuple
 
+from pai.core.protocols import ChatClient
 from pai.core.compaction import usage_fields
 from pai.core.memory import MemoryHeader, freshness_note, memory_age, scan_memories
 
@@ -219,7 +220,8 @@ def recall_block(headers: Sequence[MemoryHeader], now: Optional[float] = None) -
             "</system-reminder>")
 
 
-def make_recall(*, client, model: str, directory: Path, state: RecallState,
+def make_recall(*, client: ChatClient, model: str, directory: Path,
+                state: RecallState,
                 on_failure: Optional[Callable[[RecallFailure], None]] = None,
                 on_selected: Optional[Callable[[Tuple[str, ...]], None]] = None
                 ) -> Callable[[str], Tuple[str, Dict]]:

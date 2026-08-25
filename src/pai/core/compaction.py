@@ -10,7 +10,9 @@ from __future__ import annotations
 import json
 import math
 from dataclasses import dataclass, field
-from typing import Iterable, Mapping, Sequence
+from typing import Any, Iterable, Mapping, NamedTuple, Optional, Sequence
+
+from pai.core.protocols import ChatClient
 
 # 官方换算系数，来源 refs/deepseek-api/quick_start/token_usage.md：
 # "1 个英文字符 ≈ 0.3 个 token""1 个中文字符 ≈ 0.6 个 token"。
@@ -33,8 +35,10 @@ CJK_RANGES = (
 # 单个字段拍平时的截断长度。挡的是一条 read_file 或 bash 结果吃掉整个摘要预算。
 MAX_CHARS_PER_FIELD = 5000
 
-# 只认 OpenAI 兼容协议里这四种 role。未知 role 一律记 0 且不拍平：
-# 与其猜一个数，不如让它在下游明显缺失。
+# OpenAI 兼容协议里的四种 role。它只管一件事：拍平时跳过不认识的 role
+# （不认识的东西不塞进摘要请求）。
+# 秤不看它——未知 role 照常按 content 估（R#5 裁决 2026-08-25，推翻 D#8 的「记 0」）：
+# 记 0 是最极端的低估，而 D#6 定过低估是唯一会炸窗口的方向。
 KNOWN_ROLES = frozenset({"system", "user", "assistant", "tool"})
 
 
@@ -58,24 +62,38 @@ class CompactionSettings:
     keep_recent_tokens: int = 20000
 
 
+class Anchor(NamedTuple):
+    """一个锚点：锚覆盖到的 message 下标 + 该下标处的累计真实 token。
+
+    具名而不是裸 tuple（02 终审 Minor#6 的落点）：`latest()` 曾返回
+    `(tokens, index)` 而 `entries` 存 `(index, tokens)`，两处序相反，
+    位置解包的调用方记反了不会有任何东西变红。按名取值之后，
+    序不再是调用方要背下来的隐式契约；仍是 tuple，`find_cut_point`
+    那样的位置解包与既有断言照常工作。
+    """
+
+    index: Optional[int]
+    tokens: int
+
+
 @dataclass
 class AnchorBook:
     """真实 usage 锚点簿（D#32）：单锚只够判「该不该压」，切点计算需要完整列表。
 
-    entries[i] = (锚覆盖到的 message 下标, 累计真实 token)；相邻差值 = 该轮真实成本。
+    entries[i] = Anchor(锚覆盖到的 message 下标, 累计真实 token)；
+    相邻差值 = 该轮真实成本。
     压缩会改写历史，必须 reset()——锚定法假设 append-only。
     """
 
-    entries: list[tuple[int, int]] = field(default_factory=list)
+    entries: list[Anchor] = field(default_factory=list)
 
     def record(self, message_index: int, real_tokens: int) -> None:
-        self.entries.append((message_index, real_tokens))
+        self.entries.append(Anchor(message_index, real_tokens))
 
-    def latest(self) -> tuple[int | None, int]:
+    def latest(self) -> Anchor:
         if not self.entries:
-            return None, 0
-        index, tokens = self.entries[-1]
-        return tokens, index
+            return Anchor(None, 0)
+        return self.entries[-1]
 
     def reset(self) -> None:
         self.entries.clear()
@@ -87,10 +105,11 @@ def estimate_tokens(message: Mapping[str, object]) -> int:
     计入 content 与每个 tool_call 的 name + arguments——arguments 是 JSON 字符串，
     一次 write_file 就可能几千字符，漏算它整条轨迹会低估一个数量级。
     不计 id / tool_call_id：它们是定长管道噪音，占比极小，计入只会让心智模型变复杂。
-    """
-    if message.get("role") not in KNOWN_ROLES:
-        return 0
 
+    role 一概不看（R#5 裁决 2026-08-25）：不认识的 role 也真在上下文里占位置，
+    记 0 是最极端的低估，与 D#6「低估是唯一会炸窗口的方向」直接冲突。
+    宁可高估。拍平那边照旧跳过未知 role——那问的是另一个问题（见 KNOWN_ROLES）。
+    """
     # content 可能是 None：模型只发 tool_calls 不说话时，loop.py 就是这么落盘的。
     text = str(message.get("content") or "")
     for call in _tool_calls(message):
@@ -248,8 +267,12 @@ SUMMARY_INSTRUCTIONS = (
 )
 
 
-def usage_fields(response) -> dict:
+def usage_fields(response: Any) -> dict:
     """取 provider 回传的 usage 字段；没有就返回空 dict。
+
+    response 只能是 Any（R#14 的另一半）：非流式是 SDK 的响应对象、流式装配后是
+    pai 自己的结构，各家 SDK 的类型也不通用——写死任何一个都是在说谎，
+    所以这里全靠下面三条退化路径做防御性取值。
 
     只透传不归一化——归一化会丢掉 DeepSeek 专有的 prompt_cache_hit/miss_tokens，
     而那正是缓存命中率的唯一来源。
@@ -269,7 +292,7 @@ def usage_fields(response) -> dict:
 def summarize(
     messages: Sequence[Mapping[str, object]],
     *,
-    client,
+    client: ChatClient,
     model: str,
     style: str = "flat",
     instructions: str | None = None,
@@ -328,7 +351,7 @@ def compact(
     messages: Sequence[Mapping[str, object]],
     *,
     cut: int,
-    client,
+    client: ChatClient,
     model: str,
     style: str = "flat",
     instructions: str | None = None,

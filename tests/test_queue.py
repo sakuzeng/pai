@@ -152,3 +152,33 @@ def test_drain_with_predicate_result_is_a_copy():
     drained = q.drain(where=_for_model)
     drained.append(_msg("污染"))
     assert q.drain() == [_msg("/help")]
+
+
+# ---- __len__：队列长度是公开面（12 复盘质疑一） ----
+
+
+def test_queue_reports_its_own_length():
+    """`len(queue)` 而不是 `len(queue._messages)`（12 复盘质疑一）。
+
+    当时的理由「不给 05 交付的类加公开面」站不住：读私有表比加一个 `__len__`
+    更耦合——它把「内部用 list 存」这件事泄漏进了 modes 层，
+    换成 deque 或双表实现时 modes 会当场坏。
+    """
+    q = PendingMessageQueue("all")
+    assert len(q) == 0
+    q.enqueue({"role": "user", "content": "a"})
+    q.enqueue({"role": "user", "content": "b"})
+    assert len(q) == 2
+    q.drain()
+    assert len(q) == 0
+
+
+def test_len_tracks_partial_drain_and_take_first():
+    """留在队列里的命令要照样计数——dock 上「排队 N 条」说的就是它们。"""
+    q = PendingMessageQueue("all")
+    q.enqueue({"role": "user", "content": "说点什么"})
+    q.enqueue({"role": "user", "content": "/help"})
+    q.drain(where=lambda m: not m["content"].startswith("/"))
+    assert len(q) == 1
+    q.take_first()
+    assert len(q) == 0

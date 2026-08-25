@@ -60,7 +60,13 @@ def read_file(path: Annotated[str, "要读取的文件路径（相对或绝对�
     if not content:
         return "(文件为空)"
     if len(content) > MAX_OUTPUT_CHARS:
-        return content[:MAX_OUTPUT_CHARS] + f"\n\n[... 截断，共 {len(content)} 字符]"
+        # 提示语给出路而不只报状态（R#17，同 bash 超时文案那条规矩）：只说「截断了」
+        # 的话，模型并不知道自己拿的是残缺视图，会照着它去 edit_file。
+        return (content[:MAX_OUTPUT_CHARS]
+                + f"\n\n[... 截断：以上是前 {MAX_OUTPUT_CHARS} 字符，"
+                  f"全文共 {len(content)} 字符。要看剩下的，"
+                  f"用 bash 分段读（如 `sed -n '起始,结束p' 文件`）；"
+                  f"别拿这份残缺内容直接去 edit_file]")
     return content
 
 

@@ -170,9 +170,27 @@ def test_assistant_with_null_content_does_not_crash():
     assert estimate_tokens(with_calls) > 0
 
 
-def test_unknown_role_returns_zero():
-    assert estimate_tokens({"role": "developer", "content": "a" * 400}) == 0
-    assert estimate_tokens({"content": "a" * 400}) == 0
+def test_unknown_role_is_still_weighed(monkeypatch):
+    """未知 role 也照常称重（R#5 裁决，推翻 D#8 的「记 0」）。
+
+    D#6 定过：低估是唯一会炸窗口的方向，而记 0 是最极端的低估——
+    一条 `developer` role 的长消息真在上下文里占着位置，秤上却是 0。
+    宁可高估：按 content + tool_calls 与已知 role 同算法估。
+    """
+    known = estimate_tokens({"role": "user", "content": "a" * 400})
+    assert estimate_tokens({"role": "developer", "content": "a" * 400}) == known
+    assert estimate_tokens({"content": "a" * 400}) == known
+
+
+def test_unknown_role_still_counts_its_tool_calls():
+    """未知 role 上挂 tool_calls 是畸形输入，但畸形的那份 token 照样要付钱。"""
+    weird = {
+        "role": "developer",
+        "content": None,
+        "tool_calls": [{"id": "c1", "type": "function",
+                        "function": {"name": "write_file", "arguments": "x" * 2000}}],
+    }
+    assert estimate_tokens(weird) > 500
 
 
 # ---------- should_compact ----------
@@ -254,6 +272,11 @@ def test_serialize_keeps_roles_and_tool_calls():
 
 
 def test_serialize_skips_unknown_role():
+    """拍平仍然跳过未知 role——与秤的裁决（R#5：照常估）刻意不一致。
+
+    两处问的不是同一个问题：秤问「它占不占窗口」（占，所以要称），
+    拍平问「要不要把它塞进摘要请求」（不认识的东西不塞）。
+    """
     text = serialize_conversation([{"role": "developer", "content": "机密"}])
     assert text == ""
 
@@ -448,98 +471,99 @@ REAL_USAGE_STEPS = [
 # 将来改一句工具描述就会让断言假失败，且报错说「误差过大」而不是「你改了工具描述」。
 # 冻结后二者解耦：改工具不会打扰这条测试，而这条测试也不再假装能验证当前工具集。
 FROZEN_TOOL_SCHEMAS = [
-        {
-            "type": "function",
-            "function": {
-                "name": "read_file",
-                "description": "读取一个文件的全部内容。",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "要读取的文件路径（相对或绝对）"
-                        }
-                    },
-                    "required": [
-                        "path"
-                    ]
-                }
-            }
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "write_file",
-                "description": "把内容写入文件（覆盖式，文件不存在则创建）。",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "要写入的文件路径"
-                        },
-                        "content": {
-                            "type": "string",
-                            "description": "写入的完整内容（会覆盖原文件）"
-                        }
-                    },
-                    "required": [
-                        "path",
-                        "content"
-                    ]
-                }
-            }
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "edit_file",
-                "description": "精确替换文件中的一段文本：old 必须在文件中唯一出现一次。",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "要编辑的文件路径"
-                        },
-                        "old": {
-                            "type": "string",
-                            "description": "要被替换的原文本，必须在文件中唯一出现一次"
-                        },
-                        "new": {
-                            "type": "string",
-                            "description": "替换后的新文本"
-                        }
-                    },
-                    "required": [
-                        "path",
-                        "old",
-                        "new"
-                    ]
-                }
-            }
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "bash",
-                "description": "在 shell 里执行一条命令并返回它的输出（stdout+stderr）。",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "command": {
-                            "type": "string",
-                            "description": "要执行的 shell 命令"
-                        }
-                    },
-                    "required": [
-                        "command"
-                    ]
-                }
+    {
+        "type": "function",
+        "function": {
+            "name": "read_file",
+            "description": "读取一个文件的全部内容。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "要读取的文件路径（相对或绝对）"
+                    }
+                },
+                "required": [
+                    "path"
+                ]
             }
         }
-    ]
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "write_file",
+            "description": "把内容写入文件（覆盖式，文件不存在则创建）。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "要写入的文件路径"
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "写入的完整内容（会覆盖原文件）"
+                    }
+                },
+                "required": [
+                    "path",
+                    "content"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "edit_file",
+            "description": "精确替换文件中的一段文本：old 必须在文件中唯一出现一次。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "要编辑的文件路径"
+                    },
+                    "old": {
+                        "type": "string",
+                        "description": "要被替换的原文本，必须在文件中唯一出现一次"
+                    },
+                    "new": {
+                        "type": "string",
+                        "description": "替换后的新文本"
+                    }
+                },
+                "required": [
+                    "path",
+                    "old",
+                    "new"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "bash",
+            "description": "在 shell 里执行一条命令并返回它的输出（stdout+stderr）。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "command": {
+                        "type": "string",
+                        "description": "要执行的 shell 命令"
+                    }
+                },
+                "required": [
+                    "command"
+                ]
+            }
+        }
+    }
+]
+
 
 def test_context_tokens_without_anchor_falls_back_to_pure_estimate():
     """首次请求没有 usage 可锚，只能纯估——那时上下文才几百 token，离阈值差几个数量级。"""
@@ -645,8 +669,30 @@ class TestAnchorBook:
         assert book.latest() == (None, 0)      # 无锚时 context_tokens 走纯估算
         book.record(3, 1000)                   # 第 1 轮后：messages 前 3 条 = 1000 真实 token
         book.record(5, 1075)
-        assert book.latest() == (1075, 5)
+        assert book.latest() == (5, 1075)
         assert book.entries == [(3, 1000), (5, 1075)]
+
+    def test_anchor_fields_are_named_and_ordered_like_entries(self):
+        """02 终审 Minor#6：latest() 曾返回 (tokens, index)，与 entries 的
+        (index, tokens) 相反——位置解包的调用方一旦记反就是静默错账。
+        改成具名字段之后，序不再是调用方要背下来的隐式契约。"""
+        from pai.core.compaction import AnchorBook
+
+        book = AnchorBook()
+        book.record(5, 1075)
+        anchor = book.latest()
+        assert anchor.index == 5
+        assert anchor.tokens == 1075
+        assert book.entries[-1].index == 5     # entries 与 latest() 同一种东西
+        assert book.entries[-1].tokens == 1075
+
+    def test_empty_book_latest_is_also_named(self):
+        """无锚这条退化路径同样要能按名取——否则调用方还得为它写第二套解包。"""
+        from pai.core.compaction import AnchorBook
+
+        anchor = AnchorBook().latest()
+        assert anchor.index is None
+        assert anchor.tokens == 0
 
     def test_turn_cost_is_adjacent_difference(self):
         """D#32：第 N 轮新增消息的真实成本 = 相邻锚差值——实测 42/33/43 的那套语义。"""
@@ -658,6 +704,27 @@ class TestAnchorBook:
         book.record(7, 175)
         costs = [b - a for (_, a), (_, b) in zip(book.entries, book.entries[1:])]
         assert costs == [42, 33]
+
+    def test_no_anchor_is_index_none_not_tokens_zero(self):
+        """无锚这条退化路径的判据必须是 index is None，不能是 tokens == 0。
+
+        锚簿空时 latest() 给 Anchor(None, 0)；调用方若拿 tokens 当锚传下去，
+        context_tokens 会以为「真有个 0 token 的锚」而走锚定分支——
+        工具 schema 那几百 token 就此从账上消失（锚定分支只估锚之后的消息）。
+        两条路的结果不同，这条断言就是不同本身。
+        """
+        from pai.core.compaction import AnchorBook, context_tokens
+
+        msgs = [{"role": "user", "content": "hi"}]
+        schemas = [{"type": "function", "function": {"name": "bash",
+                                                     "description": "x" * 400}}]
+        latest = AnchorBook().latest()
+        assert latest.index is None
+
+        pure = context_tokens(msgs, schemas, anchor=None, anchor_index=0)
+        as_if_anchored = context_tokens(msgs, schemas, anchor=latest.tokens,
+                                        anchor_index=latest.index or 0)
+        assert pure > as_if_anchored     # 差的就是被漏掉的工具 schema
 
     def test_reset_clears_everything(self):
         """压缩改写历史后旧锚全部作废（D#18/D#32 前提：append-only）。"""
@@ -767,3 +834,19 @@ class TestCompactAndBreaker:
             state.awaiting_verify = True
             state = verify_compaction(999, 1000, settings, state)
         assert state.tripped                                          # 第 3 次即熔断
+
+    def test_tripped_is_one_way(self):
+        """熔断置位后不因「这次降回线内」而回落（02 终审延后项）。
+
+        实现靠 `state.tripped or failures >= MAX` 这个表达式兑现，此前只做过
+        双重人工审查没有测试——而它一旦回落，熔断器就退化成「每三次歇一次」，
+        CC 那种「单会话数千次连续压缩失败」的账重新打开（D#14）。
+        """
+        from pai.core.compaction import (CompactionSettings, CompactionState,
+                                         verify_compaction)
+
+        settings = CompactionSettings(reserve_tokens=200)
+        state = CompactionState(failures=3, tripped=True, awaiting_verify=True)
+        state = verify_compaction(500, 1000, settings, state)   # 降回线内，计数清零
+        assert state.failures == 0
+        assert state.tripped                                    # 但熔断不回落

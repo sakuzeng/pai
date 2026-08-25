@@ -44,7 +44,7 @@ def _stage_key(cell: str) -> str:
     return name
 
 
-def parse_status_table(text: str) -> list:
+def parse_status_table(text: str) -> list[dict]:
     """解析 STATUS.md「模块现状」表。格式不符时返回 [],绝不抛——
 
     STATUS.md 是手写文档,格式漂移是正常事件不是异常;页面用警告条提示即可,
@@ -59,7 +59,7 @@ def parse_status_table(text: str) -> list:
     if start is None:
         return []
 
-    stages: list = []
+    stages: list[dict] = []
     for line in lines[start + 1:]:
         s = line.strip()
         if s.startswith("## "):  # 下一节,结束
@@ -186,10 +186,10 @@ def _source_of(func) -> str:
         return f"{path}:{line}"          # 装在别处(site-packages):给绝对路径
 
 
-def _tool_entries() -> list:
+def _tool_entries() -> list[dict]:
     from pai.core.tools import get_tools  # 函数内 import:让子进程按需注册
 
-    out = []
+    out: list[dict] = []
     for t in get_tools().values():
         props = t.parameters.get("properties", {})
         required = set(t.parameters.get("required", []))
@@ -211,8 +211,8 @@ def build_structure(status_path: Path = STATUS_DEFAULT) -> dict:
 
     model = model_name()  # config 自带 load_dotenv,不再需要这里手动补位(R3#7)
 
-    warnings: list = []
-    stages: list = []
+    warnings: list[str] = []
+    stages: list[dict] = []
     if not status_path.exists():
         warnings.append(f"未找到 {status_path},阶段路线图为空(请从项目根目录运行 pai-viz)")
     else:

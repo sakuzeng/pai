@@ -31,7 +31,7 @@ def _index_html() -> bytes:
     return resources.files("pai.viz").joinpath("index.html").read_bytes()
 
 
-def _collect() -> "tuple[int, bytes]":
+def _collect() -> tuple[int, bytes]:
     """跑子进程收集,返回 (http状态码, body)。"""
     try:
         proc = subprocess.run(
@@ -103,7 +103,7 @@ def list_sessions() -> dict:
     ]}
 
 
-def _resolve_session(name: str) -> "tuple[Path | None, str]":
+def _resolve_session(name: str) -> tuple[Path | None, str]:
     """会话标识 → 路径。返回 (路径, 错误说明)。
 
     接受两种写法：`<文件名>`（在所有项目里找，够用因为文件名带时间戳+短 id）
@@ -196,7 +196,7 @@ def events_since(name: str, cursor: str) -> dict:
             "session": path.name}
 
 
-def _editor_cmd() -> "list | None":
+def _editor_cmd() -> list[str] | None:
     """用户的编辑器 CLI：$PAI_EDITOR，然后 cursor，然后 code。"""
     import os
 
@@ -215,7 +215,7 @@ def _editor_cmd() -> "list | None":
 _EDITOR_APPS = [("Visual Studio Code", "vscode"), ("Cursor", "cursor")]
 
 
-def _installed_editor_scheme() -> "str | None":
+def _installed_editor_scheme() -> str | None:
     """装了哪个编辑器 → 它的 URL scheme。`$PAI_EDITOR_SCHEME` 可强制指定。"""
     import os
     import sys

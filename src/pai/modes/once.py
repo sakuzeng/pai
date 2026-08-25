@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import Callable, Optional
 
+from pai.core.protocols import ChatClient
 from pai.config import context_window, make_client, model_name, recall_model
 from pai.core import mcp
 from pai.core.compaction import CompactionSettings
@@ -30,7 +31,7 @@ def run_once(
     max_steps: int = 20,
     max_total_tokens: int | None = None,
     no_session: bool = False,
-    client=None,
+    client: Optional[ChatClient] = None,
     model: str | None = None,
     on_event: Optional[Callable[[AgentEvent], None]] = None,
     rules: RuleSet | None = None,

@@ -17,6 +17,7 @@ import json
 import os
 import re
 import sys
+from typing import Optional, Tuple
 
 EDIT_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 GUARDED_PREFIXES = ("src/", "tests/")
@@ -29,7 +30,8 @@ def target_path(tool_input: dict) -> str:
     return tool_input.get("file_path") or tool_input.get("notebook_path") or ""
 
 
-def decide(tool_name, rel_path, active_text, archive_text):
+def decide(tool_name: str, rel_path: str, active_text: Optional[str],
+           archive_text: Optional[str]) -> Tuple[str, str]:
     """纯判定函数，返回 (decision, reason)。decision: 'allow' | 'deny'。
 
     active_text / archive_text 传 None 表示对应文件不存在——IO 留在 main，
@@ -77,7 +79,7 @@ def decide(tool_name, rel_path, active_text, archive_text):
     return "allow", ""
 
 
-def main():
+def main() -> None:
     ev = json.loads(sys.stdin.read())
     root = os.environ.get("CLAUDE_PROJECT_DIR") or ev.get("cwd") or os.getcwd()
 
@@ -91,7 +93,7 @@ def main():
         if rel.startswith(".."):
             rel = ""                  # 项目外的文件不管
 
-    def read(p):
+    def read(p: str) -> Optional[str]:
         try:
             with open(p, encoding="utf-8") as f:
                 return f.read()

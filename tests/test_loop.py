@@ -285,7 +285,7 @@ def test_anchor_bookkeeping_is_exact(tmp_path):
     assert usages[1]["estimated_prompt_tokens"] == expected
 
 
-def test_anchor_does_not_double_count_the_assistant_message():
+def test_anchor_does_not_double_count_the_assistant_message(tmp_path):
     """反向钉死：assistant 消息绝不能既算进 completion_tokens 又被估算一遍。
 
     若 anchor_index 少 1（指向 assistant 而非其后），估算就会把它重复计入，
@@ -293,7 +293,6 @@ def test_anchor_does_not_double_count_the_assistant_message():
     """
     from pai.core.compaction import estimate_conversation_tokens
     from pai.core.session import SessionLog
-    import tempfile
 
     usage1 = {"prompt_tokens": 700, "completion_tokens": 40, "total_tokens": 740}
     long_args = json.dumps({"command": "printf " + "x" * 500})
@@ -302,11 +301,12 @@ def test_anchor_does_not_double_count_the_assistant_message():
         {"content": "ok", "usage": {"prompt_tokens": 800, "completion_tokens": 5,
                                     "total_tokens": 805}},
     ])
-    with tempfile.TemporaryDirectory() as d:
-        session = SessionLog(d)
-        run_agent("x", client=client, model="fake", tools=get_tools(),
-                  session=session, on_event=lambda _: None)
-        usages = [r for r in _read_session(session) if r.get("type") == "usage"]
+    # 用 tmp_path 而不是 TemporaryDirectory（R3#16）：本文件其余测试都走 fixture，
+    # 混两套写法会让「测试往哪写盘」这件事需要逐条确认
+    session = SessionLog(tmp_path)
+    run_agent("x", client=client, model="fake", tools=get_tools(),
+              session=session, on_event=lambda _: None)
+    usages = [r for r in _read_session(session) if r.get("type") == "usage"]
 
     sent = client.requests[1]["messages"]
     assistant_est = estimate_conversation_tokens([sent[2]])
@@ -1930,3 +1930,29 @@ def test_auto_compaction_records_first_kept_entry_and_replay_still_matches(tmp_p
         "firstKeptEntryId 必须指向一条真实存在的消息条目"
     assert replay_messages(session.path) == messages, \
         "压缩之后重放仍须与内存对话逐字相等——这是本次换格式的核心收益"
+
+
+# ---- client 的最小契约（R#14：loop 的 client 此前无类型注解） ----
+
+
+def test_fake_client_satisfies_the_chat_client_protocol():
+    """离线测试的假 client 与真 SDK 唯一的共同契约，写下来并钉住。
+
+    此前 `run_agent(client=…)` 是个裸参数——依赖注入这条设计线的核心接口
+    没有任何类型表达，FakeClient 与 openai.OpenAI 是否同构全靠「跑一下看看」。
+    """
+    from pai.core.protocols import ChatClient
+
+    client = FakeClient([])
+    assert isinstance(client, ChatClient)
+    assert hasattr(client.chat.completions, "create")
+
+
+def test_something_without_chat_is_not_a_chat_client():
+    """反向：Protocol 不能宽到什么都通过（否则等于没写）。"""
+    from pai.core.protocols import ChatClient
+
+    class NotAClient:
+        pass
+
+    assert not isinstance(NotAClient(), ChatClient)

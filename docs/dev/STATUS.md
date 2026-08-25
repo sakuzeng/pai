@@ -1,6 +1,15 @@
 # 当前状态快照
 
-最后更新：2026-08-24（深夜：feature 33 交付——usability-hardening，用户指示
+最后更新：2026-08-25（feature 34 交付——TODO 存量批清：从 180 条开放项里挑出
+「不等外部输入、修法已有形状」的一批清掉，11 条真修 + 6 条对账核销 + 2 对重复登记
+合并（详见档案 [features/34](features/34-20260825-todo-backlog-batch/README.md)）。
+真修的面：`PAI_CONTEXT_WINDOW` 非法值清晰报错、锚点换具名 `Anchor(index, tokens)`、
+未知 role 照常称重（R#5 推翻 D#8 的秤那一半）、熔断单向性补测试、
+TUI 下记忆/召回事件走 `EventSink` 不再打进 stdout、队列 `__len__`、
+`--resume` 同秒 tie 排序稳定、`read_file` 截断提示给出路、
+`core/protocols.py` 的 `ChatClient`（R#14）、design_gate 类型注解、R3 风格五条。
+1411 passed）。
+更早（2026-08-24 深夜）：feature 33 交付——usability-hardening，用户指示
 「不加新功能、已有功能健全到能让人使用」：九个修复面（折行点击定位、↑↓
 显示行移动、粘贴自愈提示、/permissions 说全真话、once defaultMode 告警、
 MCP 非对象 schema 拦截、超高 dock 钳制、additionalDirectories 首次接线）+
@@ -119,7 +128,8 @@ MCP client（手写 stdio JSON-RPC、`mcp__<server>__<tool>` 桥接、settings �
 | `cli.py` / `config.py` | 可用 | cli 只做参数解析与分发；OpenAI 兼容协议打 DeepSeek；`context_window()` 读 `PAI_CONTEXT_WINDOW`，默认 1_000_000（v4-flash） |
 | `modes/interactive.py` | 可用 | REPL：跨轮持有 messages/锚点簿/熔断状态；历史（按 cwd 分文件、连续重复只记一条）、`\` 续行、`!` shell 模式、`/help /status /compact /clear /exit`、两级 Ctrl+C；API 出错不炸会话 |
 | `core/events.py` | 可用 | frozen dataclass 扁平联合 + `render_text` 默认渲染器（D#39）。成员数不在文档里抄——已漂过三次（12→14→17），以本文件的 `AgentEvent` Union 为准。`on_event` 现在收事件对象，渲染下放 modes 层；`MessageDelta`（流式增量）与 `Interrupted(where="stream")` 于阶段 5 补上 |
-| `core/queue.py` | 可用 | `PendingMessageQueue`（all/single 两种 drain + 可选谓词）。已通电（feature 18）：TUI 干活期间打的字进队列，loop 有两个注入出口（工具结果回填后 / 模型不调工具时）。队列混装消息与 `/`、`!` 命令，谓词把命令滤出注入之外、留到轮末执行。单队列取自 CC、第二出口取自 pi（D#68） |
+| `core/queue.py` | 可用 | `PendingMessageQueue`（all/single 两种 drain + 可选谓词）。已通电（feature 18）：TUI 干活期间打的字进队列，loop 有两个注入出口（工具结果回填后 / 模型不调工具时）。队列混装消息与 `/`、`!` 命令，谓词把命令滤出注入之外、留到轮末执行。单队列取自 CC、第二出口取自 pi（D#68）。长度走 `__len__`（feature 34，modes 层不再读私有表） |
+| `core/protocols.py` | 可用 | 跨模块共用的结构化类型（feature 34，R#14）：`ChatClient` 只描述 `chat.completions.create` 这一条路径——`run_agent` / `summarize` / `compact` / `make_recall` / `assemble` / `run_once` 六处的 client 参数从此有类型，FakeClient 与真 SDK 的同构性有测试钉住 |
 | `core/interrupt.py` | 可用 | 进程级中断标志（D#40）。loop 在步边界与每个 tool_call 前查，bash 在轮询里查 |
 | `modes/statusline.py` | 可用 | `render_tool_line(events, width)` 纯函数（按终端列宽算中文宽度）+ `\r` 原地刷新；真 tty 才启用，非 tty 退回滚动行 |
 | `core/tools/ask.py` | 可用 | AskUserQuestion，asker 装配期注入；默认工具集不含它（once 无真人可问） |
@@ -191,7 +201,7 @@ MCP client（手写 stdio JSON-RPC、`mcp__<server>__<tool>` 桥接、settings �
 + feature 13 alt-screen task 1-7 + feature 16 鼠标与选区 task 1-9
 + feature 17 viz-flow task 1-3.5（事件落盘 + RecallInjected/ConversationCleared + 装配））：
 
-- `./test.sh` → 1395 passed, 3 deselected，全部离线，约 2.5 分钟。这是默认路径。
+- `./test.sh` → 1411 passed, 3 deselected，全部离线，约 2.7 分钟。这是默认路径。
 - `./eval.sh` → 评测另一条入口（feature 32，不进上面的收集范围）：默认无密钥
   回放评测；`--llm` 追加真模型评测。工件落 `evals/.eval/<时间戳>/`。
   可选并行 `./test.sh -n auto`（xdist）：实测 2:07 全绿，10 核仅 1.35× 且

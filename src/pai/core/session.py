@@ -265,9 +265,13 @@ def resolve_resume_target(target: Optional[str],
         p = Path(target)
         if p.is_file():
             return p
+    # 排序键带文件名（24 复盘质疑四）：只按 st_mtime 排的话同秒落盘的两个会话并列，
+    # 而 sorted 是稳定的——「最近一次」于是取决于 glob 的目录列出顺序。文件名前缀是
+    # `%Y%m%d-%H%M%S-<id8>`，同秒时它至少给出一个稳定且可解释的答案。
+    # 秒改纳秒也一并做了：同秒但不同纳秒的两个会话，本来就该分得出先后。
     candidates = sorted(
         (f for f in d.glob("*.jsonl") if not f.name.endswith(".events.jsonl")),
-        key=lambda f: f.stat().st_mtime, reverse=True)
+        key=lambda f: (f.stat().st_mtime_ns, f.name), reverse=True)
     if not target:
         if not candidates:
             raise FileNotFoundError(f"{d} 下没有任何会话可恢复")

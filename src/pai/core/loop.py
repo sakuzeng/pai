@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Callable, List, Optional
 
+from pai.core.protocols import ChatClient
 from pai.core import interrupt as interrupt_module
 from pai.core.compaction import (
     AnchorBook,
@@ -59,8 +60,8 @@ from pai.core.tools import Tool
 if TYPE_CHECKING:                       # loop 只需要 .kind / .reason，不该运行期依赖权限层
     from pai.core.permissions import Decision
 
-# provider 回传 usage 的字段名各家不同，这里只做透传不做归一化：
-# 归一化会丢掉 DeepSeek 专有的 prompt_cache_hit/miss_tokens，而那正是我们要的。
+# 落盘时的记录类型名。为什么只透传不归一化，见 compaction.usage_fields 的 docstring
+# （理由原本在这里逐字抄了一遍，R3#11）。
 USAGE_RECORD_TYPE = "usage"
 
 CANCELLED_RESULT = "(已取消，用户中断)"
@@ -129,7 +130,7 @@ def print_event(event: AgentEvent) -> None:
 def run_agent(
     task: str,
     *,
-    client,
+    client: ChatClient,
     model: str,
     tools: dict[str, Tool],
     max_steps: int = 20,
@@ -227,9 +228,14 @@ def run_agent(
                 f"在第 {step} 步发出请求前停止。任务可能未完成。"
             ))
 
-        anchor, anchor_index = anchors.latest()
+        latest = anchors.latest()
+        # index is None = 一个锚都还没有，此时必须传 anchor=None 走纯估算
+        # （传 tokens=0 会被当成「真有个 0 token 的锚」，工具 schema 那几百 token
+        # 就此从账上消失）——这条退化路径由 test_loop 的无锚回归测试钉住
         estimated = context_tokens(
-            messages, tool_schemas, anchor=anchor, anchor_index=anchor_index
+            messages, tool_schemas,
+            anchor=None if latest.index is None else latest.tokens,
+            anchor_index=latest.index or 0,
         )
 
         compaction_on = compaction is not None and context_window is not None
