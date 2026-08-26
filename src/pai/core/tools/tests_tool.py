@@ -21,7 +21,7 @@ import shlex
 from typing import Annotated, Optional, Tuple
 
 from pai.core.tools import EXEC, capabilities_for, matcher_for, path_access_for, tool
-from pai.core.tools.fs import path_matcher
+from pai.core.tools.roots import path_semantics
 from pai.core.tools.output import MAX_OUTPUT_CHARS, head_and_tail
 from pai.core.tools.shell import Killed, run_process
 
@@ -83,14 +83,9 @@ def resolve_command(root: str) -> Tuple[Optional[str], str]:
     return None, ""
 
 
-def test_root(args: dict) -> str:
-    """这次调用真正要跑的那个根，**空 path 回落到 cwd**。
-
-    权限层与工具本体共用这一个函数。回空串是这里最容易埋的静默 bug：
-    边界判定拿不到路径就退回 ask，于是不传 path 的调用（最常见的形态）
-    每次都弹窗，而没有任何测试会因此变红。同 `search.search_root`。
-    """
-    return os.path.abspath(str(args.get("path") or "") or os.getcwd())
+# 这次调用真正要跑的那个根，与配套的 matcher（feature 43 抽进 `roots.py`）。
+# 权限层与工具本体共用同一个 `test_root`——边界判的是它，跑也在它上面跑。
+test_root, run_tests_matcher = path_semantics("path")
 
 
 @tool
@@ -138,16 +133,7 @@ def run_tests(
 # ---- 接线（feature 42 拍板问 3·A）----
 
 
-@matcher_for(run_tests)
-def run_tests_matcher(specifier: str, args: dict, require_all: bool, ctx) -> bool:
-    """复用 fs 的路径匹配，先把默认根解出来（同 `search.search_matcher`）。
-
-    不挂的话吃 `default_matcher`——它比对**第一个参数值**，而这里第一个参数是
-    `filter`：规则会拿过滤表达式去比对路径 pattern，静默永不命中。
-    """
-    return path_matcher(specifier, {"path": test_root(args)}, require_all, ctx)
-
-
+matcher_for(run_tests)(run_tests_matcher)
 path_access_for(run_tests, EXEC)(test_root)
 
 # **显式写 False 而不是靠默认**：默认值是给「忘了声明」兜底的，而这里是

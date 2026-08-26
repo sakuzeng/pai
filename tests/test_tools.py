@@ -16,8 +16,8 @@ def test_schema_generated_from_signature():
     schema = tools["edit_file"].schema()
     fn = schema["function"]
     assert fn["name"] == "edit_file"
-    assert set(fn["parameters"]["properties"]) == {"path", "old", "new"}
-    assert fn["parameters"]["required"] == ["path", "old", "new"]
+    assert set(fn["parameters"]["properties"]) == {"path", "old", "new", "near_line"}
+    assert fn["parameters"]["required"] == ["path", "old", "new"]   # near_line 有默认值
     assert fn["parameters"]["properties"]["old"]["description"]  # Annotated 描述进了 schema
 
 
@@ -1076,3 +1076,118 @@ def test_whole_file_read_is_byte_for_byte_unchanged(tmp_path):
     p = tmp_path / "a.txt"
     p.write_text("一\n二\n三\n", encoding="utf-8")
     assert read_file(path=str(p)) == "一\n二\n三\n"
+
+
+# ---- edit_file 的 near_line（feature 43 Task 2）----
+#
+# 上游：41 的 offset 让模型拿到了行号，而 edit_file 只有「old 必须全文唯一」，
+# 于是改一个函数体要贴很长的上下文去凑唯一性。near_line 只在 old 出现多次时
+# 用来**挑哪一个**，不用来定位内容——old 仍必须逐字匹配，所以行号漂了
+# 会挑错或挑不到，但绝不会改到一段不长这样的文本上（拍板问 1·A）。
+
+
+def test_near_line_picks_the_occurrence_closest_to_it(tmp_path):
+    from pai.core.tools.fs import edit_file
+
+    p = tmp_path / "a.py"
+    p.write_text("\n".join([
+        "def one():",          # 1
+        "    return None",     # 2
+        "",                    # 3
+        "def two():",          # 4
+        "    return None",     # 5
+        "",                    # 6
+        "def three():",        # 7
+        "    return None",     # 8
+    ]) + "\n", encoding="utf-8")
+
+    out = edit_file(path=str(p), old="    return None",
+                    new="    return 2", near_line=5)
+
+    lines = p.read_text(encoding="utf-8").split("\n")
+    assert lines[1] == "    return None", "第 2 行不该动"
+    assert lines[4] == "    return 2", "第 5 行才是该动的那一处"
+    assert lines[7] == "    return None", "第 8 行不该动"
+    assert "5" in out, "没说清挑中了第几行"
+
+
+def test_near_line_does_not_need_to_be_exact(tmp_path):
+    """模型手里的行号来自上一次 read_file，中间可能已经漂了一两行。
+
+    「最近的那一处」而不是「正好那一行」，就是为了容这一两行的漂移——
+    要求精确的话，这个参数在真实使用里基本没用。
+    """
+    from pai.core.tools.fs import edit_file
+
+    p = tmp_path / "a.py"
+    # TARGET 在第 3、8 行；near_line=7 不是任何一处，但离第 8 行更近。
+    # 刻意避开等距（第一版写成 3/5 + near=4，那正好是平局，测的其实是平局规则）。
+    p.write_text("x\ny\nTARGET\na\nb\nc\nd\nTARGET\n", encoding="utf-8")
+
+    edit_file(path=str(p), old="TARGET", new="改了", near_line=7)
+    assert p.read_text(encoding="utf-8") == "x\ny\nTARGET\na\nb\nc\nd\n改了\n"
+
+
+def test_a_tie_picks_the_earlier_occurrence_and_says_so(tmp_path):
+    """两处等距时必须有个确定的裁决，且要说出来——不确定的裁决等于随机改文件。"""
+    from pai.core.tools.fs import edit_file
+
+    p = tmp_path / "a.py"
+    p.write_text("T\nx\nT\n", encoding="utf-8")          # 第 1、3 行，near=2 等距
+
+    out = edit_file(path=str(p), old="T", new="改", near_line=2)
+    assert p.read_text(encoding="utf-8") == "改\nx\nT\n"
+    assert "1" in out
+
+
+def test_without_near_line_the_old_behaviour_is_unchanged(tmp_path):
+    """回归守卫：old 唯一时的那条路是今天所有编辑走的路，一个字都不许变。"""
+    from pai.core.tools.fs import edit_file
+
+    p = tmp_path / "a.py"
+    p.write_text("只有一处 TARGET 在这里\n", encoding="utf-8")
+    out = edit_file(path=str(p), old="TARGET", new="改了")
+    assert p.read_text(encoding="utf-8") == "只有一处 改了 在这里\n"
+    assert "完成 1 处替换" in out
+
+
+def test_ambiguous_without_near_line_still_refuses_but_now_points_at_the_way_out(tmp_path):
+    """出现多次且没给 near_line：照旧拒绝，但文案要给出路（同 R#17 那条规矩）。"""
+    from pai.core.tools.fs import edit_file
+
+    p = tmp_path / "a.py"
+    p.write_text("T\nT\nT\n", encoding="utf-8")
+    out = edit_file(path=str(p), old="T", new="改")
+
+    assert p.read_text(encoding="utf-8") == "T\nT\nT\n", "拒绝了却改了文件"
+    assert "不唯一" in out and "3" in out
+    assert "near_line" in out, "没告诉模型还有这条路"
+
+
+def test_a_negative_near_line_is_reported(tmp_path):
+    """错误路径：静默改用默认值 = 模型永远不知道自己传错了。"""
+    from pai.core.tools.fs import edit_file
+
+    p = tmp_path / "a.py"
+    p.write_text("T\nT\n", encoding="utf-8")
+    out = edit_file(path=str(p), old="T", new="改", near_line=-3)
+    assert "错误" in out
+    assert p.read_text(encoding="utf-8") == "T\nT\n", "报错了却改了文件"
+
+
+def test_near_line_on_a_missing_old_still_says_not_found(tmp_path):
+    """错误路径：near_line 不该把「找不到」变成「猜一个」。"""
+    from pai.core.tools.fs import edit_file
+
+    p = tmp_path / "a.py"
+    p.write_text("a\nb\n", encoding="utf-8")
+    out = edit_file(path=str(p), old="不存在", new="x", near_line=1)
+    assert "找不到" in out
+
+
+def test_edit_file_schema_exposes_near_line_as_an_optional_integer():
+    fn = get_tools()["edit_file"].schema()["function"]
+    props = fn["parameters"]["properties"]
+    assert set(props) == {"path", "old", "new", "near_line"}
+    assert props["near_line"]["type"] == "integer"
+    assert fn["parameters"]["required"] == ["path", "old", "new"]

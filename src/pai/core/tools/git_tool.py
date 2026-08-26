@@ -21,7 +21,7 @@ import shlex
 from typing import Annotated, List
 
 from pai.core.tools import EXEC, capabilities_for, matcher_for, path_access_for, tool
-from pai.core.tools.fs import path_matcher
+from pai.core.tools.roots import path_semantics
 from pai.core.tools.output import MAX_OUTPUT_CHARS, head_and_tail
 from pai.core.tools.shell import Killed, run_process
 
@@ -106,10 +106,11 @@ def _raise_bad_args(sub: str, why: str):
     raise Rejected(f"错误：`git {sub}` 的参数不合法：{why}。")
 
 
-def repo_root(args: dict) -> str:
-    """git 在哪跑。这个工具刻意**没有** path 参数（`-C` 也在拒绝名单里），
-    所以永远是当前工作目录——权限层判的就是这一个路径。"""
-    return os.path.abspath(os.getcwd())
+# git 在哪跑。这个工具刻意**没有** path 参数（`-C` 也在拒绝名单里），
+# 所以永远是当前工作目录——`param=None` 让 getter 无视 args，
+# 于是模型往 arguments 里塞一个 `path` 也影响不了判定（判的路径必须就是
+# 实际跑的路径，理由见 `roots.py` 模块注释第二条）。
+repo_root, git_read_matcher = path_semantics(None)
 
 
 @tool
@@ -143,17 +144,8 @@ def git_read(
 # ---- 接线 ----
 
 
-@matcher_for(git_read)
-def git_read_matcher(specifier: str, args: dict, require_all: bool, ctx) -> bool:
-    """复用 fs 的路径匹配，比对的是仓库根（同 search / run_tests）。
-
-    不挂的话吃 `default_matcher`——它比对**第一个参数值**，这里是 subcommand，
-    于是路径 specifier 会拿 `"status"` 去比对，静默永不命中。
-    裸名规则（`deny=["git_read"]`）不经 matcher，任何时候都能一刀关掉。
-    """
-    return path_matcher(specifier, {"path": repo_root(args)}, require_all, ctx)
-
-
+# 裸名规则（`deny=["git_read"]`）不经 matcher，任何时候都能一刀关掉。
+matcher_for(git_read)(git_read_matcher)
 path_access_for(git_read, EXEC)(repo_root)
 
 # **能力标志收 input 的第一个真实用户**（`Capability` 的签名早就留着这一手，
