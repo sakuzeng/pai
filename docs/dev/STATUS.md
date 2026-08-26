@@ -1,6 +1,14 @@
 # 当前状态快照
 
-最后更新：2026-08-26（feature 38 交付——缩小「离线全绿」与「真实使用」的差距
+最后更新：2026-08-26（feature 39 交付——干活期间的键盘不再像死了（用户从四处
+体验候选里点名这一处）：一条跑着的长命令期间打的字当场上屏。新增
+`core/heartbeat.py`（进程级心跳，形状照 `core/interrupt.py`），`shell._wait` 的
+轮询循环每轮一跳，TUI 把读键盘那段抽成 `pump_keys()` 给事件路径与心跳共用。
+顺带修掉一个谁也没登记过的真 bug：TUI 里 `!命令` 期间 Ctrl+C 停不下来——
+raw mode 关了 ISIG，而那时没人读键盘，Ctrl+C 那个字节要等命令跑完才被看见。
+档案 [features/39](features/39-20260826-busy-heartbeat/README.md)。
+1500 passed）。
+同日早些：feature 38 交付——缩小「离线全绿」与「真实使用」的差距
 （用户指示）。三类差距各自兑现：①离线其实能验、只是一直没验的——自动压缩第一次
 在真进程 + 真 pty 里跑到（屏幕上有「压缩：切于 2」、摘要请求真的发出去了），
 流中途 Ctrl+C 也补了 e2e。这两条此前结构上跑不到：假 provider 对每轮回固定 usage，
@@ -164,6 +172,7 @@ MCP client（手写 stdio JSON-RPC、`mcp__<server>__<tool>` 桥接、settings �
 | `core/trace.py` | 可用 | 观测流落盘：`EventTrace` 当 `on_event` 用，事件（类型数以 `core/events.py` 的 `AgentEvent` Union 为准，勿在文档里抄数）追加进 `<会话同名>.events.jsonl`（`MessageDelta` 刻意不落）；写失败吞掉且只告警一次——观测流挂了不连累正事。`compose()` 扇出渲染器与落盘器 |
 | `cli.py` / `config.py` | 可用 | cli 只做参数解析与分发；OpenAI 兼容协议打 DeepSeek；`context_window()` 读 `PAI_CONTEXT_WINDOW`，默认 1_000_000（v4-flash）；`keep_recent_tokens()` 读 `PAI_KEEP_RECENT_TOKENS`，默认取 `CompactionSettings` 的 20000（这个口子是为了让压缩在真实使用里跑得到，不是调优旋钮）；两者非法值都在门口 `sys.exit` |
 | `modes/interactive.py` | 可用 | REPL：跨轮持有 messages/锚点簿/熔断状态；历史（按 cwd 分文件、连续重复只记一条）、`\` 续行、`!` shell 模式、`/help /status /compact /clear /exit`、两级 Ctrl+C；API 出错不炸会话 |
+| `core/heartbeat.py` | 可用 | 干活期间的心跳（feature 39）：长时间阻塞的工具每轮给界面一个喘气机会。进程级单例 + `current()`/`set_current()`，形状与理由照 `core/interrupt.py`（`@tool` 从签名生成 schema，运行期上下文只能旁路进）。`shell._wait` 每 `POLL_SECONDS` 一跳；TUI 装上去读键盘，退出时卸载。回调抛异常一律吞——心跳是界面便利不是正确性。已知缺口：MCP 的 `_request` 是一次性 `event.wait`，那条路上还没有心跳 |
 | `core/events.py` | 可用 | frozen dataclass 扁平联合 + `render_text` 默认渲染器（D#39）。成员数不在文档里抄——已漂过三次（12→14→17），以本文件的 `AgentEvent` Union 为准。`on_event` 现在收事件对象，渲染下放 modes 层；`MessageDelta`（流式增量）与 `Interrupted(where="stream")` 于阶段 5 补上 |
 | `core/queue.py` | 可用 | `PendingMessageQueue`（all/single 两种 drain + 可选谓词）。已通电（feature 18）：TUI 干活期间打的字进队列，loop 有两个注入出口（工具结果回填后 / 模型不调工具时）。队列混装消息与 `/`、`!` 命令，谓词把命令滤出注入之外、留到轮末执行。单队列取自 CC、第二出口取自 pi（D#68）。长度走 `__len__`（feature 34，modes 层不再读私有表） |
 | `core/protocols.py` | 可用 | 跨模块共用的结构化类型（feature 34，R#14）：`ChatClient` 只描述 `chat.completions.create` 这一条路径——`run_agent` / `summarize` / `compact` / `make_recall` / `assemble` / `run_once` 六处的 client 参数从此有类型，FakeClient 与真 SDK 的同构性有测试钉住 |
@@ -240,7 +249,7 @@ MCP client（手写 stdio JSON-RPC、`mcp__<server>__<tool>` 桥接、settings �
 + feature 13 alt-screen task 1-7 + feature 16 鼠标与选区 task 1-9
 + feature 17 viz-flow task 1-3.5（事件落盘 + RecallInjected/ConversationCleared + 装配））：
 
-- `./test.sh` → 1492 passed, 5 deselected，全部离线，约 2.9 分钟（171s）。这是默认路径。
+- `./test.sh` → 1500 passed, 5 deselected，全部离线，约 3 分钟（182s）。这是默认路径。
   （5 deselected 全是 `llm` 标记的真跑冒烟，默认不花钱；`./test.sh --llm` 才跑。）
 - `./test.sh --fast` → 跳过 pty e2e 的快循环（feature 35，15 遗留）：
   1449 passed + 1 skipped / 37s，4.4×。31 条 e2e 占掉 78% 的墙钟。

@@ -48,7 +48,7 @@ from pai.core.events import (
     ToolStart,
     render_text,
 )
-from pai.core import mcp
+from pai.core import heartbeat, mcp
 from pai.core.interrupt import InterruptFlag, set_current
 from pai.core.loop import build_system_prompt, drop_instructions, run_agent
 from pai.core.permissions import (
@@ -1045,8 +1045,17 @@ def _run_tui(*, out, client, model, tools, messages, ledger, anchors, state, ste
             trace(event)          # 观测流(feature 17):TUI 这条路不经过外层 compose
         if state_listener is not None:
             state_listener(event)  # 跨轮状态作废(feature 37):同上,外层 compose 到不了这里
-        # 干活期间也读键盘：字符本来就在内核 tty 缓冲区里等着（反向对照实测），
-        # 只是纯 REPL 从不去读。这里每个事件顺手取一次。
+        pump_keys()
+
+    def pump_keys() -> None:
+        """干活期间读一次键盘。字符本来就在内核 tty 缓冲区里等着（反向对照实测），
+        只是纯 REPL 从不去读。
+
+        两处调用它，缺一不可（feature 39）：
+        - 每个事件顺手一次——事件流密的时候（流式逐字、工具连发）这一条就够；
+        - 心跳一次——一条跑 30 秒且不发任何事件的 bash 命令期间，只有它还在跑。
+          少了后者，用户打的字要等命令结束才上屏，键盘看起来像死了。
+        """
         for kind, payload in driver.poll(timeout=0):
             if kind == SUBMIT:
                 # feature 18 问 1（改 12 的拍板问 4）：干活时打的字**本轮就注入**，
@@ -1066,6 +1075,18 @@ def _run_tui(*, out, client, model, tools, messages, ledger, anchors, state, ste
             elif kind == REDRAW:
                 app.refresh()
 
+    def beat() -> None:
+        """心跳：长命令跑着的时候，主线程堵在 `shell._wait` 的轮询循环里，
+        这是界面唯一还能动的地方（feature 39）。
+
+        只 pump 不 refresh：`driver.poll` 自己已经在该重画的时候重画了
+        （有输入 → 处理后 refresh；无输入 → `needs_tick()` 为真才 tick+refresh，
+        空闲时刻意不画，feature 12 撞过「空闲每 100ms 白刷一帧」）。
+        第一版在这里多写了一句 `app.refresh()`，注入反证时发现拿掉它测试照样绿——
+        那就是它不该在这儿的证据。
+        """
+        pump_keys()
+
     # **一处换、装配期所有闭包生效**（同 asker_ref 上面那句）：记忆通知与召回失败
     # 是装配期就烤好的闭包，不换这一下它们会绕过 app 直接 print 进 dock。
     if event_sink is not None:
@@ -1076,6 +1097,11 @@ def _run_tui(*, out, client, model, tools, messages, ledger, anchors, state, ste
     for warning in term.warnings:
         commit(f"⚠️ {warning}")
     try:
+        # 心跳装在 try 里边，与下面 finally 的卸载对称（feature 39）。
+        # 第一版装在 `term.start()` 之前，于是 start 自己抛异常那条路上
+        # 压根不会卸载——测试当场照出来了。装晚一点没有代价：
+        # 此刻之前不会有任何工具在跑。
+        heartbeat.set_current(heartbeat.Heartbeat(beat))
         # 开场：logo 流光扫一遍再定格进 scrollback（动画只改配色，几何不动）
         app.start_intro()
         while app.intro_tick():
@@ -1187,6 +1213,10 @@ def _run_tui(*, out, client, model, tools, messages, ledger, anchors, state, ste
                     if asker_state["exit"] or exiting["v"]:
                         return          # 排队的 `/exit` 与提问里退出走同一条收尾路径
     finally:
+        # 心跳必须卸载（feature 39）：它关着 app / driver，而这两样马上就没了。
+        # 留着的话下一个进程内使用者（REPL 兜底路径、同进程里的下一个测试）
+        # 每跑一条命令都会去戳一个已经死掉的界面。
+        heartbeat.set_current(None)
         term.stop()
         # 清 dock 必须排在任何 print 之前（R4#18）：DockRenderer.clear() 靠相对
         # 光标移动找自己的行，先 print 会把光标推走、清到别人的行上——残影留给

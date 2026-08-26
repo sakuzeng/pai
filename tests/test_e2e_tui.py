@@ -577,3 +577,43 @@ def test_ctrl_c_mid_stream_stops_the_answer_and_keeps_the_repl_alive(session, tm
 
     s.send("还在吗\r", until="我还活着")            # 掐完还能接着聊 = REPL 没死
     assert "我还活着。" in s.screen_text()
+
+
+# --- feature 39：干活期间的键盘不能像死了一样 ---------------------------------
+
+
+def test_typing_during_a_long_command_shows_up_on_screen(session, tmp_path):
+    """一条跑着的长命令期间打的字，屏幕上要看得见（12 复盘质疑二，挂了十五天）。
+
+    此前 TUI 只在「有事件到来时」顺手 poll 一次键盘，而 bash 跑的那几十秒里
+    一个事件都不发——字符没丢（在内核 tty 缓冲区等着），但屏幕一动不动，
+    用户会以为键盘死了。在最需要反馈的时候没有反馈。
+
+    用 `!命令` 而不是让模型调 bash：这条路不过权限框，测试短且只测一件事。
+    两条路在这一点上是同一段代码（`shell._wait` 的轮询循环）。
+    """
+    s, _ = session([turn("用不到")])
+    s.send("", until="/help 看命令")
+    s.send("!sleep 3\r", wait=0.4)          # 命令跑起来，主线程进 bash 的等待循环
+    s.send("干活时打的字", wait=0.8)         # 这时候打字——命令还在跑
+    assert "干活时打的字" in s.screen_text(), (
+        "长命令期间打的字没上屏——键盘看起来像死了")
+
+
+def test_ctrl_c_can_stop_a_shell_command_in_the_tui(session, tmp_path):
+    """TUI 里 `!命令` 期间按 Ctrl+C 要真的掐得断。
+
+    这条是写上一条时顺带照出来的：raw mode 关掉了 ISIG，Ctrl+C 只是一个字节，
+    而命令跑着的时候没有任何人读键盘——于是那个字节要等命令自己跑完才被看见，
+    中断标志永远来不及置位。`_interruptible` 装的 SIGINT 处理器在这条路上
+    也是摆设（raw mode 下压根不会有 SIGINT）。
+
+    断言用时间：`sleep 8` 若真被掐断，几秒内就该回到提示符。
+    """
+    s, _ = session([turn("用不到")])
+    s.send("", until="/help 看命令")
+    started = time.time()
+    s.send("!sleep 8\r", wait=0.5)
+    s.send("\x03", wait=0.5)
+    s.send("", until="已中断", timeout=4.0)
+    assert time.time() - started < 8.0, "Ctrl+C 没掐断，是等 sleep 自己跑完的"
