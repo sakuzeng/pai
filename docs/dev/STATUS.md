@@ -1,6 +1,16 @@
 # 当前状态快照
 
-最后更新：2026-08-25（feature 34 交付——TODO 存量批清：从 180 条开放项里挑出
+最后更新：2026-08-26（feature 35 交付——TODO 存量批清第二轮：从 165 条开放项里
+再挑「不等外部输入、修法已有形状」的一批，12 条真修 + 3 条对账核销（详见档案
+[features/35](features/35-20260826-todo-backlog-batch-2/README.md)）。
+真修的面：`PAI_KEEP_RECENT_TOKENS`（压缩链路第一次能在真实使用里跑到）、
+`/compact` 说清「还差多少 token」、上下文被改写就清召回去重表（10 遗留 6，
+并揪出 `/clear` 同族洞）、召回单篇 4000 字符上限、`/memory reload`、
+`AGENTS.md` 进指令发现（D#43 复议，用户拍板）、子目录懒加载注释改说真话、
+能力判定器崩溃留痕、`derive_replay` 不再把指令消息当任务、`--resume` 说清
+设置不跟着回来、`./test.sh --fast` 快循环（4.5×）、宽度原语搬进 `tui/width.py`。
+1447 passed）。
+更早（2026-08-25）：feature 34 交付——TODO 存量批清：从 180 条开放项里挑出
 「不等外部输入、修法已有形状」的一批清掉，11 条真修 + 6 条对账核销 + 2 对重复登记
 合并（详见档案 [features/34](features/34-20260825-todo-backlog-batch/README.md)）。
 真修的面：`PAI_CONTEXT_WINDOW` 非法值清晰报错、锚点换具名 `Anchor(index, tokens)`、
@@ -125,18 +135,19 @@ MCP client（手写 stdio JSON-RPC、`mcp__<server>__<tool>` 桥接、settings �
 | `modes/assembly.py` | 可用 | 共用装配序列（feature 31）：rules/hooks → skills 信任 → MCP 信任与并表 → boundary → gate → memory → recall 一份实现，once/interactive 只注入差异点（asker / 权限模式 / 事件通道）；不 import loop 内部，MCP 关闭归各模式单出口 finally |
 | `viz/` | 可用 | `pai-viz` 本地网页：运行时流转可视化（feature 17）——结构图（工具自省上图、阶段状态解析本表、每处标代码位置可点击跳编辑器）+ 回合时间线（读会话 JSONL 与并排的 `.events.jsonl`，分组配对成回合，2s 游标轮询实时点亮）。页面纯观察，无对话输入 |
 | `core/trace.py` | 可用 | 观测流落盘：`EventTrace` 当 `on_event` 用，事件（类型数以 `core/events.py` 的 `AgentEvent` Union 为准，勿在文档里抄数）追加进 `<会话同名>.events.jsonl`（`MessageDelta` 刻意不落）；写失败吞掉且只告警一次——观测流挂了不连累正事。`compose()` 扇出渲染器与落盘器 |
-| `cli.py` / `config.py` | 可用 | cli 只做参数解析与分发；OpenAI 兼容协议打 DeepSeek；`context_window()` 读 `PAI_CONTEXT_WINDOW`，默认 1_000_000（v4-flash） |
+| `cli.py` / `config.py` | 可用 | cli 只做参数解析与分发；OpenAI 兼容协议打 DeepSeek；`context_window()` 读 `PAI_CONTEXT_WINDOW`，默认 1_000_000（v4-flash）；`keep_recent_tokens()` 读 `PAI_KEEP_RECENT_TOKENS`，默认取 `CompactionSettings` 的 20000（这个口子是为了让压缩在真实使用里跑得到，不是调优旋钮）；两者非法值都在门口 `sys.exit` |
 | `modes/interactive.py` | 可用 | REPL：跨轮持有 messages/锚点簿/熔断状态；历史（按 cwd 分文件、连续重复只记一条）、`\` 续行、`!` shell 模式、`/help /status /compact /clear /exit`、两级 Ctrl+C；API 出错不炸会话 |
 | `core/events.py` | 可用 | frozen dataclass 扁平联合 + `render_text` 默认渲染器（D#39）。成员数不在文档里抄——已漂过三次（12→14→17），以本文件的 `AgentEvent` Union 为准。`on_event` 现在收事件对象，渲染下放 modes 层；`MessageDelta`（流式增量）与 `Interrupted(where="stream")` 于阶段 5 补上 |
 | `core/queue.py` | 可用 | `PendingMessageQueue`（all/single 两种 drain + 可选谓词）。已通电（feature 18）：TUI 干活期间打的字进队列，loop 有两个注入出口（工具结果回填后 / 模型不调工具时）。队列混装消息与 `/`、`!` 命令，谓词把命令滤出注入之外、留到轮末执行。单队列取自 CC、第二出口取自 pi（D#68）。长度走 `__len__`（feature 34，modes 层不再读私有表） |
 | `core/protocols.py` | 可用 | 跨模块共用的结构化类型（feature 34，R#14）：`ChatClient` 只描述 `chat.completions.create` 这一条路径——`run_agent` / `summarize` / `compact` / `make_recall` / `assemble` / `run_once` 六处的 client 参数从此有类型，FakeClient 与真 SDK 的同构性有测试钉住 |
 | `core/interrupt.py` | 可用 | 进程级中断标志（D#40）。loop 在步边界与每个 tool_call 前查，bash 在轮询里查 |
-| `modes/statusline.py` | 可用 | `render_tool_line(events, width)` 纯函数（按终端列宽算中文宽度）+ `\r` 原地刷新；真 tty 才启用，非 tty 退回滚动行 |
+| `modes/statusline.py` | 可用 | `render_tool_line(events, width)` 纯函数（按终端列宽算中文宽度）+ `\r` 原地刷新；真 tty 才启用，非 tty 退回滚动行。宽度原语已搬去 `tui/width.py`（2026-08-26，12 T1），这里 re-export |
+| `tui/width.py` | 可用 | 终端列宽原语：`display_width`（东亚宽字符 2 列、CSI/OSC/APC 0 列、Mn/Me/Cf 0 列）/ `_truncate` / `_ESCAPES`。十个 tui 模块的地基；一条 AST 守卫钉住 `pai/tui/*` 不反向依赖 `pai.modes`（唯一豁免 `_preview`） |
 | `core/tools/ask.py` | 可用 | AskUserQuestion，asker 装配期注入；默认工具集不含它（once 无真人可问） |
 | `core/paths.py` | 可用 | pai 用户级路径唯一事实源：`~/.pai/projects/<可读 slug>/{memory,sessions}/`，slug 用全路径连字符（D#44，对齐 CC） |
 | `core/session.py` | 可用 | 格式 v1（feature 24，三家收敛形）：首行 header（version/id/cwd/parentSession）、统一信封 `{type,id,parentId,ts}`、消息嵌套 `message`、压缩即条目带 `firstKeptEntryId`；`load_session`（版本拒绝语义分方向、词汇表外类型拒收）、`build_messages`（压缩重建 + 指令归位）、`replay_messages`（压缩会话不再拒收）、`trim_unfinished` 配平、`resolve_resume_target`；`append` 加锁返 id、支持 `record_id`（resume 不造新身份）。旧 v0 文件按拍板不读（如实报错，不动不删） |
-| `core/memory.py` | 可用 | 分层指令发现（用户级→根→cwd，local 在后，不读 AGENTS.md D#43）、`@path` 导入（相对基准/4 跳/环检测/代码块内不算）、记忆扫描（每文件前 30 行取 frontmatter、mtime 新→旧、截 200）、索引投影（`render_index`，200 行 + 25KB 双上限，截断留提示）、相对时间与陈旧警告（`memory_age` / `freshness_note`） |
-| `core/recall.py` | 可用 | 按查询召回：manifest → 侧查询（`max_tokens=4096`——推理模型的 reasoning 计进该上限，实测 256 会静默截断）→ 防御式 JSON 解析（分得清「没说话」与「明确不选」）→ 白名单（容忍 `[type]` 装饰、取最长匹配）→ ≤5 篇 → `<system-reminder>` 注入块；空目录短路、`alreadySurfaced` 去重、连续 3 次失败停用并发 `RecallFailed` |
+| `core/memory.py` | 可用 | 分层指令发现（用户级→根→cwd，同目录内 AGENTS.md → PAI.md → PAI.local.md；读 AGENTS.md 是 2026-08-26 的 D#43 复议结论，CLAUDE.md 仍不读）、`@path` 导入（相对基准/4 跳/环检测/代码块内不算）、记忆扫描（每文件前 30 行取 frontmatter、mtime 新→旧、截 200）、索引投影（`render_index`，200 行 + 25KB 双上限，截断留提示）、相对时间与陈旧警告（`memory_age` / `freshness_note`） |
+| `core/recall.py` | 可用 | 按查询召回：manifest → 侧查询（`max_tokens=4096`——推理模型的 reasoning 计进该上限，实测 256 会静默截断）→ 防御式 JSON 解析（分得清「没说话」与「明确不选」）→ 白名单（容忍 `[type]` 装饰、取最长匹配）→ ≤5 篇 → `<system-reminder>` 注入块；空目录短路、`surfaced` 去重（上下文被压缩/`/clear` 改写即清，10 遗留 6）、单篇 4000 字符上限（超了截断并说出来）、连续 3 次失败停用并发 `RecallFailed` |
 | `core/tools/memory_tool.py` | 可用 | `remember(name, description, fact, type)` 一事一文件带 frontmatter，同名即更新；写完重建 `MEMORY.md`（原子写）；name 白名单校验挡路径穿越；目录/通知/会话 id 走注入点 |
 | `core/permissions.py` | 可用 | 规则解析 + 七步求值链（deny → 危险路径 → 显式 ask → bypass → acceptEdits → allow → 兜底；顺序不许改 D#46）；兜底是工作目录边界函数不是常量（D#51），且认 `Tool.boundary_exempt` 豁免位（D#73，目前只有 skill）；权限模式四态（D#53）；两层 `settings.json` |
 | `core/boundary.py` | 可用 | 工作目录边界：启动 cwd 锚点 + `additionalDirectories`；前缀比到分隔符（`/tmp/proj-evil` 不算界内）；符号链接双路径；危险路径清单（shell 配置 / `.git/hooks` / `~/.ssh` / pai 自己的 settings / `.pai/skills` 段——feature 28 问 1：写 skills 即写后续指挥权） |
@@ -201,7 +212,11 @@ MCP client（手写 stdio JSON-RPC、`mcp__<server>__<tool>` 桥接、settings �
 + feature 13 alt-screen task 1-7 + feature 16 鼠标与选区 task 1-9
 + feature 17 viz-flow task 1-3.5（事件落盘 + RecallInjected/ConversationCleared + 装配））：
 
-- `./test.sh` → 1411 passed, 3 deselected，全部离线，约 2.7 分钟。这是默认路径。
+- `./test.sh` → 1447 passed, 3 deselected，全部离线，约 2.7 分钟（163s）。这是默认路径。
+- `./test.sh --fast` → 跳过 pty e2e 的快循环（feature 35，15 遗留）：
+  1416 passed + 1 skipped / 36s，4.5×。31 条 e2e 占掉 78% 的墙钟。
+  标记由 conftest 按文件名（`test_e2e_*.py`）自动挂，不靠人记。
+  交付前仍必须跑全量——快循环只用于改一行看一眼。
 - `./eval.sh` → 评测另一条入口（feature 32，不进上面的收集范围）：默认无密钥
   回放评测；`--llm` 追加真模型评测。工件落 `evals/.eval/<时间戳>/`。
   可选并行 `./test.sh -n auto`（xdist）：实测 2:07 全绿，10 核仅 1.35× 且

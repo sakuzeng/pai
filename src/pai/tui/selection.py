@@ -19,7 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
-from pai.modes.statusline import _ESCAPES, display_width
+from pai.tui.width import _ESCAPES, display_width
 
 
 @dataclass(frozen=True)

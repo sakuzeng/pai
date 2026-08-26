@@ -66,7 +66,7 @@ def wrap(text: str, width: int) -> "list":
     为什么必须自己折：终端会替你折，但那样「我以为写了 1 行、实际占了 3 行」，
     dock 的相对光标移动全部错位——用户 2026-08-11 满屏阶梯就是这么来的。
     """
-    from pai.modes.statusline import _ESCAPES, display_width
+    from pai.tui.width import _ESCAPES, display_width
 
     if width <= 0:
         return [text]
@@ -100,7 +100,7 @@ def band(text: str, width: int, code: str, *, color: bool) -> str:
 
     不补空格的话底色只包住文字，看起来是个歪歪扭扭的高亮块而不是一条带。
     """
-    from pai.modes.statusline import display_width
+    from pai.tui.width import display_width
 
     if not color:
         return text

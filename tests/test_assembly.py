@@ -156,3 +156,28 @@ def test_memory_and_recall_events_follow_the_swapped_sink(monkeypatch):
     asm.recall("随便问一句")
     assert [type(e).__name__ for e in late] == ["MemoryWritten", "RecallFailed"]
     assert early == []
+
+
+# ---- 上下文被改写 → 召回去重表作废（10 遗留 6 + 复核新发现的 /clear 半边）----
+
+
+def test_rewriting_the_context_lets_a_recalled_memory_be_picked_again(tmp_path, monkeypatch):
+    """`RecallState.surfaced` 记的是「这几篇已经在上下文里」——压缩会把它们切掉、
+    `/clear` 会把它们整段删掉，那句话就成了假的，而这几篇从此再也不会被选中
+    （静默的单调衰减）。装配层要给出一个「上下文被改写了」的入口。"""
+    monkeypatch.chdir(tmp_path)
+    from pai.core.memory import memory_dir
+    from pai.modes.assembly import assemble
+    from tests.test_memory_scan import write_memory
+    from tests.test_recall import reply
+
+    write_memory(memory_dir(), "甲", description="怎么跑测试", body="记忆正文在此")
+    client = FakeClient([reply(["甲.md"]), reply(["甲.md"]), reply(["甲.md"])])
+    asm = assemble(client=client, tools={}, warn=lambda _s: None,
+                   on_event=lambda _e: None, session=None, recall_model="fake",
+                   mode="dontAsk", rules=_OPEN)
+
+    assert "记忆正文在此" in asm.recall("问题")[0]
+    assert asm.recall("再问")[0] == "", "已注入过的不该再选一遍（这是对的）"
+    asm.on_context_rewritten()
+    assert "记忆正文在此" in asm.recall("三问")[0], "上下文被改写之后必须能重来"

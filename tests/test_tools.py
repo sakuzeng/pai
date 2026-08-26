@@ -876,3 +876,44 @@ def test_read_file_truncation_tells_the_model_how_to_get_the_rest(tmp_path):
     assert str(MAX_OUTPUT_CHARS + 1234) in out          # 总量照旧说清
     assert "sed" in out or "bash" in out, "提示语里没有「怎么读到剩下的」"
     assert "edit_file" in out, "没有提醒模型别拿残缺视图去改文件"
+
+
+def test_a_crashing_capability_judge_leaves_a_trace(capsys):
+    """三条退化路径此前完全同形（11 task 3）：未声明 / 参数不是 dict / 判定器抛异常，
+    全部返回 False 且不留痕。前两条是常态，第三条是 bug——不留痕的话
+    「这个工具确实不安全」与「判定器写错了」在外部一模一样，
+    症状只是并发静默退回串行（一次看不出来的性能损失）。
+
+    只喊一次：每次判定都刷一行会把真正要看的输出淹掉（同 EventTrace 落盘失败那条）。
+    """
+    from pai.core import tools as tools_mod
+    from pai.core.tools import REGISTRY, capabilities_for, tool
+
+    @tool
+    def _cap_trace_probe(a: str) -> str:
+        """探针。"""
+        return a
+
+    def boom(_args):
+        raise RuntimeError("判定器炸了")
+
+    capabilities_for(_cap_trace_probe, read_only=boom, concurrency_safe=boom)
+    tools_mod._CAP_WARNED.clear()
+    t = REGISTRY["_cap_trace_probe"]
+
+    assert t.read_only({"a": "1"}) is False        # 行为不变：判不出来就当不安全
+    assert t.read_only({"a": "2"}) is False
+    err = capsys.readouterr().err
+    assert err.count("_cap_trace_probe") == 1, f"要喊、且只喊一次，实际：{err!r}"
+    assert "RuntimeError" in err and "判定器炸了" in err
+
+
+def test_the_normal_degraded_paths_stay_silent(capsys):
+    """反向守卫：未声明与参数脏是常态，不许拿它们刷屏——喊多了等于没喊。"""
+    from pai.core import tools as tools_mod
+    from pai.core.tools import REGISTRY
+
+    tools_mod._CAP_WARNED.clear()
+    assert REGISTRY["read_file"].read_only(None) is False       # 参数不是 dict
+    assert REGISTRY["write_file"].read_only({"path": "x"}) is False   # 未声明只读
+    assert capsys.readouterr().err == ""

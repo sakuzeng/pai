@@ -9,12 +9,17 @@ from __future__ import annotations
 
 import fnmatch
 import inspect
+import sys
 from dataclasses import dataclass
 from typing import Annotated, Callable, Optional, get_args, get_origin, get_type_hints
 
 PY_TO_JSON = {str: "string", int: "integer", float: "number", bool: "boolean"}
 
 REGISTRY: dict[str, "Tool"] = {}
+
+# 已经喊过的 (工具名, 判定器名)。判定器抛异常是 bug 而不是常态，
+# 但同一个坏判定器每轮都会被问到——喊一次就够，喊多了等于没喊。
+_CAP_WARNED: set = set()
 
 @dataclass(frozen=True)
 class MatchContext:
@@ -95,12 +100,23 @@ class Tool:
         代价是那次调用退回串行——慢，不是错。反过来（判不出来就当安全）
         才会让「加了个新工具忘了声明」变成一个并发数据竞争。
         参数脏是常态：模型发来的 arguments 可能是 `null` / `[1,2]` / 字符串。
+
+        第三条留痕（11 task 3）：前两条是常态，判定器自己炸了是 bug——
+        三条同形的话「这个工具确实不安全」与「判定器写错了」在外部一模一样，
+        症状只是并发静默退回串行。每个 (工具, 判定器) 只喊一次：
+        每次判定刷一行会把真正要看的输出淹掉（同 EventTrace 落盘失败那条）。
         """
         if cap is None or not isinstance(args, dict):
             return False
         try:
             return bool(cap(args))
-        except Exception:  # noqa: BLE001 - 照 CC：判定器自己炸了就当不安全
+        except Exception as e:  # noqa: BLE001 - 照 CC：判定器自己炸了就当不安全
+            key = (self.name, getattr(cap, "__name__", repr(cap)))
+            if key not in _CAP_WARNED:
+                _CAP_WARNED.add(key)
+                print(f"⚠️ 工具 `{self.name}` 的能力判定器抛了 "
+                      f"{type(e).__name__}: {e}；本次按「不安全」处理"
+                      "（该调用退回串行），本会话不再提示", file=sys.stderr)
             return False
 
     def read_only(self, args) -> bool:

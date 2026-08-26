@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import List
 
-from pai.modes.statusline import _ESCAPES, _truncate, display_width
+from pai.tui.width import _ESCAPES, _truncate, display_width
 from pai.tui.theme import BOLD, DIM, RAMP, RESET, paint
 
 # 3 行 × 13 列。每行宽度必须完全一致，否则流光会歪。

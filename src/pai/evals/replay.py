@@ -17,12 +17,24 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Union
 
+from pai.core.loop import INSTRUCTION_HEADER
 from pai.core.session import build_messages, load_session
+
+# 框架自己注入的 user 消息，取任务文本时必须跳过（32 遗留 1）：两种都排在
+# 真任务**前面**（指令消息插在 system 之后、召回块紧随其后），所以「首条非空
+# user 消息」会取到它们。识别靠头部字符串——与 26 复盘点名的是同一处脆弱点
+# （消息没有身份字段，只能看内容开头），改哪个都该顺手改另一个。
+_RECALL_HEADER = "<system-reminder>"
+_FRAMEWORK_PREFIXES = (INSTRUCTION_HEADER, _RECALL_HEADER)
+
+
+def _is_framework_message(content: str) -> bool:
+    return content.lstrip().startswith(_FRAMEWORK_PREFIXES)
 
 
 @dataclass(frozen=True)
 class ReplayPlan:
-    """一次回放的全部输入：任务文本（录制会话的首条 user 消息）+
+    """一次回放的全部输入：任务文本（录制会话里第一条**真人说的** user 消息）+
     fake_provider 脚本（与 tests/fake_provider.turn 同形的 dict 列表）。"""
 
     task: str
@@ -38,9 +50,11 @@ def derive_replay(path: Union[str, Path]) -> ReplayPlan:
             "重建摘要不是模型当时的真实输出。请换一份未压缩的轨迹。")
     messages, _ = build_messages(entries)
     task = next((m.get("content") for m in messages
-                 if m.get("role") == "user" and m.get("content")), None)
+                 if m.get("role") == "user" and m.get("content")
+                 and not _is_framework_message(str(m["content"]))), None)
     if task is None:
-        raise ValueError("会话里没有 user 消息，派生不出回放任务文本。")
+        raise ValueError("会话里没有真正的 user 消息（框架注入的指令/召回块不算），"
+                         "派生不出回放任务文本。")
     script: List[dict] = []
     for m in messages:
         if m.get("role") != "assistant":

@@ -398,3 +398,26 @@ def test_no_event_when_the_side_query_fails(tmp_path: Path):
     recall("问题")
 
     assert seen == [] and len(failures) == 1
+
+
+# ---- 单篇字符上限（2026-08-19 走读发现，PAI-04 诚实边界）----
+
+
+def test_a_huge_memory_is_truncated_before_it_reaches_the_context(tmp_path: Path):
+    """`MAX_RECALL_FILES = 5` 只限篇数，正文是整篇读进来的：写一篇特别长的记忆，
+    召回一次就把它整个顶进上下文，而估算的尾部预算根本没算它。
+    工具输出在源头截到 4000 字符，召回这条路此前不走任何截断。"""
+    from pai.core.recall import MAX_RECALL_CHARS
+
+    write_memory(tmp_path, "长", description="d", body="正" * (MAX_RECALL_CHARS * 3))
+    block = recall_block(scan_memories(tmp_path), now=NOW)
+    assert len(block) < MAX_RECALL_CHARS * 2, "整篇塞进来就等于没有上限"
+    assert "截断" in block, "截断必须说出来（静默失败是 bug）"
+    assert str(MAX_RECALL_CHARS) in block
+
+
+def test_a_normal_memory_is_not_touched(tmp_path: Path):
+    """反向守卫：没超上限的一个字都不许动——召回的价值就是全文。"""
+    write_memory(tmp_path, "甲", description="d", body="正文内容")
+    block = recall_block(scan_memories(tmp_path), now=NOW)
+    assert "正文内容" in block and "截断" not in block

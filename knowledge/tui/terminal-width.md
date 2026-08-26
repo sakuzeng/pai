@@ -3,7 +3,8 @@
 - 来源：无单一外部原文。Unicode 东亚宽度（UAX #11）+ ANSI 转义序列 +
   2026-08-10 在 pai 上的实测（features/05 task 8）
 - 精读日期：2026-08-10
-- pai 锚点：`src/pai/modes/statusline.py`
+- pai 锚点：`src/pai/tui/width.py`（2026-08-26 从 `src/pai/modes/statusline.py`
+  搬来：九个 tui 模块都要用它，住在 modes 里是反向依赖）
 
 任何要在终端里画一行东西（状态行、进度条、表格）的程序都会撞上这两个坑。
 中文环境下第一个坑是必然会踩的。

@@ -16,12 +16,25 @@ def _llm_tests_opted_in() -> bool:
     return os.environ.get("PAI_RUN_LLM_TESTS", "") not in ("", "0", "false", "False")
 
 
+def is_e2e_path(path) -> bool:
+    """这条测试算不算 pty e2e。判据机械：文件名以 `test_e2e_` 开头。
+
+    不靠每个文件自己挂 `pytestmark`（15 遗留：e2e 把主套件从 12s 拖到 34s，
+    没有 `-m "not e2e"` 的快循环）——自觉的那种漏一个不会红，
+    而漏掉的后果正是快循环里混进一条起真 pty 的测试。
+    """
+    return os.path.basename(str(path)).startswith("test_e2e_")
+
+
 def pytest_collection_modifyitems(config, items):
     """llm 标记的测试要真花钱，必须**显式选择**才跑——光有 key 不够。
 
     原实现是「有 key 就自动跑」，结果是任何配好 .env 的人跑 pytest 都会静默产生 API 费用
     （外部评审时评审者本人就中招了）。改为双重条件：有 key **且** PAI_RUN_LLM_TESTS=1。
     """
+    for item in items:                      # e2e 分层：标记由路径推，不由人记
+        if is_e2e_path(item.fspath):
+            item.add_marker(pytest.mark.e2e)
     if _has_real_key() and _llm_tests_opted_in():
         return
     reason = (

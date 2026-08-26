@@ -53,6 +53,7 @@ class Assembly:
     mcp_sessions: list
     recall: Callable
     gate: Callable
+    on_context_rewritten: Callable[[], None]
 
 
 def assemble(*, client: ChatClient, tools: Dict[str, object],
@@ -123,11 +124,23 @@ def assemble(*, client: ChatClient, tools: Dict[str, object],
     memory_tool.set_origin_session(session.session_id if session is not None else None)
     # 召回（feature 10）：状态跟随本次装配的生命周期（REPL 跨轮持有，
     # 去重与失败熔断不清零；once 单轮即弃）。
+    recall_state = RecallState()
     recall = make_recall(client=client, model=recall_model, directory=directory,
-                         state=RecallState(),
+                         state=recall_state,
                          on_failure=lambda f: on_event(RecallFailed(
                              reason=f.reason, detail=f.detail, disabled=f.disabled)),
                          on_selected=lambda names: on_event(RecallInjected(names=names)))
+    def on_context_rewritten() -> None:
+        """上下文被改写（自动压缩 / `/compact` / `/clear`）之后要作废的东西。
+
+        目前只有召回的去重表：`surfaced` 记的是「这几篇已经在上下文里」，
+        压缩会把它们切进摘要、`/clear` 会整段删掉，那句话就成了假的——
+        而 `surfaced` 还拦着它们不再被选中，于是召回在长会话里静默衰减到零
+        （10 遗留 6，用户 2026-08-26 拍板选「上下文被改写就全清」）。
+        代价：那几篇可能被再召回一次，多花一次注入的 token。
+        """
+        recall_state.surfaced.clear()
+
     return Assembly(
         rules=rules, hooks=hooks, tools=tools, skills=skills,
         skills_catalog=render_catalog(skills),
@@ -136,4 +149,5 @@ def assemble(*, client: ChatClient, tools: Dict[str, object],
         instructions=make_instructions(base_instructions, loaded_skills,
                                        {s.name: s for s in skills}),
         loaded_skills=loaded_skills, working_dirs=working_dirs,
-        mcp_sessions=mcp_sessions, recall=recall, gate=gate)
+        mcp_sessions=mcp_sessions, recall=recall, gate=gate,
+        on_context_rewritten=on_context_rewritten)

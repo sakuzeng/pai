@@ -222,3 +222,57 @@ def test_full_chain_archives_actually_have_a_spec_and_plan():
         for required in ("spec.md", "plan.md"):
             assert (d / required).is_file(), \
                 f"{d.name} 声明走了全链路，却没有 {required}"
+
+
+# ---- e2e 分层：快循环要跑得起来（15 遗留）----
+
+
+def test_e2e_files_are_recognized_by_the_marking_rule():
+    """规则是机械的（文件名以 test_e2e_ 开头），不靠每个文件自觉挂标记——
+    自觉的那种漏一个不会红，而漏掉的后果是快循环里混进一条 pty e2e。"""
+    from conftest import is_e2e_path
+
+    assert is_e2e_path("/repo/tests/test_e2e_tui.py")
+    assert is_e2e_path("tests/test_e2e_mouse.py")
+    assert not is_e2e_path("tests/test_loop.py")
+    assert not is_e2e_path("tests/test_tui_app.py")     # 组件测试不是 e2e
+
+
+def test_every_collected_e2e_test_carries_the_marker(request):
+    """真的落到 item 上了没有。只在收集范围里含 e2e 文件时才有内容
+    （`-k` 子集跑时这条是空转，如实声明）。"""
+    from conftest import is_e2e_path
+
+    missing = [item.nodeid for item in request.session.items
+               if is_e2e_path(str(item.fspath)) and "e2e" not in item.keywords]
+    assert missing == [], f"这些 e2e 没拿到标记：{missing}"
+
+
+# ---- 依赖方向：tui 不许反向依赖 modes（12 T1）----
+
+
+def test_tui_modules_do_not_depend_on_modes_except_the_known_residue():
+    """宽度原语此前住在 `modes/statusline.py`，而 `pai/tui/` 九个模块都要用它——
+    tui → modes 的反向依赖（无环，但方向反了：宽度是 TUI 的地基，不是状态行的私产）。
+    搬进 `tui/width.py` 之后这条方向该是干净的。
+
+    唯一允许的残余是 `_preview`（工具参数预览）：statusline 与 dock 共用，
+    它不是宽度原语，搬进 width.py 是错的家——单独登记在 TODO 里。
+    """
+    import ast
+    from pathlib import Path
+
+    tui_dir = Path(__file__).resolve().parent.parent / "src" / "pai" / "tui"
+    offenders = []
+    for path in sorted(tui_dir.glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and (node.module or "").startswith("pai.modes"):
+                names = {a.name for a in node.names}
+                if names - {"_preview"}:
+                    offenders.append(f"{path.name}: {node.module} → {sorted(names)}")
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name.startswith("pai.modes"):
+                        offenders.append(f"{path.name}: import {alias.name}")
+    assert offenders == [], "tui 不该反向依赖 modes：\n" + "\n".join(offenders)

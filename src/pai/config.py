@@ -7,6 +7,8 @@ from pathlib import Path
 from dotenv import find_dotenv, load_dotenv
 from openai import OpenAI
 
+from pai.core.compaction import CompactionSettings
+
 DEFAULT_BASE_URL = "https://api.deepseek.com"
 DEFAULT_MODEL = "deepseek-v4-flash"
 
@@ -83,4 +85,33 @@ def context_window() -> int:
     if value <= 0:
         sys.exit(f"PAI_CONTEXT_WINDOW 必须是正整数：{raw!r}。"
                  "非正数会让压缩阈值算出负预算，于是每轮都触发压缩")
+    return value
+
+
+def keep_recent_tokens() -> int:
+    """压缩时「保留最近多少 token」的门槛，默认取 CompactionSettings 的值。
+
+    这个 env 存在的理由不是调优，是**可验证性**（TODO「压缩链路的可验证性」，
+    2026-08-10 用户实测暴露）：触发一次压缩要同时满足两个条件——
+    `should_compact` 与「某两锚的真实差值累计 ≥ keep_recent_tokens」。
+    `PAI_CONTEXT_WINDOW` 能让前者永远成立，后者却没有任何口子——
+    小对话里相邻锚差值只有几百，于是真跑一次压缩得先攒够 2 万 token 的真实对话。
+    离线测试之所以看不见这道坎，正是因为它们直接传
+    `CompactionSettings(keep_recent_tokens=1)` 把坎绕过去了。
+
+    报错形状与 PAI_CONTEXT_WINDOW 同款（02 终审 Minor#7 定的先例）。
+    非正数一并挡：0 会让切点落在最新锚上，把整段历史一次压光。
+    """
+    _load_env()
+    raw = os.environ.get("PAI_KEEP_RECENT_TOKENS")
+    if raw is None or raw == "":
+        return CompactionSettings().keep_recent_tokens
+    try:
+        value = int(raw)
+    except ValueError:
+        sys.exit(f"PAI_KEEP_RECENT_TOKENS 不是整数：{raw!r}。"
+                 "它是压缩时保留最近多少 token，例如 PAI_KEEP_RECENT_TOKENS=2000")
+    if value <= 0:
+        sys.exit(f"PAI_KEEP_RECENT_TOKENS 必须是正整数：{raw!r}。"
+                 "0 会让切点落在最新的锚上，把整段历史一次压光")
     return value

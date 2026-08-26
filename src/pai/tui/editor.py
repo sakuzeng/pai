@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import List, Optional, Sequence
 
-from pai.modes.statusline import display_width
+from pai.tui.width import display_width
 from pai.tui import theme
 from pai.tui.component import CURSOR_MARKER, Component
 
@@ -241,7 +241,7 @@ class LineEditor(Component):
 
         按显示列而不是字符数：一个中文占两列，按字符数算会差一半。
         """
-        from pai.modes.statusline import display_width
+        from pai.tui.width import display_width
 
         lines = self.text.split("\n")
         line_index = max(0, min(len(lines) - 1, line_index))
@@ -262,7 +262,7 @@ class LineEditor(Component):
 
         `prompt` 里**已经含了那个空格**（`"› "`）——再 +1 就把光标整体推右一列。
         """
-        from pai.modes.statusline import display_width
+        from pai.tui.width import display_width
 
         return display_width(self.prompt)
 
@@ -271,7 +271,7 @@ class LineEditor(Component):
 
         按显示列而不是字符下标：一个中文占两列，按下标算会差一半。
         """
-        from pai.modes.statusline import display_width
+        from pai.tui.width import display_width
 
         if col <= 0:
             self.cursor = 0

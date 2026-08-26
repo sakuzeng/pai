@@ -79,7 +79,7 @@ def extract_cursor(lines: List[str]):
     alt 屏渲染器按**绝对**坐标摆它，但「标记在第几行第几列」的算法必须是同一个，
     否则中文 IME 候选框会在两种模式下飘到不同的地方。
     """
-    from pai.modes.statusline import display_width
+    from pai.tui.width import display_width
 
     for row, line in enumerate(lines):
         index = line.find(CURSOR_MARKER)

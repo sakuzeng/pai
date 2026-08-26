@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Callable, List, Optional
 
-from pai.modes.statusline import _ESCAPES, display_width
+from pai.tui.width import _ESCAPES, display_width
 from pai.tui import theme
 from pai.tui.component import Component, extract_cursor
 from pai.tui.scroll import ScrollState
