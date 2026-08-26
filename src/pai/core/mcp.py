@@ -17,9 +17,11 @@ import json
 import re
 import subprocess
 import threading
+import time
 import unicodedata
 from typing import Callable, Dict, List, Optional
 
+from pai.core import heartbeat, interrupt
 from pai.core.tools import Tool
 
 PROTOCOL_VERSION = "2025-06-18"
@@ -35,6 +37,11 @@ DEFAULT_CALL_TIMEOUT_MS = 60_000
 # 脏 stdout 丢弃行数到这个数 warn 一次（29 遗留 8）。未实测经验值：
 # 够小让问题被看见、够大不被单条偶发日志触发。
 DIRTY_STDOUT_WARN_THRESHOLD = 10
+
+# 等待应答时每小步多久醒一次。取 0.1 与 shell 的 POLL_SECONDS 同值，理由也同：
+# 再小只是空转，再大用户会觉得 Ctrl+C 与打字都「有点黏」。
+# 它管的是「多久给界面一次机会」，不是超时——超时仍由调用方给的 timeout_ms 决定。
+WAIT_STEP_SECONDS = 0.1
 
 # 每条 description 的截断上限（CC 2.1.88 同值；它见过 OpenAPI 生成的 server
 # 往 description 里倒 15-60KB 文档）。外部 description 是不可信输入。
@@ -248,6 +255,37 @@ class MCPSession:
     def _notify(self, method: str) -> None:
         self._send({"jsonrpc": "2.0", "method": method})
 
+    def _wait_for(self, event: threading.Event, method: str, timeout_ms: int) -> None:
+        """小步等，而不是一次 `event.wait(总时长)`（2026-08-26 !小修，feature 39 遗留）。
+
+        一次性等待有两个后果，都在同一根源上——那段时间里主线程什么都做不了：
+        - 界面读不到键盘（打的字不上屏，看起来像键盘死了）；
+        - 用户按的 Ctrl+C 没人处理，只能干等到超时（默认 60s）。
+
+        所以每一小步给心跳一次机会、再看一眼中断标志，与 `shell._wait` 同形。
+
+        中断这条与 bash 那条有一处实打实的不同，文案必须说出来（用户 2026-08-26
+        拍板「中断 + 把代价说出来」）：bash 那边我们真能杀掉进程组，这边我们只是
+        不等了——server 收不到任何取消信号，它可能仍在执行、可能已经写了文件。
+        不说的话「已中断」就是半真话，而模型会拿它当「什么都没发生」。
+        （MCP 协议有 `notifications/cancelled`，v1 不发：spec 非目标里的
+        取消语义要连同 progress 一起做，见 29 遗留 2。）
+        """
+        deadline = time.monotonic() + timeout_ms / 1000
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise MCPError(
+                    f"MCP server `{self.name}` 的 {method} 超时（{timeout_ms}ms）")
+            if event.wait(min(WAIT_STEP_SECONDS, remaining)):
+                return
+            heartbeat.current().beat()
+            if interrupt.current().is_set():
+                raise MCPError(
+                    f"MCP server `{self.name}` 的 {method} 已中断（不再等待）。"
+                    "注意：server 没有收到取消信号，它可能仍在执行——"
+                    "已经产生的副作用（写文件等）不会因此回滚。")
+
     def _request(self, method: str, params: dict, *, timeout_ms: int) -> dict:
         event = threading.Event()
         slot: dict = {"event": event, "reply": None, "reason": None}
@@ -258,9 +296,7 @@ class MCPSession:
         try:
             self._send({"jsonrpc": "2.0", "id": req_id,
                         "method": method, "params": params})
-            if not event.wait(timeout_ms / 1000):
-                raise MCPError(
-                    f"MCP server `{self.name}` 的 {method} 超时（{timeout_ms}ms）")
+            self._wait_for(event, method, timeout_ms)
         finally:
             with self._lock:
                 self._pending.pop(req_id, None)
