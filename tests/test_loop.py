@@ -1958,20 +1958,30 @@ def test_something_without_chat_is_not_a_chat_client():
     assert not isinstance(NotAClient(), ChatClient)
 
 
-# ---------- 压缩改写了上下文，要告诉外面（10 遗留 6）----------
+# ---------- 压缩改写了上下文，事件里要看得出来（10 遗留 6 / feature 37）----------
 
 
-def test_compaction_notifies_that_the_context_was_rewritten(tmp_path, monkeypatch):
+def _rewriting(events):
+    from pai.core.events import CONTEXT_REWRITING
+
+    return [e for e in events if isinstance(e, CONTEXT_REWRITING)]
+
+
+def test_a_successful_compaction_emits_a_context_rewriting_event(tmp_path, monkeypatch):
     """压缩把一段历史换成了摘要——任何「记着自己已经放过什么进上下文」的东西
-    （召回的 `surfaced` 是第一个）都作废了。loop 不认识召回，所以给一个注入回调。
-    只在**真压成了**之后调：暂缓与失败都没有改写上下文。
+    （召回的 `surfaced`、规则的 `injected`）都作废了。
+
+    feature 37 起这件事不再走注入回调，而是 `Compacted` 事件本身的性质
+    （`events.CONTEXT_REWRITING`）：loop 在同一位置本来就发它，
+    装配层并联一个监听器就够，不必从 run_agent 一路穿参数。
     """
     monkeypatch.chdir(tmp_path)
     from pai.core.compaction import CompactionSettings
+    from pai.core.events import Compacted
     from pai.core.loop import run_agent
     from pai.core.tools import get_tools
 
-    calls: list = []
+    events: list = []
     tool_turn = {"tool_calls": [("bash", json.dumps({"command": "true"}))]}
     script = [
         {**tool_turn, "usage": _usage(100)},
@@ -1983,21 +1993,20 @@ def test_compaction_notifies_that_the_context_was_rewritten(tmp_path, monkeypatc
                        context_window=1000, max_steps=6,
                        compaction=CompactionSettings(reserve_tokens=200,
                                                      keep_recent_tokens=1),
-                       on_context_rewritten=lambda: calls.append("rewritten"),
-                       on_event=lambda _: None)
+                       on_event=events.append)
     assert answer == "done"
-    assert calls == ["rewritten"], "压成了就该通知，且只通知一次"
+    assert [type(e) for e in _rewriting(events)] == [Compacted], "压成了就该发，且只发一次"
 
 
-def test_no_notification_when_there_is_nothing_to_compact(tmp_path, monkeypatch):
-    """反向守卫：没压成（锚不足 / 无可压）时一个字都不该说——
+def test_nothing_to_compact_emits_no_rewriting_event(tmp_path, monkeypatch):
+    """反向守卫：没压成（锚不足 / 无可压）时一条改写事件都不该有——
     白白清掉召回去重表就是白花一次注入的钱。"""
     monkeypatch.chdir(tmp_path)
     from pai.core.compaction import CompactionSettings
     from pai.core.loop import run_agent
     from pai.core.tools import get_tools
 
-    calls: list = []
+    events: list = []
     script = [
         {"tool_calls": [("bash", json.dumps({"command": "true"}))], "usage": _usage(100)},
         {"tool_calls": [("bash", json.dumps({"command": "true"}))], "usage": _usage(850)},
@@ -2007,9 +2016,8 @@ def test_no_notification_when_there_is_nothing_to_compact(tmp_path, monkeypatch)
               context_window=1000,
               compaction=CompactionSettings(reserve_tokens=200,
                                             keep_recent_tokens=1_000_000),
-              on_context_rewritten=lambda: calls.append("rewritten"),
-              on_event=lambda _: None)
-    assert calls == []
+              on_event=events.append)
+    assert _rewriting(events) == []
 
 
 # ---------- 指令消息可丢弃：/memory reload 的地基（06 task 4）----------

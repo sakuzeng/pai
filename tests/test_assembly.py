@@ -13,6 +13,7 @@ import pytest
 from fake_llm import FakeClient
 
 from pai.core import mcp
+from pai.core.events import (Compacted, ConversationCleared, ToolEnd)
 from pai.core.permissions import RuleSet
 from pai.modes.interactive import run_interactive
 
@@ -164,7 +165,10 @@ def test_memory_and_recall_events_follow_the_swapped_sink(monkeypatch):
 def test_rewriting_the_context_lets_a_recalled_memory_be_picked_again(tmp_path, monkeypatch):
     """`RecallState.surfaced` 记的是「这几篇已经在上下文里」——压缩会把它们切掉、
     `/clear` 会把它们整段删掉，那句话就成了假的，而这几篇从此再也不会被选中
-    （静默的单调衰减）。装配层要给出一个「上下文被改写了」的入口。"""
+    （静默的单调衰减）。
+
+    feature 37 起这件事走事件而不是注入回调：装配层给出的是一个**事件监听器**，
+    收到 `CONTEXT_REWRITING` 里的事件就作废跨轮状态。"""
     monkeypatch.chdir(tmp_path)
     from pai.core.memory import memory_dir
     from pai.modes.assembly import assemble
@@ -179,7 +183,7 @@ def test_rewriting_the_context_lets_a_recalled_memory_be_picked_again(tmp_path, 
 
     assert "记忆正文在此" in asm.recall("问题")[0]
     assert asm.recall("再问")[0] == "", "已注入过的不该再选一遍（这是对的）"
-    asm.on_context_rewritten()
+    asm.state_listener(Compacted(cut=3, before=900, after=200))
     assert "记忆正文在此" in asm.recall("三问")[0], "上下文被改写之后必须能重来"
 
 
@@ -214,14 +218,14 @@ def test_assembly_wires_the_rule_pipeline(tmp_path, monkeypatch):
 
 def test_rewriting_the_context_lets_a_rule_be_injected_again(tmp_path, monkeypatch):
     """压缩把它切走之后「已经在上下文里」就是假的——与召回去重表同一条通道
-    （feature 35 建的 on_context_rewritten，这里是它第二个消费者）。"""
+    （`events.CONTEXT_REWRITING` 那条判据，feature 37 起走事件）。"""
     monkeypatch.chdir(tmp_path)
     _write_rule(tmp_path)
     asm = _assemble(tmp_path)
 
     assert "样式一律用 rem" in asm.on_paths_touched(("web/a.css",))
     assert asm.on_paths_touched(("web/b.css",)) == ""
-    asm.on_context_rewritten()
+    asm.state_listener(ConversationCleared(kept=1))
     assert "样式一律用 rem" in asm.on_paths_touched(("web/c.css",))
 
 
@@ -298,3 +302,55 @@ def test_a_real_turn_pulls_the_rule_in_after_reading_a_matching_file(tmp_path, m
     assert "样式一律用 rem" in second, "读了匹配文件，规则就该在下一次请求里"
     first = json.dumps(client.requests[0]["messages"], ensure_ascii=False)
     assert "样式一律用 rem" not in first, "读到之前一个字都不该进上下文"
+
+
+def test_the_listener_ignores_events_that_did_not_rewrite_anything(tmp_path, monkeypatch):
+    """反向守卫：一个普通的工具结束不该把去重表清掉——那等于每步都重付一次
+    注入的钱，而且没有任何东西会变红。"""
+    monkeypatch.chdir(tmp_path)
+    _write_rule(tmp_path)
+    asm = _assemble(tmp_path)
+
+    assert "样式一律用 rem" in asm.on_paths_touched(("web/a.css",))
+    asm.state_listener(ToolEnd(tool_call_id="1", name="read_file", args={},
+                               result="ok", is_error=False))
+    assert asm.on_paths_touched(("web/b.css",)) == "", "没改写上下文就不许清"
+
+
+def test_clearing_the_conversation_really_lets_recall_come_back(tmp_path, monkeypatch):
+    """纵切：真跑两轮 REPL，中间 `/clear`。第一轮召回过的那篇记忆，
+    `/clear` 之后必须能重新被选中——这条走的是完整的事件链
+    （`_handle_command` 发 `ConversationCleared` → 装配层的监听器 → `surfaced`）。
+
+    复核 feature 35 时正是在这条路上发现「`/clear` 没清」的（TODO 只登记了压缩
+    那一半），所以它值得一条纵切而不只是单元测试。"""
+    import json
+
+    monkeypatch.chdir(tmp_path)
+    from pai.core.memory import memory_dir
+    from tests.test_memory_scan import write_memory
+    from tests.test_recall import reply
+
+    write_memory(memory_dir(), "甲", description="怎么跑测试", body="记忆正文在此")
+    client = FakeClient([reply(["甲.md"]), {"content": "一"},
+                         reply(["甲.md"]), {"content": "二"}])
+    run_interactive(client=client, model="fake", rules=_OPEN,
+                    reader=_reader_lines(["第一问", "/clear", "第二问"]),
+                    out=lambda _s="": None, on_event=lambda _e: None,
+                    no_session=True)
+
+    turns = [r for r in client.requests if "tools" in r]        # 主请求带 tools
+    assert len(turns) == 2
+    second = json.dumps(turns[1]["messages"], ensure_ascii=False)
+    assert "记忆正文在此" in second, "/clear 之后那篇记忆必须能重新召回"
+
+
+def _reader_lines(lines):
+    queue = list(lines)
+
+    def read(prompt=""):
+        if not queue:
+            raise EOFError
+        return queue.pop(0)
+
+    return read

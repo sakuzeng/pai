@@ -55,6 +55,10 @@ def run_once(
         client=client, tools=get_tools(), warn=print, on_event=on_event,
         session=session, recall_model=model or recall_model(),
         mode=mode if mode is not None else DONT_ASK, asker=None, rules=rules)
+    # 跨轮状态的作废挂在事件流上（feature 37）：装配层的监听器并联进 on_event，
+    # 而不是从 run_agent 穿一个回调下去。compose 在 assemble 之后——
+    # 它要监听的事件由 loop 发，而不是由装配期的闭包发。
+    on_event = compose(on_event, asm.state_listener)
     # feature 33（09 遗留 2）：settings 配了 defaultMode 而 once 用不上时说一声
     # ——行为不变（无人可问只能 dontAsk），但静默会让用户以为配置生效了。
     if mode is None and asm.rules.mode_source is not None \
@@ -81,7 +85,6 @@ def run_once(
             context_window=context_window(),
             compaction=CompactionSettings(keep_recent_tokens=keep_recent_tokens()),
             before_tool_call=asm.gate,
-            on_context_rewritten=asm.on_context_rewritten,
             on_paths_touched=asm.on_paths_touched,
         )
     finally:

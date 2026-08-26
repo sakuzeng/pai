@@ -59,8 +59,8 @@ class RuleState:
     """跨轮持有：哪些规则已经注进上下文了。
 
     与 `RecallState.surfaced` 同构，且共享同一个失效条件——上下文被改写
-    （压缩 / `/compact` / `/clear`）之后这张表就是假的，由装配层的
-    `on_context_rewritten` 一并清（feature 35 建的那条通道，这里是它第二个消费者）。
+    （压缩 / `/compact` / `/clear`）之后这张表就是假的，由装配层挂在事件流上的
+    监听器一并清；判据是 `events.CONTEXT_REWRITING`（feature 37）。
     """
 
     injected: Set[str] = field(default_factory=set)
