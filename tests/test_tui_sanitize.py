@@ -99,7 +99,7 @@ def test_the_model_still_receives_the_raw_output(tmp_path):
     「这个工具是不是把颜色开着」，或者要把输出原样转贴给别处。
     消毒是**显示层**的事，不是内容层的。
     """
-    from pai.modes.interactive import _run_shell
+    from pai.modes.commands import _run_shell
 
     messages: list = []
     screen: list = []

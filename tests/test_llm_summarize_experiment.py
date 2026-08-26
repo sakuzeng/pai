@@ -13,7 +13,7 @@ import pytest
 
 from pai.config import make_client, model_name
 from pai.core.compaction import summarize
-from test_compaction import REAL_TRAJECTORY
+from trajectories import REAL_TRAJECTORY
 
 EVIDENCE = (Path(__file__).resolve().parent.parent / "docs" / "dev" / "features"
             / "02-20260803-compaction" / "evidence")

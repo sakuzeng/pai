@@ -17,7 +17,7 @@ from pai.core.session import (
     load_session,
     replay_messages,
 )
-from test_compaction import REAL_TRAJECTORY
+from trajectories import REAL_TRAJECTORY
 
 
 def _lines(log):

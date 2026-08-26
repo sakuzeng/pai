@@ -153,10 +153,12 @@ dsh 的文档与源码在同一个仓库、同一个 commit 里，拆开只会�
 | [model-api/reasoning-models-max-tokens.md](model-api/reasoning-models-max-tokens.md) | 推理模型的 reasoning 计进 `max_tokens`：上限设小不省钱，只会让 content 静默变空串（实测同 query 思考量差 17 倍） | 沉淀 | src/pai/core/recall.py |
 | [model-api/dsh-deepseek-wire.md](model-api/dsh-deepseek-wire.md) | 拿同厂第一方交叉验证 pai 两条实测坑（47f9438）：reasoning_content dsh 真回传但只在 tool-call 轮（官方 thinking_mode 规则 + 平轮丢弃省 token——D#33 监控条目的修法形状有了出处）；usage 读取 dsh 也观察到两种形状并写了形状无关读取器（推迟到 DONE），与 pai「每块都看」独立收敛，D#58 置信度升级；顺手捡到 prompt_tokens 含缓存命中——上下文口径恰好对、将来成本核算必须拆开算 | 精读 | decisions #33 #58、src/pai/core/streaming.py |
 | `engineering/` | | | |
+| [engineering/todo-drift.md](engineering/todo-drift.md) | 待办清单的四种失真：已修没划掉／修法的前提变了（照做反而引新 bug）／当初只看见半个问题／触发条件早已满足但没人回来查。复核要问三句话（它还在吗／修法还成立吗／是不是只写了一半），外加两条登记纪律 | 沉淀 | docs/dev/TODO.md、features/35 复盘、features/40 |
+| [engineering/green-but-which-path.md](engineering/green-but-which-path.md) | 绿只证明「这套测试环境里被执行的那条路是对的」：测试为跑起来而注入的参数正是真实路径卡住的地方／基准注入的到达形态真实路径上不存在／两个坐标系在测试里恰好相等（cwd vs 项目根）／仪器把会变的量常量化让下游分支永远走同一边。四次同族事故的归纳，附操作纪律 | 沉淀 | tests/fake_provider.py、src/pai/core/rules.py、features/38、features/36 复盘 |
 | [engineering/injection-seams.md](engineering/injection-seams.md) | 装配期捕获：依赖会变时闭包存的还是当时那个值，症状是「我改了但没反应」；判据、兼容写法、「改完立刻生效」的测试前后结果必须不同（否则假绿）、同一个坑会连撞两次；外加「接缝上的 bug 离线测试结构上看不见」 | 沉淀 | src/pai/core/gate.py、features/12 |
 | [engineering/instruments-lie.md](engineering/instruments-lie.md) | 观测工具骗人的五种方式：污染被测对象／全量记录器漏掉第二个写入出口／读取工具给的是复合视图／能力探测探的是另一个能力／仪器让被测路径结构上走不到（2026-08-26 追记：假 provider 的固定 usage 让压缩链路在所有 e2e 里不可达，而没有任何测试会因此变红）。前三种都长得像「被测代码有 bug」，第四种让你以为做过了一次根本没发生的观测，第五种什么现象都不给 | 沉淀 | src/pai/tui/record.py、tests/fake_provider.py、features/13 复盘、features/16、features/38 |
-| [engineering/mutation-testing-pitfalls.md](engineering/mutation-testing-pitfalls.md) | 注入反证的坑：注错了和没测住现象一样（全绿）；「没被执行到」分控制流被屏蔽与测试场景压根不走那条路两种；正交防线要分别注；红阶段就绿的测试不具本次鉴别力 | 沉淀 | features/07、features/09、features/13 的 devlog |
-| [engineering/process-groups-and-interrupts.md](engineering/process-groups-and-interrupts.md) | 独立进程组 + killpg 才杀得干净；杀不净的第一个症状是输出丢失不是资源泄漏 | 沉淀 | src/pai/core/tools/shell.py |
+| [engineering/mutation-testing-pitfalls.md](engineering/mutation-testing-pitfalls.md) | 注入反证的坑：注错了和没测住现象一样（全绿）；「没被执行到」分控制流被屏蔽与测试场景压根不走那条路两种；正交防线要分别注；红阶段就绿的测试不具本次鉴别力；反证不红时先怀疑实现而不是先怀疑测试（2026-08-26 追记，多写的无害行与漏写的有害行在测试上表现一样） | 沉淀 | features/07、features/09、features/13 的 devlog |
+| [engineering/process-groups-and-interrupts.md](engineering/process-groups-and-interrupts.md) | 独立进程组 + killpg 才杀得干净；杀不净的第一个症状是输出丢失不是资源泄漏；进 raw mode 等于辞退操作系统的一批服务（ISIG/ICRNL/行编辑）要逐条接管，漏掉的共同症状是「某个键没反应」（2026-08-26 追记） | 沉淀 | src/pai/core/tools/shell.py |
 | `overview/` | | | |
 | [overview/claude-docs-map.md](overview/claude-docs-map.md) | 官方文档章节 → pai 归属/不做 的覆盖图 | 沉淀 | docs/dev/roadmap.md |
 | `anna/` | | | |

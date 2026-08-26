@@ -1850,7 +1850,7 @@ def test_replay_messages_rebuilds_the_conversation_from_a_real_trajectory(tmp_pa
     """重放助手（evals 地基）：会话 JSONL → 发给模型的 messages。
     真实轨迹夹具（REAL_TRAJECTORY 含真实中文与 tool_calls.arguments）；
     type 记录（usage 等）是旁账要滤掉，SessionLog 加的 ts/sessionId/cwd 要剥掉。"""
-    from test_compaction import REAL_TRAJECTORY
+    from trajectories import REAL_TRAJECTORY
 
     from pai.core.session import SessionLog, replay_messages
 

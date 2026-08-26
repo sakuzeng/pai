@@ -1,9 +1,7 @@
 """阶段 1 第 1-2 步：token 秤 + 警戒线 + 对话拍平机。
 
 三个都是纯函数（进参数出结果，不联网不读文件），所以全部离线可测。
-REAL_TRAJECTORY 是 pai_playground/sessions/20260802-224352.jsonl 的真实运行记录
-（tri.txt 那次，含一条 sed 失败），剥掉了 SessionLog 加的 ts 字段——
-estimate_tokens 面对的是发给 API 的消息格式，不含 ts。
+真实轨迹夹具（`REAL_TRAJECTORY` 等）住 tests/trajectories.py，出处与诚实边界写在那里。
 """
 
 from pai.core.compaction import (
@@ -12,83 +10,14 @@ from pai.core.compaction import (
     serialize_conversation,
     should_compact,
 )
+# 真实轨迹夹具的家在 tests/trajectories.py（feature 40）：它被 6 个测试文件用，
+# 住在这里等于「测试文件 A import 测试文件 B」
+from trajectories import (
+    REAL_TRAJECTORY,
+    REAL_USAGE_STEPS,
+    REAL_USAGE_TRAJECTORY,
+)
 
-REAL_TRAJECTORY = [
-    {
-        "role": "system",
-        "content": (
-            "你是一个最小化的编码 agent。你有这些工具：bash（跑命令）、read_file（读文件）、"
-            "write_file（覆盖写文件）、edit_file（精确替换文件里的一段文本）。"
-            "改代码时优先用 edit_file 做精确修改，而不是用 bash 或整文件覆盖。"
-            "一步步来，看到工具结果再决定下一步。任务完成后用一句话简短总结。"
-        ),
-    },
-    {
-        "role": "user",
-        "content": "创建 tri.txt，内容为四行，每行都是 same same；然后把第二行改成 done，其他两行不动",
-    },
-    {
-        "role": "assistant",
-        "content": "",
-        "tool_calls": [
-            {
-                "id": "call_00_S3O2fUaAdiUp1NK9i4I83476",
-                "type": "function",
-                "function": {
-                    "name": "bash",
-                    "arguments": '{"command": "printf \'same same\\\\nsame same\\\\nsame same\\\\nsame same\\\\n\' > tri.txt && cat tri.txt"}',
-                },
-            }
-        ],
-    },
-    {
-        "role": "tool",
-        "tool_call_id": "call_00_S3O2fUaAdiUp1NK9i4I83476",
-        "content": "same same\nsame same\nsame same\nsame same\n",
-    },
-    {
-        "role": "assistant",
-        "content": "",
-        "tool_calls": [
-            {
-                "id": "call_00_YCn1gLUHFgglAcSvbncA7158",
-                "type": "function",
-                "function": {
-                    "name": "bash",
-                    "arguments": '{"command": "sed -i \'2s/.*/done/\' tri.txt && cat tri.txt"}',
-                },
-            }
-        ],
-    },
-    {
-        "role": "tool",
-        "tool_call_id": "call_00_YCn1gLUHFgglAcSvbncA7158",
-        "content": "sed: 2: \"tri.txt\n\": undefined label 'ri.txt'\n",
-    },
-    {
-        "role": "assistant",
-        "content": "",
-        "tool_calls": [
-            {
-                "id": "call_00_cWNCJkkCSGv031Ujv9kG8115",
-                "type": "function",
-                "function": {
-                    "name": "bash",
-                    "arguments": '{"command": "perl -pi -e \'s/.*/done/ if $. == 2\' tri.txt && cat tri.txt"}',
-                },
-            }
-        ],
-    },
-    {
-        "role": "tool",
-        "tool_call_id": "call_00_cWNCJkkCSGv031Ujv9kG8115",
-        "content": "same same\ndone\nsame same\nsame same\n",
-    },
-    {
-        "role": "assistant",
-        "content": "完成：已创建 tri.txt（四行“same same”），并把第二行改为“done”，其余两行保持不动。",
-    },
-]
 
 
 # ---------- estimate_tokens ----------
@@ -407,62 +336,6 @@ def test_request_tokens_real_tool_schemas_are_not_negligible():
 
     schemas = [t.schema() for t in get_tools().values()]
     assert estimate_request_tokens([], schemas) > 100
-
-
-# ---------- context_tokens：以真实 usage 为锚 ----------
-
-# 取自 pai_playground/sessions/20260802-235657.jsonl，一次真实的 3 步运行
-# （创建 usage_check.txt 并读回）。已剥掉 ts。
-REAL_USAGE_TRAJECTORY = [
-    {
-        "role": "system",
-        "content": "你是一个最小化的编码 agent。你有这些工具：bash（跑命令）、read_file（读文件）、write_file（覆盖写文件）、edit_file（精确替换文件里的一段文本）。改代码时优先用 edit_file 做精确修改，而不是用 bash 或整文件覆盖。一步步来，看到工具结果再决定下一步。任务完成后用一句话简短总结。",
-    },
-    {"role": "user", "content": "创建 usage_check.txt，写入三行：alpha、beta、gamma，然后读出来确认"},
-    {
-        "role": "assistant",
-        "content": "",
-        "tool_calls": [
-            {
-                "id": "call_00_ET_aXcRr8wrZF8BXFrnDTGK2905",
-                "type": "function",
-                "function": {
-                    "name": "write_file",
-                    "arguments": '{"path": "usage_check.txt", "content": "alpha\\nbeta\\ngamma\\n"}',
-                },
-            }
-        ],
-    },
-    {
-        "role": "tool",
-        "tool_call_id": "call_00_ET_aXcRr8wrZF8BXFrnDTGK2905",
-        "content": "已写入 usage_check.txt（17 字符）",
-    },
-    {
-        "role": "assistant",
-        "content": "",
-        "tool_calls": [
-            {
-                "id": "call_00_ET_LwPBKwDO0NBNfX5TixAb9254",
-                "type": "function",
-                "function": {"name": "read_file", "arguments": '{"path": "usage_check.txt"}'},
-            }
-        ],
-    },
-    {
-        "role": "tool",
-        "tool_call_id": "call_00_ET_LwPBKwDO0NBNfX5TixAb9254",
-        "content": "alpha\nbeta\ngamma\n",
-    },
-    {"role": "assistant", "content": "已创建 usage_check.txt 并读出确认内容为 alpha、beta、gamma 三行。"},
-]
-
-# provider 实际回传的三步用量
-REAL_USAGE_STEPS = [
-    {"step": 1, "prompt_tokens": 732, "completion_tokens": 67},
-    {"step": 2, "prompt_tokens": 821, "completion_tokens": 46},
-    {"step": 3, "prompt_tokens": 885, "completion_tokens": 21},
-]
 
 
 

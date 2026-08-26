@@ -10,34 +10,18 @@ from types import SimpleNamespace
 import pytest
 from fake_llm import FakeClient
 
+from helpers import OPEN_RULES, scripted_reader
 from pai.core.compaction import CompactionSettings
 from pai.core.permissions import RuleSet
 from pai.modes.interactive import run_interactive
 
-# 同 test_modes：这些测的是 REPL 接线不是权限，feature 09 的边界兜底会拦住它们
-_OPEN = RuleSet.from_lists(default_decision="allow")
-
-
-def _reader(lines):
-    """脚本化输入：元素是字符串就当用户输入，是异常类就抛（模拟 Ctrl+C / Ctrl+D）。"""
-    queue = list(lines)
-
-    def read(prompt=""):
-        if not queue:
-            raise EOFError
-        item = queue.pop(0)
-        if isinstance(item, type) and issubclass(item, BaseException):
-            raise item
-        return item
-
-    return read
 
 
 def _run(lines, script, **kwargs):
     out: list = []
     client = FakeClient(script)
-    kwargs.setdefault("rules", _OPEN)
-    run_interactive(client=client, model="fake", reader=_reader(lines),
+    kwargs.setdefault("rules", OPEN_RULES)
+    run_interactive(client=client, model="fake", reader=scripted_reader(lines),
                     out=out.append, on_event=lambda _: None, no_session=True, **kwargs)
     return client, "\n".join(out)
 
@@ -136,7 +120,7 @@ def test_slash_compact_without_anchors_explains_why():
     assert "锚点不足" in printed
 
 
-def test_ask_user_question_is_wired_to_the_reader():
+def test_ask_user_question_is_wired_to_thescripted_reader():
     """REPL 才有真人可问：工具要在工具集里，且答案来自 reader。"""
     script = [
         {"tool_calls": [("ask_user_question",
@@ -211,7 +195,7 @@ def test_model_error_does_not_kill_the_repl():
 
     client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=boom)))
     out: list = []
-    run_interactive(client=client, model="fake", reader=_reader(["问一句", "再问一句"]),
+    run_interactive(client=client, model="fake", reader=scripted_reader(["问一句", "再问一句"]),
                     out=out.append, on_event=lambda _: None, no_session=True)
     printed = "\n".join(out)
     assert printed.count("401 Unauthorized") == 2      # 两轮都报错，都没退出
@@ -242,7 +226,7 @@ def test_repl_shows_memory_writes(tmp_path, monkeypatch):
     ]
     events: list = []
     client = FakeClient(script)
-    run_interactive(client=client, model="fake", rules=_OPEN, reader=_reader(["记一下"]),
+    run_interactive(client=client, model="fake", rules=OPEN_RULES, reader=scripted_reader(["记一下"]),
                     out=lambda _: None, on_event=events.append, no_session=True)
 
     written = [e for e in events if isinstance(e, MemoryWritten)]
@@ -496,14 +480,14 @@ def test_repl_holds_recall_state_across_turns(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     from pai.core.memory import memory_dir
 
-    from tests.test_memory_scan import write_memory
-    from tests.test_recall import reply
+    from helpers import write_memory
+    from helpers import recall_reply as reply
 
     write_memory(memory_dir(), "甲", description="怎么跑测试", body="记忆正文")
     client = FakeClient([reply(["甲.md"]), {"content": "第一轮"}, {"content": "第二轮"}])
 
-    run_interactive(client=client, model="fake", rules=_OPEN,
-                    reader=_reader(["问题一", "问题二"]), out=lambda _: None,
+    run_interactive(client=client, model="fake", rules=OPEN_RULES,
+                    reader=scripted_reader(["问题一", "问题二"]), out=lambda _: None,
                     on_event=lambda _: None, no_session=True)
 
     assert len(client.requests) == 3          # 召回 1 次 + 两轮各 1 次
@@ -521,7 +505,7 @@ def test_manual_compact_survives_a_network_error():
     用户按 `/compact` 正是因为上下文已经攒得很长了。
     """
     from pai.core.compaction import AnchorBook, CompactionSettings, CompactionState
-    from pai.modes.interactive import _manual_compact
+    from pai.modes.commands import _manual_compact
 
     class Exploding:
         def __init__(self):
@@ -582,7 +566,7 @@ def test_manual_compact_says_how_far_short_the_history_is():
     """「无可压」三个字分不清「坏了」与「还没到量」。用户按 `/compact` 时
     唯一想知道的是「那我还要聊多久」——差额是算得出来的，就该说出来。"""
     from pai.core.compaction import AnchorBook, CompactionState
-    from pai.modes.interactive import _manual_compact
+    from pai.modes.commands import _manual_compact
 
     anchors = AnchorBook()
     anchors.record(2, 1000)
@@ -602,7 +586,7 @@ def test_manual_compact_says_how_far_short_the_history_is():
 def test_manual_compact_without_anchors_does_not_pretend_to_know_the_gap():
     """锚不足两个时一个差值都算不出来，不许拿门槛冒充「还差这么多」。"""
     from pai.core.compaction import AnchorBook, CompactionState
-    from pai.modes.interactive import _manual_compact
+    from pai.modes.commands import _manual_compact
 
     said: list = []
     _manual_compact(messages=[{"role": "system", "content": "s"}],
@@ -644,7 +628,7 @@ def test_clear_emits_a_context_rewriting_event():
     feature 37 起这件事是 `ConversationCleared` 事件的性质
     （`events.CONTEXT_REWRITING`），不再是一个单独穿下来的回调。"""
     from pai.core.events import ConversationCleared
-    from pai.modes.interactive import _handle_command
+    from pai.modes.commands import _handle_command
 
     seen: list = []
     _handle_command("/clear", **_command_kwargs(on_event=seen.append))
@@ -653,7 +637,7 @@ def test_clear_emits_a_context_rewriting_event():
 
 def test_other_commands_rewrite_nothing():
     """反向守卫：`/status` 不动上下文，不许顺手发一条改写事件。"""
-    from pai.modes.interactive import _handle_command
+    from pai.modes.commands import _handle_command
 
     seen: list = []
     _handle_command("/status", **_command_kwargs(on_event=seen.append))
@@ -663,7 +647,7 @@ def test_other_commands_rewrite_nothing():
 def test_manual_compact_emits_a_context_rewriting_event():
     from pai.core.compaction import AnchorBook, CompactionState
     from pai.core.events import Compacted
-    from pai.modes.interactive import _manual_compact
+    from pai.modes.commands import _manual_compact
 
     anchors = AnchorBook()
     anchors.record(2, 100)
@@ -681,7 +665,7 @@ def test_manual_compact_emits_a_context_rewriting_event():
 def test_a_failed_manual_compact_rewrites_nothing():
     """失败的压缩没有改写任何东西（历史原样留着），不该发改写事件。"""
     from pai.core.compaction import AnchorBook, CompactionState
-    from pai.modes.interactive import _manual_compact
+    from pai.modes.commands import _manual_compact
 
     class Exploding:
         def __init__(self):
@@ -727,7 +711,7 @@ def test_memory_reload_makes_a_changed_instruction_file_take_effect(tmp_path, mo
 
     client = FakeClient([{"content": "答一"}, {"content": "答二"}])
     printed: list = []
-    run_interactive(client=client, model="fake", reader=reader, rules=_OPEN,
+    run_interactive(client=client, model="fake", reader=reader, rules=OPEN_RULES,
                     out=printed.append, on_event=lambda _: None, no_session=True)
 
     first = json.dumps(client.requests[0]["messages"], ensure_ascii=False)
@@ -739,7 +723,7 @@ def test_memory_reload_makes_a_changed_instruction_file_take_effect(tmp_path, mo
 
 def test_memory_reload_says_what_it_did():
     from pai.core.loop import INSTRUCTION_HEADER
-    from pai.modes.interactive import _handle_command
+    from pai.modes.commands import _handle_command
 
     messages = [{"role": "system", "content": "s"},
                 {"role": "user", "content": f"{INSTRUCTION_HEADER}\n\n旧"}]
@@ -753,7 +737,7 @@ def test_memory_reload_says_what_it_did():
 def test_plain_memory_still_lists_files():
     """反向守卫：不带 reload 的 `/memory` 一个字都不该动上下文。"""
     from pai.core.loop import INSTRUCTION_HEADER
-    from pai.modes.interactive import _handle_command
+    from pai.modes.commands import _handle_command
 
     messages = [{"role": "system", "content": "s"},
                 {"role": "user", "content": f"{INSTRUCTION_HEADER}\n\n旧"}]
@@ -797,7 +781,7 @@ def test_resume_says_that_settings_are_not_restored(tmp_path, monkeypatch):
 
     printed: list = []
     run_interactive(client=FakeClient([]), model="fake",
-                    reader=_reader([EOFError]), rules=_OPEN,
+                    reader=scripted_reader([EOFError]), rules=OPEN_RULES,
                     out=printed.append, on_event=lambda _: None,
                     no_session=True, resume=str(path))
     text = "\n".join(printed)
@@ -813,7 +797,7 @@ def test_resume_points_out_a_different_working_directory(tmp_path, monkeypatch):
 
     printed: list = []
     run_interactive(client=FakeClient([]), model="fake",
-                    reader=_reader([EOFError]), rules=_OPEN,
+                    reader=scripted_reader([EOFError]), rules=OPEN_RULES,
                     out=printed.append, on_event=lambda _: None,
                     no_session=True, resume=str(path))
     assert any("/一个/别的/目录" in line for line in printed), printed
@@ -826,7 +810,7 @@ def test_resume_in_the_same_directory_says_nothing_about_cwd(tmp_path, monkeypat
 
     printed: list = []
     run_interactive(client=FakeClient([]), model="fake",
-                    reader=_reader([EOFError]), rules=_OPEN,
+                    reader=scripted_reader([EOFError]), rules=OPEN_RULES,
                     out=printed.append, on_event=lambda _: None,
                     no_session=True, resume=str(path))
     assert not any("录制于" in line for line in printed), printed
@@ -838,7 +822,7 @@ def test_resume_in_the_same_directory_says_nothing_about_cwd(tmp_path, monkeypat
 def test_memory_lists_path_scoped_rules(tmp_path, monkeypatch):
     """这层机制的失效方式天然是沉默的：规则没进上下文，模型照样给一个像样的回答。
     所以规则文件必须能在 `/memory` 里被看见——它首先是个调试工具。"""
-    from pai.modes.interactive import _handle_command
+    from pai.modes.commands import _handle_command
 
     monkeypatch.chdir(tmp_path)
     directory = tmp_path / ".pai" / "rules"
@@ -854,7 +838,7 @@ def test_memory_lists_path_scoped_rules(tmp_path, monkeypatch):
 
 def test_memory_marks_which_rules_are_already_injected(tmp_path, monkeypatch):
     from pai.core.rules import RuleState, scan_rules, select_and_render
-    from pai.modes.interactive import _handle_command
+    from pai.modes.commands import _handle_command
 
     monkeypatch.chdir(tmp_path)
     directory = tmp_path / ".pai" / "rules"
@@ -872,7 +856,7 @@ def test_memory_marks_which_rules_are_already_injected(tmp_path, monkeypatch):
 
 def test_memory_without_rules_says_nothing_about_them(tmp_path, monkeypatch):
     """反向守卫：没有规则目录时不许多打一节（`/memory` 已经够长了）。"""
-    from pai.modes.interactive import _handle_command
+    from pai.modes.commands import _handle_command
 
     monkeypatch.chdir(tmp_path)
     said: list = []

@@ -7,13 +7,12 @@ import json
 
 from fake_llm import FakeClient
 
+from helpers import OPEN_RULES
 from pai.core.permissions import RuleSet
 from pai.modes.once import run_once
 
 # 本文件多数测试测的是「装配是否正确」，不是权限。feature 09 把默认兜底改成了
 # 工作目录边界（写一律 ask、bash 一律 ask，once 下再降级为 deny），会把这些
-# e2e 全部拦住。显式注入一个放行的规则集，让它们继续测自己该测的东西。
-_OPEN = RuleSet.from_lists(default_decision="allow")
 
 
 def test_run_once_wires_client_and_returns_answer(tmp_path, monkeypatch):
@@ -76,7 +75,7 @@ def test_once_event_output_is_byte_identical(tmp_path, monkeypatch):
         {"content": "done"},
     ])
     answer = run_once("x", client=client, model="fake", no_session=True,
-                      on_event=events.append, rules=_OPEN)
+                      on_event=events.append, rules=OPEN_RULES)
 
     printed = [text for text in (render_text(e) for e in events) if text is not None]
     assert printed == ["🔧 bash({'command': 'echo hi'}) → hi\n"]
@@ -96,7 +95,7 @@ def test_once_default_event_handler_prints_rendered_text(capsys, tmp_path, monke
         {"tool_calls": [("bash", json.dumps({"command": "echo hi"}))]},
         {"content": "done"},
     ])
-    run_once("x", client=client, model="fake", no_session=True, rules=_OPEN)
+    run_once("x", client=client, model="fake", no_session=True, rules=OPEN_RULES)
     out = capsys.readouterr().out
     # 三个 \n 的来源，逐个说清（这类断言最容易看着像凑出来的）：
     # ① bash 结果自带的换行；② rest() 按行渲染补的换行；③ echo 在 🤖 之前空一行。
@@ -185,13 +184,13 @@ def test_run_once_wires_recall_when_memories_exist(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     from pai.core.memory import memory_dir
 
-    from tests.test_memory_scan import write_memory
-    from tests.test_recall import reply
+    from helpers import write_memory
+    from helpers import recall_reply as reply
 
     write_memory(memory_dir(), "甲", description="怎么跑测试", body="记忆正文在此")
     client = FakeClient([reply(["甲.md"]), {"content": "done"}])
 
-    answer = run_once("问题", client=client, model="fake", rules=_OPEN,
+    answer = run_once("问题", client=client, model="fake", rules=OPEN_RULES,
                       no_session=True, on_event=lambda _: None)
 
     assert answer == "done"
@@ -204,7 +203,7 @@ def test_run_once_without_memories_costs_no_extra_request(tmp_path, monkeypatch)
     """空记忆目录不该多花一次请求——短路是本功能的成本底线。"""
     monkeypatch.chdir(tmp_path)
     client = FakeClient([{"content": "done"}])
-    run_once("问题", client=client, model="fake", rules=_OPEN,
+    run_once("问题", client=client, model="fake", rules=OPEN_RULES,
              no_session=True, on_event=lambda _: None)
     assert len(client.requests) == 1
 
@@ -311,7 +310,7 @@ def test_status_line_shows_multiple_running_tools():
 def _cmd(line, mode_state):
     """`_handle_command` 要一堆跨轮状态，这里只关心 /mode 那一支。"""
     from pai.core.compaction import AnchorBook, CompactionSettings, CompactionState
-    from pai.modes.interactive import _handle_command
+    from pai.modes.commands import _handle_command
 
     out = []
     _handle_command(line, out=out.append, messages=[], anchors=AnchorBook(),
@@ -369,7 +368,7 @@ def test_mode_command_rejects_unknown_and_keeps_the_old_mode():
 def test_permissions_command_shows_the_current_mode():
     """关掉 TODO 那条小修：用户看不到自己在哪个模式下。"""
     from pai.core.permissions import PermissionModeState
-    from pai.modes.interactive import _show_permissions
+    from pai.modes.commands import _show_permissions
 
     out = []
     _show_permissions(out.append, None, mode_state=PermissionModeState("acceptEdits"))
@@ -393,7 +392,7 @@ def test_repl_survives_an_unexpected_exception_in_a_turn(tmp_path, monkeypatch):
     interactive.run_interactive(client=FakeClient([]), model="fake",
                                 reader=lambda _p="": next(lines), out=out.append,
                                 on_event=lambda _e: None, no_session=True,
-                                rules=_OPEN, history_path=tmp_path / "h")
+                                rules=OPEN_RULES, history_path=tmp_path / "h")
     text = "\n".join(out)
     assert "本轮出错" in text and "RuntimeError" in text
     assert "再见。" in text                    # 会话活到了正常退出
@@ -409,7 +408,7 @@ def test_ctrl_d_still_exits_and_is_not_swallowed(tmp_path, monkeypatch):
     out = []
     interactive.run_interactive(client=FakeClient([]), model="fake", reader=reader,
                                 out=out.append, on_event=lambda _e: None,
-                                no_session=True, rules=_OPEN,
+                                no_session=True, rules=OPEN_RULES,
                                 history_path=tmp_path / "h")
     assert "再见。" in "\n".join(out)
 
@@ -471,7 +470,7 @@ def test_once_sends_a_prompt_built_from_its_actual_tools(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     client = FakeClient([{"content": "好"}])
     run_once("x", client=client, model="fake", no_session=True,
-             on_event=lambda _: None, rules=_OPEN)
+             on_event=lambda _: None, rules=OPEN_RULES)
     system = client.requests[0]["messages"][0]["content"]
     assert "bash" in system and "edit_file" in system
     assert "ask_user_question" not in system
@@ -489,7 +488,7 @@ def test_interactive_sends_a_prompt_that_admits_ask_user_question(tmp_path, monk
     interactive.run_interactive(client=client, model="fake",
                                 reader=lambda _p="": next(lines),
                                 out=lambda _s: None, on_event=lambda _e: None,
-                                no_session=True, rules=_OPEN,
+                                no_session=True, rules=OPEN_RULES,
                                 history_path=tmp_path / "h")
     system = client.requests[0]["messages"][0]["content"]
     assert "ask_user_question" in system, "REPL 真有这个工具，prompt 不许再瞒着"
@@ -519,7 +518,7 @@ def test_manual_compact_records_the_entry_and_replay_rebuilds(tmp_path, monkeypa
     interactive.run_interactive(client=FakeClient(script), model="fake",
                                 reader=lambda _p="": next(lines),
                                 out=lambda _s: None, on_event=lambda _e: None,
-                                rules=_OPEN,
+                                rules=OPEN_RULES,
                                 compaction=CompactionSettings(keep_recent_tokens=1),
                                 history_path=tmp_path / "h")
     files = [p for p in sessions_dir().glob("*.jsonl")
@@ -536,7 +535,7 @@ def test_manual_compact_records_the_entry_and_replay_rebuilds(tmp_path, monkeypa
 def test_slash_clear_trims_the_ledger_with_the_messages():
     """/clear 只留 system——台账必须同步裁，不然下次压缩 ledger[cut] 指错条目。"""
     from pai.core.compaction import AnchorBook, CompactionState
-    from pai.modes.interactive import _handle_command
+    from pai.modes.commands import _handle_command
 
     messages = [{"role": "system", "content": "s"},
                 {"role": "user", "content": "u"},
@@ -565,14 +564,14 @@ def test_resume_continues_the_previous_conversation(tmp_path, monkeypatch):
     interactive.run_interactive(client=FakeClient([{"content": "好的小明"}]),
                                 model="fake", reader=lambda _p="": next(lines1),
                                 out=lambda _s: None, on_event=lambda _e: None,
-                                rules=_OPEN, history_path=tmp_path / "h")
+                                rules=OPEN_RULES, history_path=tmp_path / "h")
     _t.sleep(0.02)
     lines2 = iter(["我叫什么", "/exit"])
     client2 = FakeClient([{"content": "小明"}])
     interactive.run_interactive(client=client2, model="fake",
                                 reader=lambda _p="": next(lines2),
                                 out=lambda _s: None, on_event=lambda _e: None,
-                                rules=_OPEN, history_path=tmp_path / "h",
+                                rules=OPEN_RULES, history_path=tmp_path / "h",
                                 resume="")
     texts = [str(m.get("content")) for m in client2.requests[0]["messages"]]
     assert any("记住我叫小明" in t for t in texts), "旧对话必须进新一轮的上下文"
@@ -609,7 +608,7 @@ def test_resume_trims_a_torn_tail_before_continuing(tmp_path, monkeypatch):
     interactive.run_interactive(client=client, model="fake",
                                 reader=lambda _p="": next(lines),
                                 out=lambda _s: None, on_event=lambda _e: None,
-                                rules=_OPEN, history_path=tmp_path / "h",
+                                rules=OPEN_RULES, history_path=tmp_path / "h",
                                 resume="")
     sent = client.requests[0]["messages"]
     # 判别断言在前：旧对话真的被恢复了（没有它，「根本没 resume」也能让下一条绿）

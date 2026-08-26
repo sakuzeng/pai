@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from helpers import write_memory
 from pai.core.memory import (
     FRONTMATTER_MAX_LINES,
     MAX_SCANNED,
@@ -16,28 +17,6 @@ from pai.core.memory import (
     parse_frontmatter,
     scan_memories,
 )
-
-
-def write_memory(directory: Path, name: str, *, description: str = "一句话描述",
-                 type_: str = "project", body: str = "正文", mtime: float | None = None) -> Path:
-    directory.mkdir(parents=True, exist_ok=True)
-    path = directory / f"{name}.md"
-    path.write_text(
-        "---\n"
-        f"name: {name}\n"
-        f"description: {description}\n"
-        "metadata:\n"
-        f"  type: {type_}\n"
-        "  originSessionId: abc123\n"
-        "  modified: 2026-08-11T10:00:00Z\n"
-        "---\n"
-        "\n"
-        f"{body}\n",
-        encoding="utf-8",
-    )
-    if mtime is not None:
-        os.utime(path, (mtime, mtime))
-    return path
 
 
 def test_parses_our_own_frontmatter(tmp_path: Path):

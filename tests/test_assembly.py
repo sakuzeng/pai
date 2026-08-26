@@ -12,13 +12,12 @@ from pathlib import Path
 import pytest
 from fake_llm import FakeClient
 
+from helpers import OPEN_RULES, scripted_reader
 from pai.core import mcp
 from pai.core.events import (Compacted, ConversationCleared, ToolEnd)
 from pai.core.permissions import RuleSet
 from pai.modes.interactive import run_interactive
 
-# 同 test_interactive：测的是接线不是权限，边界兜底别来捣乱
-_OPEN = RuleSet.from_lists(default_decision="allow")
 
 
 def _patch_mcp(monkeypatch, closed):
@@ -33,12 +32,9 @@ def test_repl_closes_mcp_sessions_before_returning(monkeypatch):
     closed: list = []
     marker = _patch_mcp(monkeypatch, closed)
 
-    def reader(prompt=""):
-        raise EOFError
-
-    run_interactive(client=FakeClient([]), model="fake", reader=reader,
+    run_interactive(client=FakeClient([]), model="fake", reader=scripted_reader([]),
                     out=lambda _s="": None, on_event=lambda _e: None,
-                    no_session=True, rules=_OPEN)
+                    no_session=True, rules=OPEN_RULES)
     assert closed == [marker], "run_interactive 返回前必须已关闭 MCP sessions"
 
 
@@ -50,13 +46,11 @@ def test_repl_closes_mcp_sessions_when_loop_raises(monkeypatch):
     class Boom(RuntimeError):
         pass
 
-    def reader(prompt=""):
-        raise Boom("reader 炸了")
-
     with pytest.raises(Boom):
-        run_interactive(client=FakeClient([]), model="fake", reader=reader,
+        run_interactive(client=FakeClient([]), model="fake",
+                        reader=scripted_reader([Boom]),
                         out=lambda _s="": None, on_event=lambda _e: None,
-                        no_session=True, rules=_OPEN)
+                        no_session=True, rules=OPEN_RULES)
     assert closed == [marker]
 
 
@@ -78,13 +72,13 @@ def test_assemble_applies_bash_timeout_from_settings(monkeypatch, tmp_path):
 
     assemble(client=FakeClient([]), tools=get_tools(), warn=lambda _m: None,
              on_event=lambda _e: None, session=None, recall_model="fake",
-             mode="dontAsk", rules=_OPEN)
+             mode="dontAsk", rules=OPEN_RULES)
     assert shell.default_timeout_seconds() == 240
 
     p.write_text("{}", encoding="utf-8")
     assemble(client=FakeClient([]), tools=get_tools(), warn=lambda _m: None,
              on_event=lambda _e: None, session=None, recall_model="fake",
-             mode="dontAsk", rules=_OPEN)
+             mode="dontAsk", rules=OPEN_RULES)
     assert shell.default_timeout_seconds() == shell.TIMEOUT_SECONDS
 
 
@@ -109,7 +103,7 @@ def test_assemble_wires_additional_directories_into_boundary(monkeypatch, tmp_pa
 
     asm = assemble(client=FakeClient([]), tools=get_tools(), warn=lambda _m: None,
                    on_event=lambda _e: None, session=None, recall_model="fake",
-                   mode="dontAsk", rules=_OPEN)
+                   mode="dontAsk", rules=OPEN_RULES)
     assert str(extra) in asm.working_dirs.additional
 
 
@@ -137,7 +131,7 @@ def test_memory_and_recall_events_follow_the_swapped_sink(monkeypatch):
 
     asm = assemble(client=FakeClient([]), tools=get_tools(), warn=lambda _m: None,
                    on_event=sink, session=None, recall_model="fake",
-                   mode="dontAsk", rules=_OPEN)
+                   mode="dontAsk", rules=OPEN_RULES)
 
     sink.set(late.append)                      # TUI 起来了，换通道
 
@@ -172,14 +166,14 @@ def test_rewriting_the_context_lets_a_recalled_memory_be_picked_again(tmp_path, 
     monkeypatch.chdir(tmp_path)
     from pai.core.memory import memory_dir
     from pai.modes.assembly import assemble
-    from tests.test_memory_scan import write_memory
-    from tests.test_recall import reply
+    from helpers import write_memory
+    from helpers import recall_reply as reply
 
     write_memory(memory_dir(), "甲", description="怎么跑测试", body="记忆正文在此")
     client = FakeClient([reply(["甲.md"]), reply(["甲.md"]), reply(["甲.md"])])
     asm = assemble(client=client, tools={}, warn=lambda _s: None,
                    on_event=lambda _e: None, session=None, recall_model="fake",
-                   mode="dontAsk", rules=_OPEN)
+                   mode="dontAsk", rules=OPEN_RULES)
 
     assert "记忆正文在此" in asm.recall("问题")[0]
     assert asm.recall("再问")[0] == "", "已注入过的不该再选一遍（这是对的）"
@@ -202,7 +196,7 @@ def _assemble(tmp_path):
 
     return assemble(client=FakeClient([]), tools={}, warn=lambda _s: None,
                     on_event=lambda _e: None, session=None, recall_model="fake",
-                    mode="dontAsk", rules=_OPEN)
+                    mode="dontAsk", rules=OPEN_RULES)
 
 
 def test_assembly_wires_the_rule_pipeline(tmp_path, monkeypatch):
@@ -245,8 +239,8 @@ def test_repl_passes_the_rule_callback_to_run_agent(monkeypatch, tmp_path):
 
     monkeypatch.setattr("pai.modes.interactive.run_agent", fake_run_agent)
     run_interactive(client=FakeClient([{"content": "ok"}]), model="fake",
-                    reader=_reader_once("问一句"), out=lambda _s="": None,
-                    on_event=lambda _e: None, no_session=True, rules=_OPEN)
+                    reader=scripted_reader(["问一句"]), out=lambda _s="": None,
+                    on_event=lambda _e: None, no_session=True, rules=OPEN_RULES)
     assert callable(captured.get("on_paths_touched"))
 
 
@@ -266,17 +260,6 @@ def test_once_passes_the_rule_callback_to_run_agent(monkeypatch, tmp_path):
     assert callable(captured.get("on_paths_touched"))
 
 
-def _reader_once(line):
-    queue = [line]
-
-    def read(prompt=""):
-        if not queue:
-            raise EOFError
-        return queue.pop(0)
-
-    return read
-
-
 def test_a_real_turn_pulls_the_rule_in_after_reading_a_matching_file(tmp_path, monkeypatch):
     """纵切：真跑一轮 REPL（假 client + 真工具 + 真装配），模型 read_file 一个
     匹配文件之后，第二次请求里必须带着规则正文。
@@ -294,9 +277,9 @@ def test_a_real_turn_pulls_the_rule_in_after_reading_a_matching_file(tmp_path, m
         {"tool_calls": [("read_file", json.dumps({"path": "web/a.css"}))]},
         {"content": "看完了"},
     ])
-    run_interactive(client=client, model="fake", reader=_reader_once("看看样式"),
+    run_interactive(client=client, model="fake", reader=scripted_reader(["看看样式"]),
                     out=lambda _s="": None, on_event=lambda _e: None,
-                    no_session=True, rules=_OPEN)
+                    no_session=True, rules=OPEN_RULES)
 
     second = json.dumps(client.requests[1]["messages"], ensure_ascii=False)
     assert "样式一律用 rem" in second, "读了匹配文件，规则就该在下一次请求里"
@@ -328,14 +311,14 @@ def test_clearing_the_conversation_really_lets_recall_come_back(tmp_path, monkey
 
     monkeypatch.chdir(tmp_path)
     from pai.core.memory import memory_dir
-    from tests.test_memory_scan import write_memory
-    from tests.test_recall import reply
+    from helpers import write_memory
+    from helpers import recall_reply as reply
 
     write_memory(memory_dir(), "甲", description="怎么跑测试", body="记忆正文在此")
     client = FakeClient([reply(["甲.md"]), {"content": "一"},
                          reply(["甲.md"]), {"content": "二"}])
-    run_interactive(client=client, model="fake", rules=_OPEN,
-                    reader=_reader_lines(["第一问", "/clear", "第二问"]),
+    run_interactive(client=client, model="fake", rules=OPEN_RULES,
+                    reader=scripted_reader(["第一问", "/clear", "第二问"]),
                     out=lambda _s="": None, on_event=lambda _e: None,
                     no_session=True)
 
@@ -345,12 +328,3 @@ def test_clearing_the_conversation_really_lets_recall_come_back(tmp_path, monkey
     assert "记忆正文在此" in second, "/clear 之后那篇记忆必须能重新召回"
 
 
-def _reader_lines(lines):
-    queue = list(lines)
-
-    def read(prompt=""):
-        if not queue:
-            raise EOFError
-        return queue.pop(0)
-
-    return read

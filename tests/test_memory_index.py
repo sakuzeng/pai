@@ -19,7 +19,7 @@ from pai.core.memory import (
     scan_memories,
 )
 
-from tests.test_memory_scan import write_memory
+from helpers import write_memory
 
 
 def ts(text: str) -> float:

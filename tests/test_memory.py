@@ -6,7 +6,7 @@
 """
 from pai.core import memory
 
-from tests.test_memory_scan import write_memory
+from helpers import write_memory
 
 
 def _write(path, text="x"):

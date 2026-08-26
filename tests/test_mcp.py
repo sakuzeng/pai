@@ -455,7 +455,7 @@ def test_once_untrusted_project_mcp_skipped(tmp_path, monkeypatch):
 
 def test_repl_wires_mcp_tools(tmp_path, monkeypatch):
     """interactive 装配：用户级 server 的工具进请求工具集。"""
-    from tests.test_skills import _repl
+    from helpers import run_repl as _repl
     _mcp_settings(Path.home())
     client, _ = _repl(["问一句"], [{"content": "答"}], tmp_path, monkeypatch)
     tool_names = {t["function"]["name"] for t in client.requests[0]["tools"]}
@@ -472,7 +472,7 @@ def test_loop_with_real_trajectory_and_mcp_tool(session):
     REAL_TRAJECTORY 做底，模型在真实对话延续里调 MCP 工具、结果进上下文。"""
     from pai.core.loop import run_agent
     from pai.core.tools import get_tools
-    from tests.test_compaction import REAL_TRAJECTORY
+    from trajectories import REAL_TRAJECTORY
     s = session()
     tools = get_tools(["bash", "read_file"])
     tools.update(_bridged_tools_dict(s))
@@ -531,7 +531,7 @@ def test_repl_mcp_trust_dialog_loads_and_persists(tmp_path, monkeypatch):
     """29 复核低 5a：interactive 装配级信任问答——答「信任」后工具进请求、
     标记持久化（28 的 skills 有同款 repl 测试，29 此前只有 apply 级单测）。"""
     from pai.core import paths
-    from tests.test_skills import _repl
+    from helpers import run_repl as _repl
     proj = tmp_path / "proj"
     _write_settings(proj, {"fake": {"command": sys.executable,
                                     "args": [FAKE_SERVER],
