@@ -149,7 +149,6 @@ def run_agent(
     recall: Optional[Callable[[str], "tuple"]] = None,
     system_prompt: Optional[str] = None,
     entry_ledger: Optional[List[Optional[str]]] = None,
-    on_context_rewritten: Optional[Callable[[], None]] = None,
     on_paths_touched: Optional[Callable[[Sequence[str]], str]] = None,
 ) -> str:
     """跑一次 agent 任务，返回最终回答。
@@ -277,12 +276,6 @@ def run_agent(
                 else:
                     anchors.reset()                  # 历史被改写，旧锚全部作废（D#18/32）
                     state.awaiting_verify = True     # 成败等首次真实 usage（D#34）
-                    if on_context_rewritten is not None:
-                        # 旧锚不是唯一被压缩证伪的东西：召回的 `surfaced`
-                        # （「这几篇已经在上下文里」）也一样，而 loop 不认识召回
-                        # ——所以是注入回调，不是 import（10 遗留 6）。
-                        # 只在真压成了之后调：暂缓与失败都没改写上下文。
-                        on_context_rewritten()
                     # 压缩条目先落盘、指令重注入在后（feature 24）：重建算法把
                     # 「压缩条目之后的消息」整段保留，指令条目落在它前面就会被
                     # 归进已摘掉的旧段、恢复时丢失
@@ -307,6 +300,10 @@ def run_agent(
                     # 必须计入预算熔断账
                     spent_tokens += s_usage.get("total_tokens") or 0
                     after = context_tokens(messages, tool_schemas)
+                    # 这条事件不只是给观测流看的：任何记着「某条消息还在上下文里」
+                    # 的跨轮状态（召回去重表、规则注入表）都靠它作废，
+                    # 判据是 `events.CONTEXT_REWRITING`（feature 37）。
+                    # 只在真压成了之后发——暂缓与失败都没改写上下文。
                     on_event(Compacted(cut=cut, before=estimated, after=after))
                     estimated = after
 

@@ -154,3 +154,41 @@ def test_steering_injected_is_frozen():
 
     with pytest.raises(_dc.FrozenInstanceError):
         SteeringInjected(texts=()).texts = ("x",)
+
+
+# ---- 「哪些事件意味着上下文被改写」的唯一的家（feature 37）----
+
+
+def test_context_rewriting_names_the_events_that_invalidate_cross_turn_state():
+    """压缩与 `/clear` 都会让「这几篇记忆已经在上下文里」「这几条规则已经注入过」
+    变成假话。此前这件事靠一个注入回调（`on_context_rewritten`）从 run_agent
+    一路穿到八个调用点；现在它是事件的一个性质，判据只有这一个家。"""
+    from pai.core.events import (CONTEXT_REWRITING, Compacted,
+                                 ConversationCleared)
+
+    assert Compacted in CONTEXT_REWRITING
+    assert ConversationCleared in CONTEXT_REWRITING
+
+
+def test_context_rewriting_does_not_include_merely_related_events():
+    """反向守卫：暂缓压缩、熔断、注入召回都不是「上下文被改写」——
+    把它们算进来会让去重表被无谓地清掉，每次都多花一次注入的钱。"""
+    from pai.core.events import (CONTEXT_REWRITING, BreakerTripped,
+                                 CompactionSkipped, RecallInjected,
+                                 SteeringInjected)
+
+    for event_type in (CompactionSkipped, BreakerTripped, RecallInjected,
+                       SteeringInjected):
+        assert event_type not in CONTEXT_REWRITING
+
+
+def test_every_context_rewriting_event_is_a_real_event():
+    """防漂移：集合里的每一个都必须是 AgentEvent 的成员。
+    写错名字或留下一个被删掉的事件类，这条会红（同 EVENT_SRC 那条守卫的理由——
+    只是那边校验的是键集合，这边校验的是子集关系）。"""
+    import typing
+
+    from pai.core.events import CONTEXT_REWRITING, AgentEvent
+
+    members = set(typing.get_args(AgentEvent))
+    assert set(CONTEXT_REWRITING) <= members

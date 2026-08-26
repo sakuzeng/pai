@@ -253,3 +253,49 @@ def test_the_tui_path_swaps_the_event_sink(tmp_path, monkeypatch):
 
     sink(MemoryWritten(topic="t", path="/tmp/x.md"))
     assert seen == [], "换过之后 sink 还指着测试自己的列表，说明 _run_tui 没换"
+
+
+def test_the_tui_path_also_feeds_the_state_listener(tmp_path, monkeypatch):
+    """TUI 自建 `on_event`（走 app.on_event），外层 compose 到不了它——
+    所以跨轮状态的作废监听器必须在那里单独挂一次（与 trace 同一个理由、同一处）。
+
+    漏掉的后果是沉默的：TUI 下 `/clear` 之后召回不会重来，而界面上什么都看不出。
+
+    钉法同上一条，且借它的力：`_run_tui` 在 `term.start()` 之前会把自建的
+    `on_event` 塞进 `event_sink`（那是给装配期闭包用的可换持有者）。于是在
+    `term.start()` 上引爆之后，sink 里装的**就是**那个自建 handler——
+    喂它一条改写事件，监听器就该听见。不断言源码文本（R4#T3 的教训）。
+    """
+    from pai.core.events import ConversationCleared
+    from pai.modes import interactive
+
+    handed = {}
+    real_run_tui = interactive._run_tui
+    monkeypatch.setattr(interactive, "_use_tui", lambda reader: True)
+    monkeypatch.setattr(interactive, "_run_tui", lambda **kw: handed.update(kw))
+    interactive.run_interactive(client=object(), model="fake-model",
+                                out=lambda s: None,
+                                history_path=tmp_path / "hist")
+    assert callable(handed.get("state_listener")), "装配处没把监听器递给 _run_tui"
+
+    heard: list = []
+    handed["state_listener"] = heard.append
+    sink = handed["event_sink"]
+
+    class _Stop(RuntimeError):
+        pass
+
+    class _Stdin:
+        def fileno(self):
+            return 0
+
+    monkeypatch.setattr(interactive.sys, "stdin", _Stdin())
+    monkeypatch.setattr(interactive.TerminalSession, "start",
+                        lambda self: (_ for _ in ()).throw(_Stop()))
+    handed.pop("out", None)
+    with pytest.raises(_Stop):
+        real_run_tui(out=lambda _s="": None, **handed)
+
+    sink(ConversationCleared(kept=1))       # sink 里现在装的是 TUI 自建的 handler
+    assert [type(e) for e in heard] == [ConversationCleared], \
+        "TUI 自建的 on_event 没喂状态监听器——那条路上 /clear 之后召回不会重来"

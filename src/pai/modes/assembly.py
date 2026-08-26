@@ -21,7 +21,8 @@ from typing import Callable, Dict, List, Optional
 from pai.core.protocols import ChatClient
 from pai.core import mcp
 from pai.core.boundary import WorkingDirs
-from pai.core.events import MemoryWritten, RecallFailed, RecallInjected
+from pai.core.events import (CONTEXT_REWRITING, MemoryWritten, RecallFailed,
+                             RecallInjected)
 from pai.core.gate import make_before_tool_call
 from pai.core.hooks import load_hooks
 from pai.core.memory import build_context, memory_dir
@@ -54,7 +55,7 @@ class Assembly:
     mcp_sessions: list
     recall: Callable
     gate: Callable
-    on_context_rewritten: Callable[[], None]
+    state_listener: Callable       # 事件监听器：上下文被改写就作废跨轮状态
     on_paths_touched: Callable
     rule_state: RuleState          # `/memory` 要标出哪些规则已注入
 
@@ -141,18 +142,25 @@ def assemble(*, client: ChatClient, tools: Dict[str, object],
     def on_paths_touched(paths) -> str:
         return select_and_render(paths, scoped_rules, rule_state)
 
-    def on_context_rewritten() -> None:
-        """上下文被改写（自动压缩 / `/compact` / `/clear`）之后要作废的东西。
+    def state_listener(event) -> None:
+        """上下文被改写之后作废跨轮状态。挂在事件流上，不再穿参数（feature 37）。
 
-        两张表：召回的 `surfaced` 与规则的 `injected`，记的都是
-        「这些已经在上下文里」，
-        压缩会把它们切进摘要、`/clear` 会整段删掉，那句话就成了假的——
-        而 `surfaced` 还拦着它们不再被选中，于是召回在长会话里静默衰减到零
-        （10 遗留 6，用户 2026-08-26 拍板选「上下文被改写就全清」）。
+        两张表：召回的 `surfaced` 与规则的 `injected`，记的都是「这些已经在
+        上下文里」。压缩会把它们切进摘要、`/clear` 会整段删掉，那句话就成了假的——
+        而这两张表还拦着它们不再被选中，于是召回与规则在长会话里静默衰减到零
+        （10 遗留 6，用户 2026-08-26 拍板「上下文被改写就全清」）。
         代价：那几篇可能被再召回一次，多花一次注入的 token。
+
+        判据是 `events.CONTEXT_REWRITING`，不是就地 isinstance——「哪些事件意味着
+        上下文被改写」只该有一个家（feature 37 拍板 A）。
+
+        诚实边界：失效因此挂在观测通道上——`on_event` 为 None 的调用路径不会
+        触发作废。生产的三条路（once / REPL / TUI）都恒有 on_event；
+        真正没有的是某些测试，那是它们自己的事。
         """
-        recall_state.surfaced.clear()
-        rule_state.injected.clear()
+        if isinstance(event, CONTEXT_REWRITING):
+            recall_state.surfaced.clear()
+            rule_state.injected.clear()
 
     return Assembly(
         rules=rules, hooks=hooks, tools=tools, skills=skills,
@@ -163,5 +171,5 @@ def assemble(*, client: ChatClient, tools: Dict[str, object],
                                        {s.name: s for s in skills}),
         loaded_skills=loaded_skills, working_dirs=working_dirs,
         mcp_sessions=mcp_sessions, recall=recall, gate=gate,
-        on_context_rewritten=on_context_rewritten,
+        state_listener=state_listener,
         on_paths_touched=on_paths_touched, rule_state=rule_state)

@@ -194,6 +194,22 @@ AgentEvent = Union[
 ]
 
 
+# 哪些事件意味着「上下文被改写」——即：任何记着「这东西已经在上下文里」的
+# 跨轮状态，收到它们之后就该作废（feature 37，用户拍板 A）。
+#
+# 目前的消费者有两个，都在装配层：召回的 `RecallState.surfaced` 与规则的
+# `RuleState.injected`。此前这件事走的是一条与观测流并行的注入回调
+# （`on_context_rewritten`），从 `run_agent` 一路穿到八个调用点——而 loop 在
+# 同一个位置本来就发 `Compacted`、`/clear` 本来就发 `ConversationCleared`。
+# 一件事两条通知链，第三个消费者出现时还要再穿一遍参数。
+#
+# 加新成员的判据只有一条：这个事件发生之后，「某条消息还在上下文里」这句话
+# 会不会变成假的。压缩（换掉）与清空（丢弃）都会；暂缓压缩、熔断、注入召回都不会。
+# 将来 microcompact、resume 重建这类第三种改写方式出现时，往这里加一行——
+# 忘了加就是静默漏（召回衰减这类 bug 不会报错），所以判据写在这儿而不是各处。
+CONTEXT_REWRITING = (Compacted, ConversationCleared)
+
+
 def _clip(text: str, limit: int = 40) -> str:
     """按**字符数**截断（不是显示宽度）：这里只求「别撑爆一行」，
     真正按终端列宽排版的活在 tui/theme.wrap 与 statusline 里，不在事件层重做一遍。"""

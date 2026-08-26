@@ -615,7 +615,13 @@ def test_manual_compact_without_anchors_does_not_pretend_to_know_the_gap():
     assert "还差" not in text, f"算不出来就别说，实际：{said}"
 
 
-# ---- /clear 与 /compact 同样改写上下文（10 遗留 6 的第二半边，2026-08-26 复核发现）----
+# ---- /clear 与 /compact 同样改写上下文（10 遗留 6 的第二半边 / feature 37）----
+
+
+def _rewriting(events):
+    from pai.core.events import CONTEXT_REWRITING
+
+    return [type(e) for e in events if isinstance(e, CONTEXT_REWRITING)]
 
 
 def _command_kwargs(**overrides):
@@ -631,47 +637,49 @@ def _command_kwargs(**overrides):
     return kwargs
 
 
-def test_clear_reports_that_the_context_was_rewritten():
-    """`/clear` 把整段对话删了——比压缩更彻底。召回的 `surfaced` 若不跟着清，
-    那几篇记忆此后再也不会被选中，而且完全静默。"""
+def test_clear_emits_a_context_rewriting_event():
+    """`/clear` 把整段对话删了——比压缩更彻底。召回去重表与规则注入表若不跟着清，
+    那几篇记忆此后再也不会被选中，而且完全静默。
+
+    feature 37 起这件事是 `ConversationCleared` 事件的性质
+    （`events.CONTEXT_REWRITING`），不再是一个单独穿下来的回调。"""
+    from pai.core.events import ConversationCleared
     from pai.modes.interactive import _handle_command
 
-    calls: list = []
-    _handle_command("/clear", **_command_kwargs(
-        on_context_rewritten=lambda: calls.append("rewritten")))
-    assert calls == ["rewritten"]
+    seen: list = []
+    _handle_command("/clear", **_command_kwargs(on_event=seen.append))
+    assert _rewriting(seen) == [ConversationCleared]
 
 
-def test_other_commands_do_not_report_a_rewrite():
-    """反向守卫：`/status` 不动上下文，不许顺手把去重表清了。"""
+def test_other_commands_rewrite_nothing():
+    """反向守卫：`/status` 不动上下文，不许顺手发一条改写事件。"""
     from pai.modes.interactive import _handle_command
 
-    calls: list = []
-    _handle_command("/status", **_command_kwargs(
-        on_context_rewritten=lambda: calls.append("rewritten")))
-    assert calls == []
+    seen: list = []
+    _handle_command("/status", **_command_kwargs(on_event=seen.append))
+    assert _rewriting(seen) == []
 
 
-def test_manual_compact_reports_that_the_context_was_rewritten():
+def test_manual_compact_emits_a_context_rewriting_event():
     from pai.core.compaction import AnchorBook, CompactionState
+    from pai.core.events import Compacted
     from pai.modes.interactive import _manual_compact
 
     anchors = AnchorBook()
     anchors.record(2, 100)
     anchors.record(4, 900)
-    calls: list = []
+    seen: list = []
     messages = [{"role": "system", "content": "s"}]
     messages += [{"role": "user", "content": f"第 {i} 句"} for i in range(6)]
     _manual_compact(messages=messages, anchors=anchors, state=CompactionState(),
                     client=FakeClient([{"content": "摘要"}]), model="fake",
                     compaction=CompactionSettings(keep_recent_tokens=1),
-                    out=lambda _s="": None,
-                    on_context_rewritten=lambda: calls.append("rewritten"))
-    assert calls == ["rewritten"]
+                    out=lambda _s="": None, on_event=seen.append)
+    assert _rewriting(seen) == [Compacted]
 
 
-def test_manual_compact_that_fails_reports_nothing():
-    """失败的压缩没有改写任何东西（历史原样留着），不该清去重表。"""
+def test_a_failed_manual_compact_rewrites_nothing():
+    """失败的压缩没有改写任何东西（历史原样留着），不该发改写事件。"""
     from pai.core.compaction import AnchorBook, CompactionState
     from pai.modes.interactive import _manual_compact
 
@@ -686,15 +694,14 @@ def test_manual_compact_that_fails_reports_nothing():
     anchors = AnchorBook()
     anchors.record(2, 100)
     anchors.record(4, 900)
-    calls: list = []
+    seen: list = []
     messages = [{"role": "system", "content": "s"}]
     messages += [{"role": "user", "content": f"第 {i} 句"} for i in range(6)]
     _manual_compact(messages=messages, anchors=anchors, state=CompactionState(),
                     client=Exploding(), model="fake",
                     compaction=CompactionSettings(keep_recent_tokens=1),
-                    out=lambda _s="": None,
-                    on_context_rewritten=lambda: calls.append("rewritten"))
-    assert calls == []
+                    out=lambda _s="": None, on_event=seen.append)
+    assert _rewriting(seen) == []
 
 
 # ---- /memory reload：REPL 中途改 PAI.md 要能生效（06 task 4）----
