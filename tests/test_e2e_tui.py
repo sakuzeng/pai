@@ -63,8 +63,9 @@ def reap_pty_child(pid: int, fd: int, timeout: float = 5.0) -> None:
 class Session:
     """在真 pty 里跑一个 pai 进程，并把它写出来的东西录下来。"""
 
-    def __init__(self, provider, tmp_path, cwd=None, argv=None):
+    def __init__(self, provider, tmp_path, cwd=None, argv=None, env=None):
         self.record = str(tmp_path / "rec.jsonl")
+        env_extra = env
         env = dict(os.environ)
         env.update(
             PAI_BASE_URL=provider.base_url,
@@ -75,6 +76,10 @@ class Session:
             DEEPSEEK_API_KEY="fake-key-for-e2e",
             PAI_NO_TUI="", TERM="xterm-256color", NO_COLOR="",
         )
+        # 逐条覆盖（feature 38）：压缩那条 e2e 要把窗口与保留门槛调小，
+        # 否则真实使用里根本攒不到触发压缩的量（`PAI_KEEP_RECENT_TOKENS` 就是
+        # 为这件事开的口子，见 TODO「压缩链路的可验证性」）
+        env.update(env_extra or {})
         self.pid, self.fd = pty.fork()
         if self.pid == 0:                        # 子进程：变成 pai
             os.chdir(cwd or REPO)
@@ -137,8 +142,8 @@ class Session:
 def session(tmp_path):
     made = []
 
-    def start(script, wait_logo=True, **kwargs):
-        provider = FakeProvider(script).start()
+    def start(script, wait_logo=True, provider_kwargs=None, **kwargs):
+        provider = FakeProvider(script, **(provider_kwargs or {})).start()
         made.append(provider)
         s = Session(provider, tmp_path, **kwargs)
         made.append(s)
@@ -493,3 +498,82 @@ def test_project_skills_trust_dialog_gates_then_persists(session, tmp_path):
     assert "<available_skills>" in provider.requests[0]["messages"][0]["content"]
     marker = paths.project_dir(work) / "skills_trusted"
     assert marker.is_file(), "选「信任」必须持久化标记"
+
+
+# --- feature 38：离线其实能验、只是一直没验的两条（feature 15 遗留）-------------
+
+
+def test_automatic_compaction_really_happens_in_a_real_process(session, tmp_path):
+    """自动压缩在真进程 + 真 pty 里真的发生过——这条到今天为止从没被验证过。
+
+    2026-08-10 用户按测试清单真跑，输出里只有两次「锚点不足」，
+    `🗜️ 压缩：切于 N` 一次都没出现过；离线测试之所以全绿，是因为它们直接传
+    `CompactionSettings(keep_recent_tokens=1)` 把那道坎绕过去了。
+    到 feature 35 才有了 `PAI_KEEP_RECENT_TOKENS` 这个口子，
+    到 feature 38 才发现假 provider 的固定 usage 让这条路结构上走不到
+    （相邻锚差值恒为 0 → 切点永远是「无可压」）。
+
+    两头都断言，缺一不可：屏幕上用户看得见压缩发生了，
+    以及假 provider 真的收到过一次**不带 tools 的请求**——那是摘要请求，
+    也是「压缩不只是打了行字」的唯一硬证据。
+    """
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / "甲.txt").write_text("内容", encoding="utf-8")
+    read_call = [{"name": "read_file", "arguments": {"path": "甲.txt"}}]
+    s, provider = session(
+        [
+            # 两轮工具调用攒出两个锚点，usage 按轮钉死：差值 4000 跨过保留门槛
+            turn(tool_calls=read_call, prompt_tokens=4000),
+            turn(tool_calls=read_call, prompt_tokens=8000),
+            turn("这是摘要"),                      # ← 压缩触发的摘要请求（非流式）
+            turn("压缩之后我接着答完了。"),
+        ],
+        cwd=str(work),
+        env={"PAI_CONTEXT_WINDOW": "20000", "PAI_KEEP_RECENT_TOKENS": "1000"},
+    )
+
+    s.send("看看那个文件\r", until="压缩之后我接着答完了")
+    screen = s.screen_text()
+    # 不比 emoji：源码里是 `🗜️`（带变体选择符 U+FE0F），屏幕模型里是 `🗜`。
+    # 断言钉的是「用户看得见压缩发生了」，不是字形的字节形状。
+    assert "压缩：切于" in screen, f"屏幕上没有压缩发生过的痕迹：\n{screen}"
+    assert "锚点不足" in screen, (
+        "压缩前应先有一次「锚点不足」——那是锚定法的两步节奏（STATUS 已知缺陷 1），"
+        "这条 e2e 顺带把它从设计推论变成跑出来的事实")
+
+    summaries = [r for r in provider.requests if "tools" not in r]
+    assert len(summaries) == 1, (
+        f"摘要请求（不带 tools 的那一次）应恰好一次，实际 {len(summaries)}——"
+        "只打了字没发请求的话，压缩就是假的")
+    flattened = json.dumps(summaries[0]["messages"], ensure_ascii=False)
+    assert "看看那个文件" in flattened, "摘要请求里应带着被压掉的那段历史"
+
+
+def test_ctrl_c_mid_stream_stops_the_answer_and_keeps_the_repl_alive(session, tmp_path):
+    """流中途 Ctrl+C：掐得断，且 REPL 不死（feature 15 遗留登记的另一条）。
+
+    「掐得断」与「进程还活着」必须一起断言——只验前者的话，一个把整个 REPL
+    带栈掀掉的实现照样通过（而那正是 pai 早期真实撞到过的形态，
+    D#40 之所以选「只置标志不抛异常」就是为了它）。
+    """
+    s, _ = session([
+        turn("这段答案很长" * 12, delay=0.05),      # 逐字符慢放（约 3.6s），给中断留窗口
+        turn("我还活着。"),
+    ])
+
+    s.send("", until="/help 看命令")                # 等主循环真的开始读键盘
+    # 这里只能死等一个固定秒数，不能用 `until`：流式期间的增量要等这一轮
+    # 收尾才进 scrollback，屏幕上看不到「正在吐」——拿屏幕当同步点会一直等到
+    # 整轮结束，Ctrl+C 就变成了空闲态的那一档（第一版正是这么假绿的）。
+    s.send("说点长的\r", wait=1.0)
+    s.send("\x03", until="已中断")
+    screen = s.screen_text()
+    assert "已中断" in screen
+    # 真掐断了：整段答案不该完整出现在屏幕上。少了这一条，一个「中断消息照打、
+    # 但流照样跑完」的实现同样能通过——那正是「已中断」这三个字最容易撒的谎。
+    assert "这段答案很长" * 12 not in screen.replace("\n", ""), \
+        f"答案跑完了才「中断」，等于没断：\n{screen}"
+
+    s.send("还在吗\r", until="我还活着")            # 掐完还能接着聊 = REPL 没死
+    assert "我还活着。" in s.screen_text()

@@ -154,7 +154,7 @@ dsh 的文档与源码在同一个仓库、同一个 commit 里，拆开只会�
 | [model-api/dsh-deepseek-wire.md](model-api/dsh-deepseek-wire.md) | 拿同厂第一方交叉验证 pai 两条实测坑（47f9438）：reasoning_content dsh 真回传但只在 tool-call 轮（官方 thinking_mode 规则 + 平轮丢弃省 token——D#33 监控条目的修法形状有了出处）；usage 读取 dsh 也观察到两种形状并写了形状无关读取器（推迟到 DONE），与 pai「每块都看」独立收敛，D#58 置信度升级；顺手捡到 prompt_tokens 含缓存命中——上下文口径恰好对、将来成本核算必须拆开算 | 精读 | decisions #33 #58、src/pai/core/streaming.py |
 | `engineering/` | | | |
 | [engineering/injection-seams.md](engineering/injection-seams.md) | 装配期捕获：依赖会变时闭包存的还是当时那个值，症状是「我改了但没反应」；判据、兼容写法、「改完立刻生效」的测试前后结果必须不同（否则假绿）、同一个坑会连撞两次；外加「接缝上的 bug 离线测试结构上看不见」 | 沉淀 | src/pai/core/gate.py、features/12 |
-| [engineering/instruments-lie.md](engineering/instruments-lie.md) | 观测工具骗人的四种方式：污染被测对象／全量记录器漏掉第二个写入出口／读取工具给的是复合视图／能力探测探的是另一个能力。前三种都长得像「被测代码有 bug」，第四种让你以为自己做过了一次根本没发生的观测 | 沉淀 | src/pai/tui/record.py、features/13 复盘、features/16 |
+| [engineering/instruments-lie.md](engineering/instruments-lie.md) | 观测工具骗人的五种方式：污染被测对象／全量记录器漏掉第二个写入出口／读取工具给的是复合视图／能力探测探的是另一个能力／仪器让被测路径结构上走不到（2026-08-26 追记：假 provider 的固定 usage 让压缩链路在所有 e2e 里不可达，而没有任何测试会因此变红）。前三种都长得像「被测代码有 bug」，第四种让你以为做过了一次根本没发生的观测，第五种什么现象都不给 | 沉淀 | src/pai/tui/record.py、tests/fake_provider.py、features/13 复盘、features/16、features/38 |
 | [engineering/mutation-testing-pitfalls.md](engineering/mutation-testing-pitfalls.md) | 注入反证的坑：注错了和没测住现象一样（全绿）；「没被执行到」分控制流被屏蔽与测试场景压根不走那条路两种；正交防线要分别注；红阶段就绿的测试不具本次鉴别力 | 沉淀 | features/07、features/09、features/13 的 devlog |
 | [engineering/process-groups-and-interrupts.md](engineering/process-groups-and-interrupts.md) | 独立进程组 + killpg 才杀得干净；杀不净的第一个症状是输出丢失不是资源泄漏 | 沉淀 | src/pai/core/tools/shell.py |
 | `overview/` | | | |

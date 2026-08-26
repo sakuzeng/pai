@@ -87,3 +87,49 @@ def test_requests_are_recorded_for_assertions():
             tools=[{"type": "function", "function": {"name": "bash"}}])
         assert p.requests[0]["messages"][0]["content"] == "问题"
         assert p.requests[0]["tools"][0]["function"]["name"] == "bash"
+
+
+# ---- usage 要与真 provider 同形：prompt_tokens 随对话增长（feature 38）----
+
+
+def test_prompt_tokens_grow_across_requests():
+    """真 provider 的 `prompt_tokens` 是「这次请求发过去多少上下文」，随对话单调增长。
+    假 provider 此前对每一轮都回同一个数（100/120），而那不是「不够真」这么软——
+
+    pai 的锚点簿记的就是这个数，`find_cut_point` 靠**相邻锚的差值**反推切点。
+    差值恒为 0 意味着：无论对话多长、无论 keep_recent 设多小，切点永远是「无可压」。
+    压缩链路因此在 e2e 里结构上走不到——测量仪器自己把被测路径堵死了。
+    """
+    with FakeProvider([turn("一"), turn("二"), turn("三")]) as p:
+        c = client(p)
+        totals = []
+        for _ in range(3):
+            chunks = list(c.chat.completions.create(
+                model="m", messages=[{"role": "user", "content": "hi"}], stream=True))
+            usage = [ch.usage for ch in chunks if ch.usage][-1]
+            totals.append(usage.prompt_tokens)
+
+    assert totals == sorted(totals), f"prompt_tokens 必须单调不减，实际 {totals}"
+    assert len(set(totals)) == 3, f"每轮都该长一点，实际 {totals}"
+
+
+def test_a_turn_can_pin_its_own_usage():
+    """要精确构造压缩场景（第几轮跨过阈值）时，得能按轮指定。
+    不指定就走增长的默认值。"""
+    with FakeProvider([turn("一", prompt_tokens=5000)]) as p:
+        chunks = list(client(p).chat.completions.create(
+            model="m", messages=[{"role": "user", "content": "hi"}], stream=True))
+    usage = [ch.usage for ch in chunks if ch.usage][-1]
+    assert usage.prompt_tokens == 5000
+    assert usage.total_tokens == 5000 + usage.completion_tokens
+
+
+def test_the_non_streaming_path_reports_usage_the_same_way():
+    """召回的侧查询走非流式，它的 usage 同样要计进预算熔断——两条路不能各说各话。"""
+    with FakeProvider([turn("一"), turn("二")]) as p:
+        c = client(p)
+        first = c.chat.completions.create(
+            model="m", messages=[{"role": "user", "content": "hi"}])
+        second = c.chat.completions.create(
+            model="m", messages=[{"role": "user", "content": "hi"}])
+    assert second.usage.prompt_tokens > first.usage.prompt_tokens

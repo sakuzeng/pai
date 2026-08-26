@@ -1,6 +1,16 @@
 # 当前状态快照
 
-最后更新：2026-08-26（feature 37 交付——`on_context_rewritten` 升格成事件
+最后更新：2026-08-26（feature 38 交付——缩小「离线全绿」与「真实使用」的差距
+（用户指示）。三类差距各自兑现：①离线其实能验、只是一直没验的——自动压缩第一次
+在真进程 + 真 pty 里跑到（屏幕上有「压缩：切于 2」、摘要请求真的发出去了），
+流中途 Ctrl+C 也补了 e2e。这两条此前结构上跑不到：假 provider 对每轮回固定 usage，
+相邻锚差值恒为 0，切点永远算成「无可压」——先把它改成随对话增长才解锁。
+②只有真模型能验的写成 `--llm` 冒烟（remember→召回全链、规则模型听不听），
+默认跳过。③只有真人真终端能验的做成手工清单（六节，尚未被人跑过，如实写明）。
+知识回流：instruments-lie 从四种骗法扩到五种。档案
+[features/38](features/38-20260826-offline-real-gap/README.md)。
+1492 passed）。
+同日早些：feature 37 交付——`on_context_rewritten` 升格成事件
 （用户指示）：`events.CONTEXT_REWRITING = (Compacted, ConversationCleared)` 成为
 「哪些事件意味着上下文被改写」唯一的家，装配层给出一个事件监听器并联进 on_event，
 `run_agent` 的参数与八个调用点的穿参数全部消失（src 里 28 处引用 → 0）。
@@ -230,7 +240,8 @@ MCP client（手写 stdio JSON-RPC、`mcp__<server>__<tool>` 桥接、settings �
 + feature 13 alt-screen task 1-7 + feature 16 鼠标与选区 task 1-9
 + feature 17 viz-flow task 1-3.5（事件落盘 + RecallInjected/ConversationCleared + 装配））：
 
-- `./test.sh` → 1487 passed, 3 deselected，全部离线，约 2.7 分钟（163s）。这是默认路径。
+- `./test.sh` → 1492 passed, 5 deselected，全部离线，约 2.9 分钟（171s）。这是默认路径。
+  （5 deselected 全是 `llm` 标记的真跑冒烟，默认不花钱；`./test.sh --llm` 才跑。）
 - `./test.sh --fast` → 跳过 pty e2e 的快循环（feature 35，15 遗留）：
   1449 passed + 1 skipped / 37s，4.4×。31 条 e2e 占掉 78% 的墙钟。
   标记由 conftest 按文件名（`test_e2e_*.py`）自动挂，不靠人记。
@@ -279,6 +290,11 @@ MCP client（手写 stdio JSON-RPC、`mcp__<server>__<tool>` 桥接、settings �
    loop 接线阶段用 e2e 夹具反推确认过阈值公式本身正确（`tokens > window - reserve`，
    `test_should_compact_threshold_is_strictly_greater` 钉死）；真实摘要长度、真实触发频率
    要等 `PAI_RUN_LLM_TESTS=1` 或生产使用后才能校准，登记见 TODO P1。
+   2026-08-26 追记（feature 38）：整条压缩链路现在至少在真进程 + 真 pty 里跑到过一次
+   （`test_automatic_compaction_really_happens_in_a_real_process`），
+   此前它在所有 e2e 里结构上不可达——假 provider 的固定 usage 让相邻锚差值恒为 0。
+   但那条 e2e 用的配置处在已知退化区（窗口 20000 配 reserve 16384，阈值只剩 3616），
+   所以它验的是「链路能跑通」，不是「正常配置下会被恰当触发」。
 4. `should_compact` 的退化情形（`window <= reserve_tokens` 时恒为 True）已有上层熔断器
    兜底——`MAX_COMPACT_FAILURES=3` 接进 loop 触发块，连续压缩后仍超线会 tripped，
    不再无限重试（`test_breaker_stops_auto_compaction` 覆盖）。此前记的「尚未实现」已过时。
