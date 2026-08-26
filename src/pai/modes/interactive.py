@@ -59,6 +59,7 @@ from pai.core.permissions import (
     RuleSet,
 )
 from pai.core.paths import sessions_dir
+from pai.core.rules import scan_rules
 from pai.core.memory import (
     AGENTS_FILE,
     LOCAL_FILE,
@@ -430,6 +431,8 @@ def run_interactive(
     rules, hooks, tools = asm.rules, asm.hooks, asm.tools
     gate, recall = asm.gate, asm.recall
     on_context_rewritten = asm.on_context_rewritten
+    on_paths_touched = asm.on_paths_touched
+    rule_state = asm.rule_state
     skills_catalog, instructions = asm.skills_catalog, asm.instructions
     mcp_sessions = asm.mcp_sessions
 
@@ -443,6 +446,7 @@ def run_interactive(
         history=history, asker_state=asker_state, asker_ref=asker_ref, trace=trace,
         skills_catalog=skills_catalog, instructions=instructions,
         event_sink=event_sink, on_context_rewritten=on_context_rewritten,
+        on_paths_touched=on_paths_touched, rule_state=rule_state,
     )
     try:
         if _use_tui(reader):
@@ -489,7 +493,8 @@ def run_interactive(
                                           compaction=compaction, before_tool_call=gate,
                                           recall=recall, skills_catalog=skills_catalog,
                                           instructions=instructions,
-                                          on_context_rewritten=on_context_rewritten)
+                                          on_context_rewritten=on_context_rewritten,
+                                          on_paths_touched=on_paths_touched)
                             except KeyboardInterrupt:
                                 out("⛔ 已中断")
                     continue
@@ -498,7 +503,8 @@ def run_interactive(
                                    compaction=compaction, context_window=context_window,
                                    rules=rules, hooks=hooks, mode_state=mode_state,
                                    on_event=on_event, session=session, ledger=ledger,
-                                   on_context_rewritten=on_context_rewritten):
+                                   on_context_rewritten=on_context_rewritten,
+                                   rule_state=rule_state):
                     break
                 continue
 
@@ -528,7 +534,8 @@ def run_interactive(
                           max_total_tokens=max_total_tokens, context_window=context_window,
                           compaction=compaction, before_tool_call=gate, recall=recall,
                           skills_catalog=skills_catalog, instructions=instructions,
-                          on_context_rewritten=on_context_rewritten)
+                          on_context_rewritten=on_context_rewritten,
+                          on_paths_touched=on_paths_touched)
             except (EOFError, KeyboardInterrupt):
                 raise                       # Ctrl+D / Ctrl+C 是正常控制流，不吞
             except Exception as e:          # noqa: BLE001 - REPL 这一层的价值就是「对话留着」
@@ -569,7 +576,8 @@ def _run_turn(task: str, *, client, model, tools, messages, anchors, state, stee
               on_queue_change: Optional[Callable[[int], None]] = None,
               skills_catalog: Optional[str] = None,
               instructions: Optional[Callable[[], str]] = None,
-              on_context_rewritten: Optional[Callable[[], None]] = None) -> None:
+              on_context_rewritten: Optional[Callable[[], None]] = None,
+              on_paths_touched: Optional[Callable] = None) -> None:
     with _interruptible(flag):
         answer = _guarded_run(
             out,
@@ -585,6 +593,7 @@ def _run_turn(task: str, *, client, model, tools, messages, anchors, state, stee
             system_prompt=build_system_prompt(tools, skills_catalog=skills_catalog),
             entry_ledger=ledger,
             on_context_rewritten=on_context_rewritten,
+            on_paths_touched=on_paths_touched,
             # 组合 loader（feature 25）：压缩重建后重挂已加载 skills；不传时退回纯记忆
             instructions=instructions if instructions is not None else build_context,
             # 谓词把 `/`、`!` 滤掉且留在队列里——它们是给客户端执行的，
@@ -701,7 +710,8 @@ def _handle_command(line: str, *, out, messages, anchors, state, tools, client, 
                     compaction, context_window, rules=None, hooks=(),
                     mode_state=None, on_event=None, session=None,
                     ledger: Optional[List[Optional[str]]] = None,
-                    on_context_rewritten: Optional[Callable[[], None]] = None) -> bool:
+                    on_context_rewritten: Optional[Callable[[], None]] = None,
+                    rule_state=None) -> bool:
     """返回 True 表示要退出 REPL。"""
     command = line.split()[0]
     if command in ("/exit", "/quit"):
@@ -740,7 +750,7 @@ def _handle_command(line: str, *, out, messages, anchors, state, tools, client, 
             dropped = drop_instructions(messages, ledger if ledger is not None else [])
             out("🔄 指令消息已丢弃，下一轮重新读盘。" if dropped
                 else "🔄 当前上下文里还没有指令消息，下一轮本来就会读盘。")
-        _show_memory(out)
+        _show_memory(out, rule_state=rule_state)
     elif command == "/mode":
         _handle_mode(line, out=out, mode_state=mode_state)
     elif command == "/permissions":
@@ -833,7 +843,7 @@ def _show_hooks(out: Callable[[str], None], hooks) -> None:
         out(f"  {spec.matcher:8} {spec.command}   （超时 {spec.timeout}s）")
 
 
-def _show_memory(out: Callable[[str], None]) -> None:
+def _show_memory(out: Callable[[str], None], rule_state=None) -> None:
     """官方 /memory 的最小版。它首先是个调试工具：指令没生效时，
     第一步永远是确认文件到底有没有被加载——所以列的是路径与行数，不是内容。"""
     files = discover()
@@ -848,6 +858,15 @@ def _show_memory(out: Callable[[str], None]) -> None:
             except OSError:
                 lines = 0
             out(f"  {path}（{lines} 行）")
+    # 路径作用域规则（feature 36）：这层的失效方式天然是沉默的——规则没进上下文，
+    # 模型照样给一个像样的回答。所以它必须能在这里被看见。没有规则时一节都不打。
+    scoped = scan_rules(warn=lambda _m: None)
+    if scoped:
+        injected = rule_state.injected if rule_state is not None else set()
+        out("📐 路径作用域规则（碰到匹配文件时才加载）：")
+        for rule in scoped:
+            mark = "（本会话已注入）" if rule.name in injected else ""
+            out(f"  {rule.name}：{'、'.join(rule.patterns)}{mark}")
     directory = memory_dir()
     index = directory / MEMORY_INDEX
     state = "有索引" if index.is_file() else "还没有内容"
@@ -917,7 +936,8 @@ def _run_tui(*, out, client, model, tools, messages, ledger, anchors, state, ste
              flag, session, max_steps, max_total_tokens, context_window, compaction,
              gate, recall, rules, hooks, mode_state, history, asker_state, asker_ref,
              trace=None, skills_catalog=None, instructions=None,
-             event_sink=None, on_context_rewritten=None) -> None:
+             event_sink=None, on_context_rewritten=None,
+             on_paths_touched=None, rule_state=None) -> None:
     """scrollback 在上、dock 在下。
 
     与纯 REPL 的**唯一**语义差别在输入层：谁拥有键盘由 `InputArbiter` 算出来，
@@ -1001,7 +1021,7 @@ def _run_tui(*, out, client, model, tools, messages, ledger, anchors, state, ste
                                           context_window=context_window, rules=rules,
                                           hooks=hooks, mode_state=mode_state, session=session,
                                           on_context_rewritten=on_context_rewritten,
-                                          flag=flag, app=app, steering=steering, skills_catalog=skills_catalog, on_event=on_event)
+                                          rule_state=rule_state, flag=flag, app=app, steering=steering, skills_catalog=skills_catalog, on_event=on_event)
                 if quit_:
                     # `/exit`：与 REPL asker 的同款逃生口对齐（R4#15）——
                     # 本轮收尾后退出，本框按「未作答」撤掉（撤框在 await_dialog_answer）
@@ -1114,7 +1134,7 @@ def _run_tui(*, out, client, model, tools, messages, ledger, anchors, state, ste
                                          context_window=context_window, rules=rules,
                                          hooks=hooks, mode_state=mode_state,
                                          on_context_rewritten=on_context_rewritten,
-                                         session=session, flag=flag, app=app, steering=steering,
+                                         rule_state=rule_state, session=session, flag=flag, app=app, steering=steering,
                                          skills_catalog=skills_catalog, on_event=on_event):
                         return
                 elif kind == SUBMIT:
@@ -1134,6 +1154,7 @@ def _run_tui(*, out, client, model, tools, messages, ledger, anchors, state, ste
                                   skills_catalog=skills_catalog,
                                   instructions=instructions,
                                   on_context_rewritten=on_context_rewritten,
+                                  on_paths_touched=on_paths_touched,
                                   # 补 2：本轮内 drain 掉多少，dock 的待决数就跟着减多少
                                   on_queue_change=app.dock.set_queued)
 
@@ -1147,7 +1168,7 @@ def _run_tui(*, out, client, model, tools, messages, ledger, anchors, state, ste
                                 context_window=context_window, rules=rules, hooks=hooks,
                                 mode_state=mode_state, session=session, flag=flag,
                                 on_context_rewritten=on_context_rewritten,
-                                app=app, steering=steering, skills_catalog=skills_catalog, on_event=on_event):
+                                rule_state=rule_state, app=app, steering=steering, skills_catalog=skills_catalog, on_event=on_event):
                             exiting["v"] = True
                         return exiting["v"]
 
@@ -1219,7 +1240,8 @@ def _dispatch_command(line: str, *, commit, app, session, flag, on_event, **kw) 
                            hooks=kw["hooks"], mode_state=kw["mode_state"],
                            on_event=on_event, session=session,
                            ledger=kw.get("ledger"),
-                           on_context_rewritten=kw.get("on_context_rewritten"))
+                           on_context_rewritten=kw.get("on_context_rewritten"),
+                           rule_state=kw.get("rule_state"))
 
 
 MAX_QUEUE_ROUNDS = 8

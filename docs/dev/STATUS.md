@@ -1,6 +1,16 @@
 # 当前状态快照
 
-最后更新：2026-08-26（feature 35 交付——TODO 存量批清第二轮：从 165 条开放项里
+最后更新：2026-08-26（feature 36 交付——路径作用域规则：pai 的指令层从
+「只有常驻一档」变成两档。`.pai/rules/*.md`（与 `~/.pai/rules/*.md`）里带
+`paths:` 的规则，只在模型这一步真的碰到匹配文件时才进上下文，碰不到就一个字
+都不占。挂点在 loop 的工具结果回填处（路径怎么取仍下放给 `Tool.get_path`），
+注入形态与召回块同款，压缩后靠 `on_context_rewritten` 作废重来。
+需求出处是用户 2026-08-19 在需求池里点名要做的那条；三问一轮拍板全 A，
+另立 [D#75](decisions.md)（不带 `paths:` 的文件不加载，与官方相反——
+降低常驻成本的功能里不该再开一条常驻通道）。档案
+[features/36](features/36-20260826-path-scoped-instructions/README.md)。
+1481 passed）。
+同日早些：feature 35 交付——TODO 存量批清第二轮：从 165 条开放项里
 再挑「不等外部输入、修法已有形状」的一批，12 条真修 + 3 条对账核销（详见档案
 [features/35](features/35-20260826-todo-backlog-batch-2/README.md)）。
 真修的面：`PAI_KEEP_RECENT_TOKENS`（压缩链路第一次能在真实使用里跑到）、
@@ -147,6 +157,7 @@ MCP client（手写 stdio JSON-RPC、`mcp__<server>__<tool>` 桥接、settings �
 | `core/paths.py` | 可用 | pai 用户级路径唯一事实源：`~/.pai/projects/<可读 slug>/{memory,sessions}/`，slug 用全路径连字符（D#44，对齐 CC） |
 | `core/session.py` | 可用 | 格式 v1（feature 24，三家收敛形）：首行 header（version/id/cwd/parentSession）、统一信封 `{type,id,parentId,ts}`、消息嵌套 `message`、压缩即条目带 `firstKeptEntryId`；`load_session`（版本拒绝语义分方向、词汇表外类型拒收）、`build_messages`（压缩重建 + 指令归位）、`replay_messages`（压缩会话不再拒收）、`trim_unfinished` 配平、`resolve_resume_target`；`append` 加锁返 id、支持 `record_id`（resume 不造新身份）。旧 v0 文件按拍板不读（如实报错，不动不删） |
 | `core/memory.py` | 可用 | 分层指令发现（用户级→根→cwd，同目录内 AGENTS.md → PAI.md → PAI.local.md；读 AGENTS.md 是 2026-08-26 的 D#43 复议结论，CLAUDE.md 仍不读）、`@path` 导入（相对基准/4 跳/环检测/代码块内不算）、记忆扫描（每文件前 30 行取 frontmatter、mtime 新→旧、截 200）、索引投影（`render_index`，200 行 + 25KB 双上限，截断留提示）、相对时间与陈旧警告（`memory_age` / `freshness_note`） |
+| `core/rules.py` | 可用 | 路径作用域规则（feature 36）：`.pai/rules/*.md` 与 `~/.pai/rules/*.md` 递归发现 → `paths:` 认行内逗号与 YAML 列表两种写法 → 自写 glob→正则（`**` 跨目录、`*`/`?` 不跨 `/`）→ 碰到匹配路径才注入（单篇 4000 字符、每步 ≤3 条、超了要说）。去重表 `RuleState.injected` 与召回的 `surfaced` 同族，压缩/`/clear` 后一并清。已知豁口：bash 里的 `cat` 不算「碰到」（同 D#52） |
 | `core/recall.py` | 可用 | 按查询召回：manifest → 侧查询（`max_tokens=4096`——推理模型的 reasoning 计进该上限，实测 256 会静默截断）→ 防御式 JSON 解析（分得清「没说话」与「明确不选」）→ 白名单（容忍 `[type]` 装饰、取最长匹配）→ ≤5 篇 → `<system-reminder>` 注入块；空目录短路、`surfaced` 去重（上下文被压缩/`/clear` 改写即清，10 遗留 6）、单篇 4000 字符上限（超了截断并说出来）、连续 3 次失败停用并发 `RecallFailed` |
 | `core/tools/memory_tool.py` | 可用 | `remember(name, description, fact, type)` 一事一文件带 frontmatter，同名即更新；写完重建 `MEMORY.md`（原子写）；name 白名单校验挡路径穿越；目录/通知/会话 id 走注入点 |
 | `core/permissions.py` | 可用 | 规则解析 + 七步求值链（deny → 危险路径 → 显式 ask → bypass → acceptEdits → allow → 兜底；顺序不许改 D#46）；兜底是工作目录边界函数不是常量（D#51），且认 `Tool.boundary_exempt` 豁免位（D#73，目前只有 skill）；权限模式四态（D#53）；两层 `settings.json` |
@@ -212,9 +223,9 @@ MCP client（手写 stdio JSON-RPC、`mcp__<server>__<tool>` 桥接、settings �
 + feature 13 alt-screen task 1-7 + feature 16 鼠标与选区 task 1-9
 + feature 17 viz-flow task 1-3.5（事件落盘 + RecallInjected/ConversationCleared + 装配））：
 
-- `./test.sh` → 1447 passed, 3 deselected，全部离线，约 2.7 分钟（163s）。这是默认路径。
+- `./test.sh` → 1481 passed, 3 deselected，全部离线，约 2.7 分钟（164s）。这是默认路径。
 - `./test.sh --fast` → 跳过 pty e2e 的快循环（feature 35，15 遗留）：
-  1416 passed + 1 skipped / 36s，4.5×。31 条 e2e 占掉 78% 的墙钟。
+  1449 passed + 1 skipped / 37s，4.4×。31 条 e2e 占掉 78% 的墙钟。
   标记由 conftest 按文件名（`test_e2e_*.py`）自动挂，不靠人记。
   交付前仍必须跑全量——快循环只用于改一行看一眼。
 - `./eval.sh` → 评测另一条入口（feature 32，不进上面的收集范围）：默认无密钥

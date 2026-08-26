@@ -18,6 +18,7 @@ PROJECTS_DIR = "projects"
 MEMORY_SUBDIR = "memory"
 SESSIONS_SUBDIR = "sessions"
 SKILLS_SUBDIR = "skills"
+RULES_SUBDIR = "rules"
 
 
 def user_dir(home: Optional[Path] = None) -> Path:
@@ -70,6 +71,25 @@ def user_skills_dir(home: Optional[Path] = None) -> Path:
     """用户级 skills：`~/.pai/skills/`（feature 25）。不挂在 projects/ 下——
     skills 跟人走不跟项目走，与 `~/.claude/skills` 的层级对位。"""
     return user_dir(home) / SKILLS_SUBDIR
+
+
+def user_rules_dir(home: Optional[Path] = None) -> Path:
+    """用户级路径作用域规则：`~/.pai/rules/`（feature 36）。与 skills 同层——
+    它们是同一类东西：跟人走的、按需加载的上下文。"""
+    return user_dir(home) / RULES_SUBDIR
+
+
+def project_rules_dir(cwd: Optional[Path] = None) -> Path:
+    """项目级规则：`<git根 或 cwd>/.pai/rules/`。取 git 根，与 skills 同一条判据。"""
+    cwd = Path(cwd) if cwd is not None else Path.cwd()
+    root = _git_root(cwd) or cwd
+    return root / USER_DIR / RULES_SUBDIR
+
+
+def project_root(cwd: Optional[Path] = None) -> Path:
+    """项目根：git 根，不在 git 仓库里就是 cwd。规则的 glob 相对它解析。"""
+    cwd = Path(cwd) if cwd is not None else Path.cwd()
+    return _git_root(cwd) or cwd
 
 
 def project_skills_dir(cwd: Optional[Path] = None) -> Path:

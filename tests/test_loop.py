@@ -2039,3 +2039,111 @@ def test_drop_instructions_is_a_no_op_when_there_is_none():
     ledger = ["id-sys"]
     assert drop_instructions(messages, ledger) is False
     assert len(messages) == 1 and len(ledger) == 1
+
+
+# ---------- 路径作用域规则的挂点（feature 36 Task 4）----------
+
+
+def _paths_probe(collected, text=""):
+    def on_paths_touched(paths):
+        collected.append(tuple(paths))
+        return text
+    return on_paths_touched
+
+
+def test_loop_reports_the_paths_a_step_touched(tmp_path, monkeypatch):
+    """挂点定在工具结果全部回填之后（拍板问 1·A）。路径怎么从 args 里取仍然
+    下放给工具自己声明（`Tool.get_path`）——loop 只负责问一句、收集、交给回调。"""
+    monkeypatch.chdir(tmp_path)
+    from pai.core.loop import run_agent
+    from pai.core.tools import get_tools
+
+    (tmp_path / "甲.txt").write_text("内容", encoding="utf-8")
+    collected: list = []
+    client = FakeClient([
+        {"tool_calls": [("read_file", json.dumps({"path": "甲.txt"}))]},
+        {"content": "done"},
+    ])
+    answer = run_agent("x", client=client, model="fake", tools=get_tools(),
+                       on_paths_touched=_paths_probe(collected, "<规则>正文</规则>"),
+                       on_event=lambda _: None)
+
+    assert answer == "done"
+    assert collected == [("甲.txt",)]
+    sent = json.dumps(client.requests[1]["messages"], ensure_ascii=False)
+    assert "<规则>正文</规则>" in sent, "回调返回的文本必须真的进上下文"
+
+
+def test_an_empty_result_inserts_no_message(tmp_path, monkeypatch):
+    """反向守卫：没有规则命中时不许插一条空 user 消息（白烧 token 且让模型困惑，
+    同 `_inject_instructions` 那条「空指令不插」）。"""
+    monkeypatch.chdir(tmp_path)
+    from pai.core.loop import run_agent
+    from pai.core.tools import get_tools
+
+    (tmp_path / "甲.txt").write_text("内容", encoding="utf-8")
+    client = FakeClient([
+        {"tool_calls": [("read_file", json.dumps({"path": "甲.txt"}))]},
+        {"content": "done"},
+    ])
+    run_agent("x", client=client, model="fake", tools=get_tools(),
+              on_paths_touched=_paths_probe([], ""), on_event=lambda _: None)
+
+    roles = [m["role"] for m in client.requests[1]["messages"]]
+    assert roles == ["system", "user", "assistant", "tool"]
+
+
+def test_a_denied_call_touched_nothing(tmp_path, monkeypatch):
+    """被权限拒绝的调用没有读到任何文件——它连跑都没跑。"""
+    monkeypatch.chdir(tmp_path)
+    from pai.core.gate import Decision
+    from pai.core.loop import run_agent
+    from pai.core.tools import get_tools
+
+    collected: list = []
+    client = FakeClient([
+        {"tool_calls": [("read_file", json.dumps({"path": "秘密.txt"}))]},
+        {"content": "done"},
+    ])
+    run_agent("x", client=client, model="fake", tools=get_tools(),
+              before_tool_call=lambda name, args: Decision(kind="deny", reason="不许"),
+              on_paths_touched=_paths_probe(collected), on_event=lambda _: None)
+
+    assert collected == []
+
+
+def test_bash_does_not_count_as_touching_a_file(tmp_path, monkeypatch):
+    """已知豁口，写在明面上：bash 不声明路径语义（同 D#52），这条管线看不见
+    `cat 文件`。假装堵住了比留着洞更糟。"""
+    monkeypatch.chdir(tmp_path)
+    from pai.core.loop import run_agent
+    from pai.core.tools import get_tools
+
+    (tmp_path / "甲.txt").write_text("内容", encoding="utf-8")
+    collected: list = []
+    client = FakeClient([
+        {"tool_calls": [("bash", json.dumps({"command": "cat 甲.txt"}))]},
+        {"content": "done"},
+    ])
+    run_agent("x", client=client, model="fake", tools=get_tools(),
+              on_paths_touched=_paths_probe(collected), on_event=lambda _: None)
+
+    assert collected == []
+
+
+def test_dirty_args_do_not_break_the_collection(tmp_path, monkeypatch):
+    """判定期拿到脏输入是常态（同 `Tool._ask` 那条）：参数不是 dict、没有 path 键、
+    get_path 自己炸了，都只该少收一条路径，不该掀掉这一轮。"""
+    monkeypatch.chdir(tmp_path)
+    from pai.core.loop import run_agent
+    from pai.core.tools import get_tools
+
+    collected: list = []
+    client = FakeClient([
+        {"tool_calls": [("read_file", "[1, 2]")]},
+        {"content": "done"},
+    ])
+    answer = run_agent("x", client=client, model="fake", tools=get_tools(),
+                       on_paths_touched=_paths_probe(collected), on_event=lambda _: None)
+    assert answer == "done"
+    assert collected == []

@@ -181,3 +181,120 @@ def test_rewriting_the_context_lets_a_recalled_memory_be_picked_again(tmp_path, 
     assert asm.recall("再问")[0] == "", "已注入过的不该再选一遍（这是对的）"
     asm.on_context_rewritten()
     assert "记忆正文在此" in asm.recall("三问")[0], "上下文被改写之后必须能重来"
+
+
+# ---- 路径作用域规则接线（feature 36 Task 5）----
+
+
+def _write_rule(tmp_path, name="前端", paths="web/**", body="样式一律用 rem"):
+    directory = tmp_path / ".pai" / "rules"
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / f"{name}.md").write_text(
+        f"---\npaths: {paths}\n---\n\n{body}", encoding="utf-8")
+
+
+def _assemble(tmp_path):
+    from pai.modes.assembly import assemble
+
+    return assemble(client=FakeClient([]), tools={}, warn=lambda _s: None,
+                    on_event=lambda _e: None, session=None, recall_model="fake",
+                    mode="dontAsk", rules=_OPEN)
+
+
+def test_assembly_wires_the_rule_pipeline(tmp_path, monkeypatch):
+    """装配期扫一次（同 skills），跨轮持有注入表。"""
+    monkeypatch.chdir(tmp_path)
+    _write_rule(tmp_path)
+    asm = _assemble(tmp_path)
+
+    assert asm.on_paths_touched(("src/loop.py",)) == "", "不相关的路径不该拉进规则"
+    assert "样式一律用 rem" in asm.on_paths_touched(("web/a.css",))
+    assert asm.on_paths_touched(("web/b.css",)) == "", "同一条不重复注入"
+
+
+def test_rewriting_the_context_lets_a_rule_be_injected_again(tmp_path, monkeypatch):
+    """压缩把它切走之后「已经在上下文里」就是假的——与召回去重表同一条通道
+    （feature 35 建的 on_context_rewritten，这里是它第二个消费者）。"""
+    monkeypatch.chdir(tmp_path)
+    _write_rule(tmp_path)
+    asm = _assemble(tmp_path)
+
+    assert "样式一律用 rem" in asm.on_paths_touched(("web/a.css",))
+    assert asm.on_paths_touched(("web/b.css",)) == ""
+    asm.on_context_rewritten()
+    assert "样式一律用 rem" in asm.on_paths_touched(("web/c.css",))
+
+
+def test_no_rules_directory_costs_nothing(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    asm = _assemble(tmp_path)
+    assert asm.on_paths_touched(("web/a.css",)) == ""
+
+
+def test_repl_passes_the_rule_callback_to_run_agent(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    captured: dict = {}
+
+    def fake_run_agent(*args, **kwargs):
+        captured.update(kwargs)
+        return "ok"
+
+    monkeypatch.setattr("pai.modes.interactive.run_agent", fake_run_agent)
+    run_interactive(client=FakeClient([{"content": "ok"}]), model="fake",
+                    reader=_reader_once("问一句"), out=lambda _s="": None,
+                    on_event=lambda _e: None, no_session=True, rules=_OPEN)
+    assert callable(captured.get("on_paths_touched"))
+
+
+def test_once_passes_the_rule_callback_to_run_agent(monkeypatch, tmp_path):
+    from pai.modes.once import run_once
+
+    monkeypatch.chdir(tmp_path)
+    captured: dict = {}
+
+    def fake_run_agent(*args, **kwargs):
+        captured.update(kwargs)
+        return "ok"
+
+    monkeypatch.setattr("pai.modes.once.run_agent", fake_run_agent)
+    run_once("x", client=FakeClient([{"content": "ok"}]), model="fake",
+             no_session=True, on_event=lambda _: None)
+    assert callable(captured.get("on_paths_touched"))
+
+
+def _reader_once(line):
+    queue = [line]
+
+    def read(prompt=""):
+        if not queue:
+            raise EOFError
+        return queue.pop(0)
+
+    return read
+
+
+def test_a_real_turn_pulls_the_rule_in_after_reading_a_matching_file(tmp_path, monkeypatch):
+    """纵切：真跑一轮 REPL（假 client + 真工具 + 真装配），模型 read_file 一个
+    匹配文件之后，第二次请求里必须带着规则正文。
+
+    单元接线全绿而纵切坏掉是这个仓库反复踩的形状（feature 12 三条被打回的 bug
+    全在接缝上），所以这条必须存在。"""
+    import json
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "web").mkdir()
+    (tmp_path / "web" / "a.css").write_text("body{}", encoding="utf-8")
+    _write_rule(tmp_path)
+
+    client = FakeClient([
+        {"tool_calls": [("read_file", json.dumps({"path": "web/a.css"}))]},
+        {"content": "看完了"},
+    ])
+    run_interactive(client=client, model="fake", reader=_reader_once("看看样式"),
+                    out=lambda _s="": None, on_event=lambda _e: None,
+                    no_session=True, rules=_OPEN)
+
+    second = json.dumps(client.requests[1]["messages"], ensure_ascii=False)
+    assert "样式一律用 rem" in second, "读了匹配文件，规则就该在下一次请求里"
+    first = json.dumps(client.requests[0]["messages"], ensure_ascii=False)
+    assert "样式一律用 rem" not in first, "读到之前一个字都不该进上下文"

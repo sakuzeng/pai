@@ -28,6 +28,7 @@ from pai.core.memory import build_context, memory_dir
 from pai.core.paths import user_skills_dir
 from pai.core.permissions import RuleSet, load_rules, visible_tools
 from pai.core.recall import RecallState, make_recall
+from pai.core.rules import RuleState, scan_rules, select_and_render
 from pai.core.skills import (LoadedSkills, Skill, apply_project_trust,
                              make_instructions, render_catalog, scan_skills,
                              user_skill_link_roots)
@@ -54,6 +55,8 @@ class Assembly:
     recall: Callable
     gate: Callable
     on_context_rewritten: Callable[[], None]
+    on_paths_touched: Callable
+    rule_state: RuleState          # `/memory` 要标出哪些规则已注入
 
 
 def assemble(*, client: ChatClient, tools: Dict[str, object],
@@ -130,16 +133,26 @@ def assemble(*, client: ChatClient, tools: Dict[str, object],
                          on_failure=lambda f: on_event(RecallFailed(
                              reason=f.reason, detail=f.detail, disabled=f.disabled)),
                          on_selected=lambda names: on_event(RecallInjected(names=names)))
+    # 路径作用域规则（feature 36）：装配期扫一次（同 skills），注入表跨轮持有。
+    # loop 每步把「碰过哪些文件」交过来，这里决定哪几条规则该进上下文。
+    scoped_rules = scan_rules(warn=warn)
+    rule_state = RuleState()
+
+    def on_paths_touched(paths) -> str:
+        return select_and_render(paths, scoped_rules, rule_state)
+
     def on_context_rewritten() -> None:
         """上下文被改写（自动压缩 / `/compact` / `/clear`）之后要作废的东西。
 
-        目前只有召回的去重表：`surfaced` 记的是「这几篇已经在上下文里」，
+        两张表：召回的 `surfaced` 与规则的 `injected`，记的都是
+        「这些已经在上下文里」，
         压缩会把它们切进摘要、`/clear` 会整段删掉，那句话就成了假的——
         而 `surfaced` 还拦着它们不再被选中，于是召回在长会话里静默衰减到零
         （10 遗留 6，用户 2026-08-26 拍板选「上下文被改写就全清」）。
         代价：那几篇可能被再召回一次，多花一次注入的 token。
         """
         recall_state.surfaced.clear()
+        rule_state.injected.clear()
 
     return Assembly(
         rules=rules, hooks=hooks, tools=tools, skills=skills,
@@ -150,4 +163,5 @@ def assemble(*, client: ChatClient, tools: Dict[str, object],
                                        {s.name: s for s in skills}),
         loaded_skills=loaded_skills, working_dirs=working_dirs,
         mcp_sessions=mcp_sessions, recall=recall, gate=gate,
-        on_context_rewritten=on_context_rewritten)
+        on_context_rewritten=on_context_rewritten,
+        on_paths_touched=on_paths_touched, rule_state=rule_state)

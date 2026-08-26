@@ -134,6 +134,23 @@ PAI_CONTEXT_WINDOW=1000000              # 可选：上下文窗口（压缩触�
   压缩后自动从磁盘重读重注入，长会话里指令不失效；会话中途改了文件用
   `/memory reload` 让它下一轮生效。读 `AGENTS.md` 是 2026-08-26 的复议结论：
   pai 要在别人的项目里跑，那份文件就是那个项目写给 agent 的规矩。
+- 路径作用域规则（`.pai/rules/*.md`、`~/.pai/rules/*.md`）：带 `paths:`
+  frontmatter 的规则只在模型这一步真的碰到匹配文件时才进上下文，碰不到就
+  一个字都不占——用来把「越写越长的 PAI.md」拆开，降低常驻成本。
+
+  ```markdown
+  ---
+  paths: web/**, docs/*.md
+  ---
+
+  这两处的规矩：…
+  ```
+
+  `paths` 也可以写成 YAML 列表（`- web/**` 一行一条）。`**` 跨目录、
+  `*`/`?` 不跨 `/`、`docs/` 这样的目录名匹配它之下的一切。
+  不带 `paths:` 的文件不加载并告警——要常驻就写进 `PAI.md`。
+  `bash` 里的 `cat` 不算「碰到文件」（bash 不参与路径判定，与目录边界同一条
+  取舍）。`/memory` 能看到有哪些规则、各自的 `paths`、以及本会话注入了哪些。
 - 自动记忆：模型用 `remember` 工具一事一文件写进
   `~/.pai/projects/<项目>/memory/`，索引自动重建；每轮一次侧查询按当前任务
   召回 ≤5 篇注入（失败会明说，连续失败自动停用）。
@@ -175,6 +192,7 @@ pai 只写用户目录，不碰你的项目目录（布局对齐 Claude Code）�
   AGENTS.md / PAI.md       可选：用户级指令（两个都读，PAI.md 更靠近对话）
   settings.json            可选：用户级设置（见上）
   skills/                  用户级 skills
+  rules/                   用户级路径作用域规则（*.md，带 paths: frontmatter）
   history/<cwd 哈希>        REPL 输入历史（按工作目录分）
   projects/<可读路径 slug>/
     skills_trusted / mcp_trusted     项目级信任标记（不进仓库，塞不进来）
@@ -187,6 +205,7 @@ pai 只写用户目录，不碰你的项目目录（布局对齐 Claude Code）�
 
 ```bash
 ./test.sh              # 全部离线（假模型/假 provider/假 MCP server），默认不花一分钱
+./test.sh --fast       # 跳过 pty e2e 的快循环（约 4 倍快）；交付前仍要跑全量
 ./test.sh -n auto      # 并行（可选，观察期中，默认串行）
 ./test.sh --llm        # 追加打真实 API 的冒烟，会产生费用（需 key + 显式开关）
 
