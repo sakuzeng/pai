@@ -259,3 +259,138 @@ def test_ordinary_paths_are_not_dangerous(tmp_path):
 
     assert not _dangerous(proj / "src" / "main.py")
     assert not _dangerous(proj / "README.md")
+
+
+# ---- EXEC：执行类工具的第三档（feature 42 拍板问 3·A）----
+#
+# 起因：`access` 只有 READ / WRITE 两档，而「跑测试」既不是读也不是写。
+# 写成 READ 行为对、语义错（下一个人会以为它只读，而它跑任意项目代码）；
+# 不声明则落进兜底 ask，每次跑测试都弹窗。新开一档是为了让这个字段不说谎。
+# EXEC 的语义定成「起一个进程」，不是「碰一个文件」——这条分界线在下一个
+# 执行类工具到来时是可判的。
+
+
+def _exec_tool(name="_exec_probe", path_getter=None):
+    """造一个声明了 EXEC 的工具，不进全局 REGISTRY（抄 test_permissions 的做法）。"""
+    from pai.core.tools import EXEC, Tool
+
+    return Tool(
+        name=name,
+        description="假的执行类工具",
+        parameters={"type": "object", "properties": {}, "required": []},
+        func=lambda **kw: "",
+        get_path=path_getter or (lambda args: str(args.get("path") or "")),
+        access=EXEC,
+    )
+
+
+def test_exec_participates_in_the_boundary():
+    """漏了这条，EXEC 工具会落进「未声明路径语义 → ask」，与不声明毫无区别。"""
+    assert _exec_tool().participates_in_boundary()
+
+
+def test_exec_inside_the_working_dir_is_allowed(tmp_path):
+    from pai.core import permissions
+    from pai.core.permissions import RuleSet
+
+    tools = {"_exec_probe": _exec_tool()}
+    d = permissions.decide("_exec_probe", {"path": str(tmp_path)},
+                           RuleSet.from_lists(), tools=tools, cwd=str(tmp_path))
+    assert d.kind == "allow", d.reason
+
+
+def test_exec_outside_the_working_dir_still_asks(tmp_path):
+    """另一半。只做前一半的话 EXEC 就成了「在任意目录起进程」的通道。"""
+    from pai.core import permissions
+    from pai.core.permissions import RuleSet
+
+    outside = tmp_path.parent / f"{tmp_path.name}-outside"
+    outside.mkdir()
+    tools = {"_exec_probe": _exec_tool()}
+    d = permissions.decide("_exec_probe", {"path": str(outside)},
+                           RuleSet.from_lists(), tools=tools, cwd=str(tmp_path))
+    assert d.kind == "ask", d.reason
+
+
+def test_accept_edits_does_not_let_exec_sneak_in(tmp_path):
+    """连带复核一：`acceptEdits` 免的是「写一律 ask」那一档，不是「执行」。
+
+    第 5 步查的是 `access == WRITE`。若哪天有人把它放宽成「不是 READ 就算」，
+    `acceptEdits` 会顺手把执行也免掉——而用户按下那个模式时想的是「别再问我
+    改文件的事」，不是「随便跑东西」。
+
+    要让这条**可观察**得挑对场景（第一版挑错了，注入反证没红才发现）：
+    界外的话第 5 步自带的 `dirs.contains` 已经挡住，放宽与否都进不去；
+    界内的话兜底本来就 allow，两条路殊途同归。唯一能把两者分开的是
+    **兜底不是 `workingdir` 的时候**——`default_decision="deny"` 下，
+    第 5 步是 allow、第 7 步是 deny，放宽就会把 deny 变成 allow。
+    """
+    from pai.core import permissions
+    from pai.core.permissions import ACCEPT_EDITS, RuleSet
+    from pai.core.tools import WRITE, Tool
+
+    strict = RuleSet.from_lists(default_decision="deny")
+    tools = {"_exec_probe": _exec_tool()}
+    d = permissions.decide("_exec_probe", {"path": str(tmp_path)},
+                           strict, tools=tools, cwd=str(tmp_path), mode=ACCEPT_EDITS)
+    assert d.kind == "deny", f"acceptEdits 把执行也免掉了：{d.reason}"
+
+    # 反向守卫：同样场景下**写**必须照旧被 acceptEdits 放行，否则这条测试
+    # 就不是在钉「EXEC 不蹭」，而是在钉「第 5 步坏了」。
+    writer = Tool(name="_w2", description="假写工具",
+                  parameters={"type": "object", "properties": {}, "required": []},
+                  func=lambda **kw: "", get_path=lambda a: str(a.get("path") or ""),
+                  access=WRITE)
+    d_w = permissions.decide("_w2", {"path": str(tmp_path)}, strict,
+                             tools={"_w2": writer}, cwd=str(tmp_path), mode=ACCEPT_EDITS)
+    assert d_w.kind == "allow", d_w.reason
+
+
+def test_dangerous_write_check_still_only_looks_at_writes(tmp_path, monkeypatch):
+    """连带复核二：危险写检查只管 WRITE，新档位不该让它多管或少管。
+
+    拿一个真的持久化位点当路径：EXEC 工具在那里起进程不是「写进去」，
+    不该被这条拦（它拦的是内容落盘）；而它对 WRITE 的判断必须一个字不变。
+    """
+    from pai.core import permissions
+    from pai.core.permissions import RuleSet
+    from pai.core.tools import WRITE, Tool
+
+    home = tmp_path / "home"
+    (home / ".ssh").mkdir(parents=True)
+    target = str(home / ".ssh" / "config")
+
+    writer = Tool(name="_write_probe", description="假写工具",
+                  parameters={"type": "object", "properties": {}, "required": []},
+                  func=lambda **kw: "", get_path=lambda a: str(a.get("path") or ""),
+                  access=WRITE)
+    d_write = permissions.decide("_write_probe", {"path": target},
+                                 RuleSet.from_lists(), tools={"_write_probe": writer},
+                                 cwd=str(tmp_path), home=str(home))
+    assert d_write.kind == "ask" and "持久化位点" in d_write.reason
+
+    tools = {"_exec_probe": _exec_tool()}
+    d_exec = permissions.decide("_exec_probe", {"path": target},
+                                RuleSet.from_lists(), tools=tools,
+                                cwd=str(tmp_path), home=str(home))
+    # 界外，所以仍是 ask——但理由必须是边界，不是「持久化位点」
+    assert "持久化位点" not in d_exec.reason, d_exec.reason
+
+
+def test_path_access_for_accepts_exec_and_still_rejects_garbage():
+    """连带复核三：声明入口要认得新档位，也要继续挡住拼错的档位名。"""
+    import pytest as _pytest
+
+    from pai.core.tools import EXEC, REGISTRY, path_access_for, tool
+
+    @tool
+    def _exec_decl_probe(a: str) -> str:
+        """探针。"""
+        return a
+
+    path_access_for(_exec_decl_probe, EXEC)(lambda args: str(args.get("a") or ""))
+    assert REGISTRY["_exec_decl_probe"].access == EXEC
+
+    with _pytest.raises(ValueError):
+        path_access_for(_exec_decl_probe, "execute")(lambda args: "")
+    REGISTRY.pop("_exec_decl_probe", None)

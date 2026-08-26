@@ -38,6 +38,8 @@ _ACTIONS = {
     "write_file": "写文件",
     "edit_file": "改文件",
     "bash": "跑命令",
+    "run_tests": "跑测试",
+    "git_read": "看 git",
     "ask_user_question": "等你回答",
     "remember": "记笔记",
 }

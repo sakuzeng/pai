@@ -2047,3 +2047,47 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
       且「逐字不变」是刻意的（护缓存前缀）——所以不是随手改一下的事。
       至少该在常量旁边写明它描述的是老路径的工具集，不是今天的。（本轮已在
       `docs/dev/扩展点.md` 里改了说法，代码注释还没动。）
+
+### feature 42（跑测试与 git 摘出 bash）遗留与发现 —— 2026-08-26
+
+档案：[features/42](features/42-20260826-tests-and-git-tools/README.md)
+
+- [ ] 「跑什么不由模型决定」没有机器检查（42 遗留，比一般遗留严重）：
+      `run_tests` / `git_read` 能自动放行（`EXEC` + 界内 allow）的**唯一根据**
+      就是这一条，而它今天只写在模块注释与 D#77 里。哪天有人给 `run_tests`
+      加一个「传任意参数」的口子，或往 `git_read` 的白名单里放进一个能 exec 的
+      flag，放行的根据就没了，而不会有任何东西变红。
+      修法方向：一条测试遍历所有 `access == EXEC` 的工具，断言它们的 schema 里
+      没有能表达「任意命令」的参数——判据怎么写还没想清楚，所以先记着。
+- [ ] `run_tests` 的 `filter` 写死了 pytest 的 `-k`（42 遗留）：`tests.command`
+      配成 `npm test` / `cargo test` 时这个 flag 那边不认。刻意不在代码里假装通用
+      （猜错的代价是跑了个不该跑的东西）。修法若要做：settings 加一个
+      `tests.filterFlag`，或按解析出的命令挑写法。触发条件：真在非 Python 项目里用起来。
+- [ ] `run_tests` 的探测表只认五种项目（42 遗留）：test.sh / Python / Node /
+      Rust / Go。认不出就报错并指路 `tests.command`，不瞎猜。加第六种时顺手加一行。
+- [ ] `run_tests` 的 `MAX_TIMEOUT_SECONDS = 3600` 未实测（42 遗留）：默认 600s
+      有来源（本仓库 183s 的三倍余量 + bash 那条两家收敛的上限），但天花板 3600
+      纯属拍脑袋。同 `search_files` 的 `MAX_FILES_SCANNED`——按「给照抄来的常数
+      建一条检查习惯」，改它之前先拿数字。
+- [ ] `git_read` 的 flag 白名单不全（42 遗留）：漏写的合法 flag 会被拒。
+      失效方向是安全的那一侧（模型收到「允许的是这些」一句话就能改），
+      所以不急；被拒多了再按实际用到的补。
+- [ ] `git_read` 没有 path 参数（42 遗留）：`-C` / `--git-dir` / `--work-tree`
+      都在拒绝名单里，所以它只能在 cwd 跑。多仓库场景（`additionalDirectories`
+      配了别的根）下看不了那些仓库。要做的话得先想清楚「path 参数」与
+      「拒绝 -C」之间怎么不自相矛盾。
+- [ ] `output.py` 只收编了两处拷贝（42 遗留）：`fs.py` 与 `shell.py` 改成从它
+      导入了，`search.py` 仍自己做头部截断。它那里头部截断是对的（搜索结果从上
+      往下读），但「哪种截断用在哪」这个判断现在散在三个模块里。
+      触发条件：第三个需要保头保尾的工具出现时，把选择也收进 output.py。
+- [ ] `EXEC` 档只有兜底那一支认得它（42 发现）：`acceptEdits` 与危险写检查都
+      刻意不管 EXEC，这是对的；但 `visible_tools`、`/permissions` 的展示、
+      README 的权限表都还只讲 READ/WRITE 两档。文档层面 EXEC 目前是隐形的。
+
+### feature 41 交付后新发现 —— 2026-08-26
+
+- [ ] `search_files` 与 `run_tests` / `git_read` 的「默认根解析」已经三份
+      （`search_root` / `test_root` / `repo_root`，形状一模一样）（42 发现）：
+      三个都是「取 args 里的 path，空则回落 cwd，绝对化」，且三个都配一个
+      同形的 matcher 包装。第三份出现意味着该抽了——按 40 复盘学到的那条，
+      触发条件写清楚：下一个碰路径的工具立工具时就抽，别等第四份。

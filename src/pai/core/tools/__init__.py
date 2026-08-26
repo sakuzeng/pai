@@ -46,11 +46,28 @@ PathGetter = Callable[[dict], str]
 # 读在工作目录内放行、界外问；写一律问。所以判定必须分得清这次是读还是写。
 READ, WRITE = "read", "write"
 
+# 第三档（feature 42 拍板问 3）：**起一个进程**，而不是碰一个文件。
+# 跑测试、跑 git 既不是读也不是写——写成 READ 行为对但语义错（下一个人看到
+# `access=READ` 会以为它只读，而它跑任意项目代码：写文件、联网、删东西都可能），
+# 不声明则落进兜底 ask，与「每次跑测试都弹窗」是同一件事。
+# 兜底待遇与 READ 相同（界内 allow / 界外 ask），但**分界线不同**：
+# READ/WRITE 问的是「碰哪个文件」，EXEC 问的是「在哪个目录起进程」。
+# 这条分界线是给下一个执行类工具用的判据，不是给今天这两个用的。
+# 注意 `acceptEdits` 刻意**不**放行 EXEC：用户按下那个模式时想的是
+# 「别再问我改文件的事」，不是「随便跑东西」（tests/test_boundary.py 钉住）。
+EXEC = "exec"
+
+# 三档合起来 = 「声明了路径语义」的全部合法取值。判定入口与边界层共用这一个
+# 元组，别在两处各写一份 `in (...)`——加第四档时漏改一处的后果是静默的。
+ACCESS_KINDS = (READ, WRITE, EXEC)
+
 # 工具能力标志（feature 11，调度用）。与 matcher / get_path / access 同一个模式：
 # 框架问问题，工具用自己的领域知识回答，权限层与调度器都不认识具体工具。
 # **收 input 而不是静态布尔**（照 CC 的 `Tool.isReadOnly(input)`）：
 # 一个命令是不是只读取决于这次跑的是 `ls` 还是 `rm`，静态布尔表达不了。
-# pai 今天还没有这样的工具，但签名现在就留对，将来不用改第二次。
+# 第一个真实用户是 `git_read`（feature 42）：`git log` 能并发，
+# `git status` 会刷新索引去抢 `.git/index.lock`，两个并发跑会撞锁——
+# 同一个工具、同一份声明，取值只能由这次的 subcommand 决定。
 Capability = Callable[[dict], bool]
 
 
@@ -127,8 +144,8 @@ class Tool:
 
     def participates_in_boundary(self) -> bool:
         """两项都声明了才参与目录边界判定。缺一不可：
-        只有 access 不知道查哪个路径，只有 get_path 不知道该按读还是按写判。"""
-        return self.get_path is not None and self.access in (READ, WRITE)
+        只有 access 不知道查哪个路径，只有 get_path 不知道该按哪一档判。"""
+        return self.get_path is not None and self.access in ACCESS_KINDS
 
     def matches(
         self,
@@ -209,7 +226,8 @@ INTERACTIVE_ONLY = ("ask_user_question",)
 
 def get_tools(names: list[str] | None = None) -> dict[str, Tool]:
     """默认全量（除需真人在场的）；传 names 取子集（受限工具集 / 交互模式加料用）。"""
-    from pai.core.tools import ask, fs, memory_tool, search, shell, skill  # noqa: F401 - import 即注册
+    from pai.core.tools import (ask, fs, git_tool,  # noqa: F401 - import 即注册
+                                memory_tool, search, shell, skill, tests_tool)
 
     if names is None:
         return {n: t for n, t in REGISTRY.items() if n not in INTERACTIVE_ONLY}
@@ -223,19 +241,20 @@ def all_tools() -> dict[str, Tool]:
     而 INTERACTIVE_ONLY 只是「不摆给模型看」，不是「不会被调用」。
     显式 import 子模块而不是直接读 REGISTRY——否则判定结果取决于谁先 import 了谁。
     """
-    from pai.core.tools import ask, fs, memory_tool, search, shell, skill  # noqa: F401 - import 即注册
+    from pai.core.tools import (ask, fs, git_tool,  # noqa: F401 - import 即注册
+                                memory_tool, search, shell, skill, tests_tool)
 
     return dict(REGISTRY)
 
 
 def path_access_for(tool_func, access: str) -> Callable[[PathGetter], PathGetter]:
-    """给已注册的工具声明「碰哪个路径、是读是写」：`@path_access_for(read_file, READ)`。
+    """给已注册的工具声明「碰哪个路径、算哪一档」：`@path_access_for(read_file, READ)`。
 
     与 `matcher_for` 同款——不动 `@tool` 本身，挂到没注册的工具上当场抛。
     """
     name = tool_func if isinstance(tool_func, str) else getattr(tool_func, "__name__", "")
-    if access not in (READ, WRITE):
-        raise ValueError(f"access 只能是 {READ!r} 或 {WRITE!r}，得到 {access!r}")
+    if access not in ACCESS_KINDS:
+        raise ValueError(f"access 只能是 {ACCESS_KINDS} 之一，得到 {access!r}")
 
     def attach(fn: PathGetter) -> PathGetter:
         if name not in REGISTRY:

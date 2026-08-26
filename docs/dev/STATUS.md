@@ -1,6 +1,22 @@
 # 当前状态快照
 
-最后更新：2026-08-26（feature 41 交付——推到「能拿来做日常开发」这一格
+最后更新：2026-08-26（feature 42 交付——把跑测试与 git 从 bash 里摘出来
+（用户指示，接 41 交付汇报里「现在还差什么」的第一条）。三件：
+①权限层加 `EXEC` 第三档——`access` 原本只有 READ/WRITE，判据是「碰哪个文件」，
+而跑测试两头都不沾；写成 READ 行为对但字段说谎，新开一档买到的是
+「下一个执行类工具算哪一档」的判据（D#78），兜底待遇与 READ 相同，
+`acceptEdits` 与危险写检查刻意都不管它，三处各钉一条。
+②`run_tests(filter, path)`——命令来自 `tests.command` 或自动探测（五种项目），
+模型只能给「跑哪一部分」，这正是它能自动放行而 bash 不行的根据（D#77）；
+默认超时 600s（bash 的 120s 会把本仓库 183s 的全量掐死），输出保头保尾
+（bash 是头部截断，正好把 `N passed` 那行扔掉）。
+③`git_read(subcommand, args)`——argv 由 pai 拼、不过 shell，`git status; rm -rf x`
+结构上构造不出来；子命令白名单 + 按子命令的 flag 白名单，写操作不进、仍走 bash 的 ask。
+顺带：能力标志「收 input」的第一个真实用户出现（`git log` 能并发，
+`git status` 会抢 `.git/index.lock`）；`MAX_OUTPUT_CHARS` 的家收进 `tools/output.py`。
+档案 [features/42](features/42-20260826-tests-and-git-tools/README.md)。
+1575 passed）。
+同日早些：feature 41 交付——推到「能拿来做日常开发」这一格
 （用户指示，能力补齐不是批清 TODO）。两条：①`read_file` 有了按行的
 `offset`/`limit`（0 哨兵，坐标系与截断文案同源）——本仓库 160 个 `.py` 里
 92 个超过 4000 字符上限，`test_loop.py` 此前要分 21 次读，且只能靠提示语教模型
@@ -188,7 +204,7 @@ MCP client（手写 stdio JSON-RPC、`mcp__<server>__<tool>` 桥接、settings �
 | 模块 | 状态 | 说明 |
 |---|---|---|
 | `core/loop.py` | 可用 | agent loop：依赖注入、max_steps 兜底、每条消息落盘、usage 落盘、用量预算熔断、自动压缩触发/熔断；主循环走流式（侧查询刻意不走）、工具按批调度、权限按批前置（D#59）；截断轮次（`finish_reason=="length"`）tool_calls 全判失败回填不执行（2026-08-24，pi 同款判据） |
-| `core/tools/` | 可用 | `@tool` 从签名生成 schema；bash / read_file（按行 `offset`/`limit` 分段，截断切在整行边界、文案给出可续读的 offset）/ `search_files`（内容正则 + 文件名 glob；纯 Python 不依赖 ripgrep；三件声明齐全故界内不问、可与 read_file 并发；跳噪音目录与越界软链）/ write_file / edit_file |
+| `core/tools/` | 可用 | `@tool` 从签名生成 schema；bash / read_file（按行 `offset`/`limit` 分段，截断切在整行边界、文案给出可续读的 offset）/ `search_files`（内容正则 + 文件名 glob；纯 Python 不依赖 ripgrep；三件声明齐全故界内不问、可与 read_file 并发；跳噪音目录与越界软链）/ write_file / edit_file / `run_tests`（命令来自 `tests.command` 或探测，模型只能给 filter/path；超时自成一档 600s；输出保头保尾——判决在尾部）/ `git_read`（只读子命令白名单 + 按子命令的 flag 白名单，argv 不过 shell；并发安全性取决于 subcommand）/ `output.py`（输出上限与保头保尾的家）|
 | `core/compaction.py` | 可用 | 见下——阶段 1 主线（触发→切→摘→重建→熔断）全部接进 loop |
 | `modes/once.py` | 可用 | 单次任务，跑完即退出（对应 pi 的 print-mode）。client/model 可注入故可离线测；`context_window()` + `CompactionSettings()` 默认透传；装配走 `modes/assembly.py` |
 | `modes/commands.py` | 可用 | `/命令` 与 `!shell` 模式（feature 40 从 interactive 抽出）：两条主循环共用的那一半。只放「一条命令怎么执行、打什么字」，不放循环本身；跨轮状态一律由调用方传入，不认识 driver 与 app |

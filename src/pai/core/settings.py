@@ -87,6 +87,45 @@ def bash_timeout_seconds(settings: Dict[str, Any],
     return value
 
 
+def tests_command(settings: Dict[str, Any],
+                  warn: Optional[Callable[[str], None]] = None) -> Optional[str]:
+    """`tests.command`：跑测试用的命令，None = 未配置（走自动探测）。
+
+    非字符串 / 空串 warn 后回默认（fail loud，同 bash.timeoutSeconds 那条约定）。
+    刻意不校验「这条命令存不存在」：那要跑一次 shell 才知道，而装配期不该
+    因为一条配置去起进程；真跑不起来时错误会原样回给模型，比装配期猜得准。
+    """
+    value = (settings.get("tests") or {}).get("command")
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        if warn:
+            warn(f"settings 里 tests.command 应是非空字符串，收到 {value!r}，按自动探测处理")
+        return None
+    return value.strip()
+
+
+def tests_timeout_seconds(settings: Dict[str, Any],
+                          warn: Optional[Callable[[str], None]] = None) -> Optional[int]:
+    """`tests.timeoutSeconds`：跑测试的超时（秒），None = 未配置。
+
+    与 `bash.timeoutSeconds` 同形但**上限不同**：测试比一般命令长得多
+    （本仓库全量 183s，bash 的 120s 默认会把它掐死），所以另有一档。
+    bool 要单独挡：它是 int 的子类，`true` 会被静默当成 1 秒。
+    """
+    value = (settings.get("tests") or {}).get("timeoutSeconds")
+    if value is None:
+        return None
+    from pai.core.tools.tests_tool import MAX_TIMEOUT_SECONDS
+    if isinstance(value, bool) or not isinstance(value, int) \
+            or not 1 <= value <= MAX_TIMEOUT_SECONDS:
+        if warn:
+            warn(f"settings 里 tests.timeoutSeconds 应是 1..{MAX_TIMEOUT_SECONDS} "
+                 f"的整数（秒），收到 {value!r}，按默认处理")
+        return None
+    return value
+
+
 def additional_directories(settings: Dict[str, Any],
                            warn: Optional[Callable[[str], None]] = None
                            ) -> tuple:
