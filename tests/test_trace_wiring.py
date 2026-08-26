@@ -299,3 +299,51 @@ def test_the_tui_path_also_feeds_the_state_listener(tmp_path, monkeypatch):
     sink(ConversationCleared(kept=1))       # sink 里现在装的是 TUI 自建的 handler
     assert [type(e) for e in heard] == [ConversationCleared], \
         "TUI 自建的 on_event 没喂状态监听器——那条路上 /clear 之后召回不会重来"
+
+
+def test_the_tui_uninstalls_the_heartbeat_on_the_way_out(tmp_path, monkeypatch):
+    """心跳关着 app 与 driver，TUI 一退它俩就没了——不卸载的话，同一个进程里
+    下一个跑命令的人每 0.1 秒去戳一次已经死掉的界面（feature 39）。
+
+    钉法：在 `term.start()` 上引爆（那时心跳已经装上了），确认异常路径上
+    `finally` 照样把它卸干净——正常退出那条路更不用说。
+    """
+    from pai.core import heartbeat
+    from pai.modes import interactive
+
+    handed = {}
+    real_run_tui = interactive._run_tui
+    monkeypatch.setattr(interactive, "_use_tui", lambda reader: True)
+    monkeypatch.setattr(interactive, "_run_tui", lambda **kw: handed.update(kw))
+    interactive.run_interactive(client=object(), model="fake-model",
+                                out=lambda s: None,
+                                history_path=tmp_path / "hist")
+
+    class _Stop(RuntimeError):
+        pass
+
+    class _Stdin:
+        def fileno(self):
+            return 0
+
+    monkeypatch.setattr(interactive.sys, "stdin", _Stdin())
+    # 引爆点必须在心跳装上**之后**：它现在装在 `term.start()` 之后的 try 里
+    # （与 finally 的卸载对称）。炸在 start 上的话，测的就是「装都没装」，
+    # 而不是「装了但没卸」——第一版正是这么写的，改完实现后当场露馅。
+    # 开场动画的 `time.sleep` 是 try 里第一个够得着的引爆点。
+    monkeypatch.setattr(interactive.TerminalSession, "start", lambda self: None)
+    monkeypatch.setattr(interactive.TerminalSession, "stop", lambda self: None)
+    monkeypatch.setattr(interactive.time, "sleep",
+                        lambda _s: (_ for _ in ()).throw(_Stop()))
+    handed.pop("out", None)
+    sentinel = heartbeat.Heartbeat(lambda: None)
+    heartbeat.set_current(sentinel)
+    with pytest.raises(_Stop):
+        real_run_tui(out=lambda _s="": None, **handed)
+
+    installed = heartbeat.current()
+    assert installed is not sentinel, "TUI 压根没装自己的心跳"
+    # 看私有字段是刻意的：卸载的契约字面就是「换回一个什么都不做的默认心跳」，
+    # 而「什么都不做」在外部没有别的可观察形式——第一版写成「调一下看有没有回声」，
+    # 结果心跳吞异常，卸没卸载都没有回声，那条断言等于没有。
+    assert installed._on_beat is None, "退出后心跳还关着已经死掉的 app 与 driver"

@@ -14,7 +14,7 @@ import subprocess
 import time
 from typing import Annotated, Optional, Tuple
 
-from pai.core import interrupt
+from pai.core import heartbeat, interrupt
 from pai.core.tools import matcher_for, tool
 
 MAX_OUTPUT_CHARS = 4000
@@ -111,6 +111,10 @@ def _wait(proc: subprocess.Popen, seconds: int) -> Tuple[Optional[str], Optional
             return proc.communicate(timeout=POLL_SECONDS)
         except subprocess.TimeoutExpired:
             pass                # 只是这一轮轮询到点，不是命令超时
+        # 给界面层一个喘气的机会（feature 39）：主线程此刻正堵在这里，
+        # TUI 没有别的地方可以读键盘、重绘。放在中断检查**之前**——
+        # 心跳本身就是「读键盘」，用户这一下按的可能正是 Ctrl+C。
+        heartbeat.current().beat()
         if flag.is_set():
             raise _Killed(_kill_and_collect(proc, "(已中断，命令与其整个进程组已被终止)"))
         if time.monotonic() >= deadline:
