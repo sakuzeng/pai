@@ -28,6 +28,7 @@ from pai.core.tools import (
 )
 # 家在 output.py，这里原样再导出：`from pai.core.tools.fs import MAX_OUTPUT_CHARS`
 # 是既有写法（含 recall.py / rules.py 注释里引用的「read_file 的那个 4000」）
+from pai.core.tools.diffs import render_change
 from pai.core.tools.output import MAX_OUTPUT_CHARS  # noqa: F401
 
 
@@ -128,32 +129,92 @@ def read_file(
     return body + f"\n\n[{where}，已到文件末尾]"
 
 
+def _read_before(path: str) -> "tuple":
+    """写之前的旧内容，返回 `(内容, 读不出来吗)`；文件不存在回 `(None, False)`。
+
+    为 diff 多读一次盘（feature 43）。代价是每次写都多一次 open——
+    pai 写的是代码文件，这点开销换「改了什么看得见」是划算的；
+    读不出来（二进制、权限）绝不能挡住写本身，所以这里吞掉异常并如实标记。
+    """
+    if not os.path.exists(path):
+        return None, False
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read(), False
+    except (UnicodeDecodeError, OSError):
+        return None, True
+
+
 @tool
 def write_file(
     path: Annotated[str, "要写入的文件路径"],
     content: Annotated[str, "写入的完整内容（会覆盖原文件）"],
 ) -> str:
-    """把内容写入文件（覆盖式，文件不存在则创建）。"""
+    """把内容写入文件（覆盖式，文件不存在则创建），并回一段 diff。"""
+    before, unreadable = _read_before(path)
     atomic_write(path, content)
-    return f"已写入 {path}（{len(content)} 字符）"
+    change = render_change(before, content, path=path, before_unreadable=unreadable)
+    return f"已写入 {path}（{len(content)} 字符）\n{change}"
+
+
+def _occurrences(content: str, old: str) -> list:
+    """`old` 的每一处出现，返回 `[(字符偏移, 行号)]`（行号 1 起）。纯函数，单独可测。"""
+    out, start = [], 0
+    while True:
+        idx = content.find(old, start)
+        if idx < 0:
+            return out
+        out.append((idx, content.count("\n", 0, idx) + 1))
+        start = idx + 1                 # +1 而不是 +len(old)：重叠出现也要各算一处
+
+
+def _pick_nearest(spots: list, near_line: int) -> tuple:
+    """挑离 `near_line` 最近的那一处；**平局取靠前的**。
+
+    平局必须有个确定的裁决，且调用方要把它说出来——不确定的裁决等于随机改文件。
+    `min` 在 key 相等时保留先出现的元素，而 `spots` 是按位置升序的，所以
+    「取靠前」是这个写法自带的性质，不是巧合；写成注释是因为下一个人可能
+    改成 `sorted(...)[0]`（同样成立）或 `max`（当场反过来）。
+    """
+    return min(spots, key=lambda s: abs(s[1] - near_line))
 
 
 @tool
 def edit_file(
     path: Annotated[str, "要编辑的文件路径"],
-    old: Annotated[str, "要被替换的原文本，必须在文件中唯一出现一次"],
+    old: Annotated[str, "要被替换的原文本；出现多次时用 near_line 指定改哪一处"],
     new: Annotated[str, "替换后的新文本"],
+    near_line: Annotated[
+        int, "可选：old 出现多次时，改离这一行最近的那一处（行号 1 起）。0 = 不指定"] = 0,
 ) -> str:
-    """精确替换文件中的一段文本：old 必须在文件中唯一出现一次。"""
+    """精确替换文件中的一段文本；old 出现多次时用 near_line 指定改哪一处。
+
+    `near_line` 只用来**挑哪一处**，不用来定位内容（feature 43 拍板问 1）：
+    `old` 仍必须逐字匹配，所以行号漂了会挑错或挑不到，
+    但绝不会改到一段不长这样的文本上。这条不对称是这个参数敢存在的全部理由。
+    """
+    if near_line < 0:
+        # 静默改用默认值 = 模型永远不知道自己传错了（同 bash 的负 timeout）
+        return f"错误：near_line 不能是负数（收到 {near_line}），未修改。"
+
     with open(path, "r", encoding="utf-8") as f:
         content = f.read()
-    count = content.count(old)
-    if count == 0:
+    spots = _occurrences(content, old)
+    if not spots:
         return f"错误：在 {path} 中找不到要替换的文本。请先 read_file 确认原文。"
-    if count > 1:
-        return f"错误：该文本在 {path} 中出现了 {count} 次，不唯一。请把 old 加长、带上下文以保证唯一。"
-    atomic_write(path, content.replace(old, new))
-    return f"已在 {path} 中完成 1 处替换。"
+    if len(spots) > 1 and not near_line:
+        # 报状态之外给做法（R#17 那条规矩）：以前只说「把 old 加长」，
+        # 现在多了一条更省的路，不说的话模型不知道它存在
+        return (f"错误：该文本在 {path} 中出现了 {len(spots)} 次"
+                f"（第 {'、'.join(str(line) for _, line in spots[:8])} 行"
+                f"{'…' if len(spots) > 8 else ''}），不唯一。"
+                f"要么把 old 加长带上下文，要么传 near_line 指定改哪一处。")
+
+    offset, line = spots[0] if len(spots) == 1 else _pick_nearest(spots, near_line)
+    updated = content[:offset] + new + content[offset + len(old):]
+    atomic_write(path, updated)
+    change = render_change(content, updated, path=path)
+    return f"已在 {path} 中完成 1 处替换（第 {line} 行）。\n{change}"
 
 
 # ---- 权限匹配（feature 07 Task 4）----

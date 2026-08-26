@@ -27,7 +27,8 @@ from typing import Annotated
 
 from pai.core.boundary import path_in_working_path
 from pai.core.tools import READ, capabilities_for, matcher_for, path_access_for, tool
-from pai.core.tools.fs import MAX_OUTPUT_CHARS, _glob_to_regex, path_matcher
+from pai.core.tools.fs import MAX_OUTPUT_CHARS, _glob_to_regex
+from pai.core.tools.roots import path_semantics
 
 # 结果条数上限。给的是**条数**而不是字符数：搜索结果每行长度相近，条数对模型更好预估，
 # 而字符上限在这里只当第二道保险（见 `_render`）。
@@ -49,14 +50,10 @@ SKIP_DIRS = frozenset({
 })
 
 
-def search_root(args: dict) -> str:
-    """这次调用真正要搜的那个根目录，**空 path 回落到 cwd**。
-
-    回空串是这里最容易埋下的静默 bug：边界判定拿不到路径就退回 ask，
-    于是「不传 path 的搜索每次都被问」——而那正是模型最常见的调用形态。
-    权限层与工具本体共用这一个函数，两边算出不同的根就等于判定判了个寂寞。
-    """
-    return os.path.abspath(str(args.get("path") or "") or os.getcwd())
+# 这次调用真正要搜的那个根，与它配套的 matcher（feature 43 抽进 `roots.py`；
+# 「空 path 要回落 cwd」那条判断以及它复发三次的理由都写在那边的模块注释里）。
+# 权限层与工具本体共用同一个 `search_root`——两边算出不同的根就等于判定判了个寂寞。
+search_root, search_matcher = path_semantics("path")
 
 
 def _escapes_root(path: str, root_real: str) -> bool:
@@ -207,16 +204,6 @@ def search_files(
 # 于是权限规则会拿正则去比对路径 pattern，静默永不命中。
 
 
-@matcher_for(search_files)
-def search_matcher(specifier: str, args: dict, require_all: bool, ctx) -> bool:
-    """复用 fs 三件套的路径匹配（含软链双路径），只是先把默认根解出来。
-
-    不能直接把 `path_matcher` 挂上去：它按 `args["path"]` 取路径，
-    而这个工具的 path 可以为空（= cwd）。空串在那边会被判成「取不到路径」直接返回
-    False——规则对最常见的调用形态静默失效。
-    """
-    return path_matcher(specifier, {"path": search_root(args)}, require_all, ctx)
-
-
+matcher_for(search_files)(search_matcher)
 path_access_for(search_files, READ)(search_root)
 capabilities_for(search_files, read_only=True, concurrency_safe=True)

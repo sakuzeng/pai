@@ -1,6 +1,19 @@
 # 当前状态快照
 
-最后更新：2026-08-26（feature 42 交付——把跑测试与 git 从 bash 里摘出来
+最后更新：2026-08-26（feature 43 交付——「改代码」这条链上的三件（用户「继续」，
+接 42 交付汇报里列的下一格）。①`edit_file` 加 `near_line`：只在 `old` 出现多次时
+用行号挑哪一处（平局取靠前并说出来），`old` 仍必须逐字匹配——行号只用来「挑」
+不用来「定位内容」，这条不对称是这个参数敢存在的全部理由；`old` 唯一时的老路
+一个字没变。出现多次时的错误文案现在报出每一处在第几行并点名 `near_line`。
+②`edit_file` / `write_file` 的返回值带一段 unified diff（超 80 行只报 `+X/-Y`
+并指向 `git_read("diff")`，新建只报行数，没变说「无变化」）——落点选返回值而非
+事件，因为 TUI 的 `_tool_entry` 本来就会把多行结果折叠成可展开条目、
+`_display_result` 本来就分好了「模型拿原文 / 终端拿消毒版」，零 UI 改动。
+③三份形状一样的「默认根解析 + matcher 包装」抽进 `core/tools/roots.py`，
+验收按「解析后的值逐字相等」（把抽取前的三份实现抄进测试当对照组）。
+档案 [features/43](features/43-20260826-edit-and-diff/README.md)。
+1628 passed）。
+同日早些：feature 42 交付——把跑测试与 git 从 bash 里摘出来
 （用户指示，接 41 交付汇报里「现在还差什么」的第一条）。三件：
 ①权限层加 `EXEC` 第三档——`access` 原本只有 READ/WRITE，判据是「碰哪个文件」，
 而跑测试两头都不沾；写成 READ 行为对但字段说谎，新开一档买到的是
@@ -204,7 +217,7 @@ MCP client（手写 stdio JSON-RPC、`mcp__<server>__<tool>` 桥接、settings �
 | 模块 | 状态 | 说明 |
 |---|---|---|
 | `core/loop.py` | 可用 | agent loop：依赖注入、max_steps 兜底、每条消息落盘、usage 落盘、用量预算熔断、自动压缩触发/熔断；主循环走流式（侧查询刻意不走）、工具按批调度、权限按批前置（D#59）；截断轮次（`finish_reason=="length"`）tool_calls 全判失败回填不执行（2026-08-24，pi 同款判据） |
-| `core/tools/` | 可用 | `@tool` 从签名生成 schema；bash / read_file（按行 `offset`/`limit` 分段，截断切在整行边界、文案给出可续读的 offset）/ `search_files`（内容正则 + 文件名 glob；纯 Python 不依赖 ripgrep；三件声明齐全故界内不问、可与 read_file 并发；跳噪音目录与越界软链）/ write_file / edit_file / `run_tests`（命令来自 `tests.command` 或探测，模型只能给 filter/path；超时自成一档 600s；输出保头保尾——判决在尾部）/ `git_read`（只读子命令白名单 + 按子命令的 flag 白名单，argv 不过 shell；并发安全性取决于 subcommand）/ `output.py`（输出上限与保头保尾的家）|
+| `core/tools/` | 可用 | `@tool` 从签名生成 schema；bash / read_file（按行 `offset`/`limit` 分段，截断切在整行边界、文案给出可续读的 offset）/ `search_files`（内容正则 + 文件名 glob；纯 Python 不依赖 ripgrep；三件声明齐全故界内不问、可与 read_file 并发；跳噪音目录与越界软链）/ write_file / edit_file / `run_tests`（命令来自 `tests.command` 或探测，模型只能给 filter/path；超时自成一档 600s；输出保头保尾——判决在尾部）/ `git_read`（只读子命令白名单 + 按子命令的 flag 白名单，argv 不过 shell；并发安全性取决于 subcommand）/ `output.py`（输出上限与保头保尾的家） / `edit_file` 带 `near_line`（多处出现时按行号挑，old 仍逐字匹配）与 diff 回执 / `diffs.py`（unified diff，超 80 行只报统计）/ `roots.py`（默认根解析 + matcher 包装，三工具共用）|
 | `core/compaction.py` | 可用 | 见下——阶段 1 主线（触发→切→摘→重建→熔断）全部接进 loop |
 | `modes/once.py` | 可用 | 单次任务，跑完即退出（对应 pi 的 print-mode）。client/model 可注入故可离线测；`context_window()` + `CompactionSettings()` 默认透传；装配走 `modes/assembly.py` |
 | `modes/commands.py` | 可用 | `/命令` 与 `!shell` 模式（feature 40 从 interactive 抽出）：两条主循环共用的那一半。只放「一条命令怎么执行、打什么字」，不放循环本身；跨轮状态一律由调用方传入，不认识 driver 与 app |

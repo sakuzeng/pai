@@ -263,8 +263,10 @@ src/pai/
                         search_files（内容正则 + 文件名 glob，参与目录边界）/
                         run_tests（命令来自设置或探测，模型不能指定跑什么）/
                         git_read（只读子命令，argv 不过 shell）/
-                        write_file / edit_file / ask_user_question / remember / skill
-                        output.py 是输出上限与「保头保尾」的家
+                        write_file / edit_file（`near_line` 消歧；两者都回一段 diff）/
+                        ask_user_question / remember / skill
+                        output.py 输出上限与保头保尾；diffs.py 编辑回执的 diff；
+                        roots.py 三个工具共用的「默认根解析 + matcher 包装」
   modes/
     assembly.py         once 与 interactive 共用的装配序列（一份实现）
     once.py             单次任务；interactive.py  REPL 与 TUI；echo.py / statusline.py 输出
