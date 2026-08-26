@@ -649,3 +649,71 @@ def test_bridge_skips_non_object_root_schema_with_warn():
     assert len(warnings) == 2
     assert any("bad_string" in w for w in warnings)
     assert any("bad_shape" in w for w in warnings)
+
+
+# ---- 等待期的心跳与中断（feature 39 遗留，2026-08-26 !小修）----
+
+
+def test_a_slow_call_beats_while_it_waits(session):
+    """慢工具等待期间要给界面喘气的机会——与 `shell._wait` 同一个病、同一个修法。
+
+    此前 `_request` 是一次性的 `event.wait(总时长)`：一个 60s 超时的 MCP 工具
+    跑着的时候，主线程堵死在那儿，TUI 读不到键盘，用户打的字不上屏、
+    Ctrl+C 也按不停（feature 39 修了 bash 那条，这条当时留成了遗留）。
+
+    钉次数而不只是「跳过」：只断言「至少一次」的话，一个「等完再补跳一次」的实现
+    同样能过，而那正是要修的病。
+    """
+    import time
+
+    from pai.core import heartbeat
+
+    beats = []
+    heartbeat.set_current(heartbeat.Heartbeat(lambda: beats.append(time.monotonic())))
+    try:
+        s = session("slow-call", FAKE_MCP_SLOW_SECONDS="1")
+        s.call_tool("echo_token", {}, timeout_ms=5000)
+    finally:
+        heartbeat.set_current(None)
+
+    assert len(beats) >= 5, f"1 秒的调用只跳了 {len(beats)} 次，界面会明显卡住"
+    gaps = [b - a for a, b in zip(beats, beats[1:])]
+    assert max(gaps) < 0.5, f"心跳之间空了 {max(gaps):.2f}s"
+
+
+def test_an_interrupted_call_stops_waiting_and_says_what_it_could_not_stop(session):
+    """中断期间不再干等到超时（用户 2026-08-26 拍板「中断 + 把代价说出来」）。
+
+    与 bash 的中断有一处实打实的不同，文案必须说出来：bash 那边我们真能杀掉
+    进程组，这边我们只是不等了——server 可能仍在执行，它可能已经写了文件。
+    不说的话「已中断」就是句半真话，而模型会拿它当「什么都没发生」。
+    """
+    from pai.core import interrupt
+
+    flag = interrupt.InterruptFlag()
+    interrupt.set_current(flag)
+    try:
+        s = session("slow-call", FAKE_MCP_SLOW_SECONDS="10")
+        flag.set()                       # 模拟用户在等待期间按下 Ctrl+C
+        started = __import__("time").monotonic()
+        with pytest.raises(MCPError) as exc:
+            s.call_tool("echo_token", {}, timeout_ms=30000)
+        assert __import__("time").monotonic() - started < 5, "没中断，是等超时才回来的"
+    finally:
+        interrupt.set_current(None)
+
+    message = str(exc.value)
+    assert "已中断" in message
+    assert "仍在执行" in message, f"没说清我们只是不等了，实际：{message!r}"
+
+
+def test_a_normal_call_is_not_affected_by_a_stale_flag(session):
+    """反向守卫：中断标志没置位时，一切照旧（别把「检查」写成「总是中断」）。"""
+    from pai.core import interrupt
+
+    interrupt.set_current(interrupt.InterruptFlag())
+    try:
+        s = session()
+        assert s.call_tool("echo_token", {}, timeout_ms=5000)
+    finally:
+        interrupt.set_current(None)

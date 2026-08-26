@@ -1627,12 +1627,19 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
 档案：[features/39](features/39-20260826-busy-heartbeat/README.md)、
 [复盘](features/39-20260826-busy-heartbeat/复盘.md)
 
-- [ ] MCP 工具调用期间没有心跳（39 遗留，与刚修好的是同一个病）：
+- [x] ~~MCP 工具调用期间没有心跳（39 遗留，与刚修好的是同一个病）：
       `core/mcp.py` 的 `_request` 是一次 `event.wait(总时长)`，没有轮询循环——
-      一个慢的 MCP 工具（默认超时 60s）期间键盘照样像死了。
-      修法同形：小步轮询 + 每步 `heartbeat.current().beat()`，与 `shell._wait` 一样。
-      诚实说一句（39 复盘质疑二）：「同一个病在第二条路径上还开着」和「这个病
-      修好了」之间的差别，比一条 TODO 条目看起来要大——用 MCP 的人撞到的体验一模一样。
+      一个慢的 MCP 工具（默认超时 60s）期间键盘照样像死了。~~
+      已修 2026-08-26（!小修，`fix/mcp-heartbeat-and-interrupt`，用户当天指示
+      「MCP 那条也修了吧」）：`_wait_for` 小步等（`WAIT_STEP_SECONDS = 0.1`，与
+      shell 的 `POLL_SECONDS` 同值同理由），每步 `heartbeat.current().beat()`。
+      顺带把中断也接上（用户当场拍板「中断 + 把代价说出来」）：等待期看中断标志，
+      置位就不再等，而回填的话里明说 server 没收到取消信号、可能仍在执行、
+      已产生的副作用不会回滚——这与 bash 那条不同（那边我们真能杀进程组），
+      不说的话「已中断」就是半真话。MCP 协议的 `notifications/cancelled` 仍不发
+      （spec 非目标，取消语义要连 progress 一起做，见 29 遗留 2）。
+      三条测试 + 四处注入反证（不跳心跳 / 不看标志 / 文案不提 server / 退回一次性等待，
+      各自会红）。
 - [ ] `POLL_SECONDS = 0.1` 现在承担两个职责（39 复盘质疑一）：中断响应粒度
       （原本的）与界面刷新粒度（feature 39 新加的）。两者对「多快算够」的要求不同
       ——中断 100ms 绰绰有余，打字回显 100ms 已在人能感觉到的边缘。
