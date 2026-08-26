@@ -53,6 +53,17 @@ def mouse_enabled(settings: Dict[str, Any],
     return _flag(settings, "mouse", warn)
 
 
+def markdown_enabled(settings: Dict[str, Any],
+                     warn: Optional[Callable[[str], None]] = None) -> bool:
+    """`tui.markdown`，默认 **True**（feature 44 拍板问 1·A）。
+
+    留这个开关的理由与 `tui.mouse` 同款：这是一个纯视觉改动，而视觉改动出问题时
+    症状是「看着不对」而不是报错——用户得有办法一键退回原文再判断是渲染的锅
+    还是模型的锅。关掉之后答案原样上屏，与 feature 44 之前逐字相同。
+    """
+    return _flag(settings, "markdown", warn)
+
+
 def _flag(settings: Dict[str, Any], key: str,
           warn: Optional[Callable[[str], None]]) -> bool:
     value = (settings.get("tui") or {}).get(key, True)

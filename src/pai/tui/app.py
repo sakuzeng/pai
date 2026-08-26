@@ -29,6 +29,7 @@ from pai.tui.dialog import CANCELLED, Dialog
 from pai.tui.sanitize import sanitize_terminal_text
 from pai.tui.keys import Key
 from pai.tui.dock import Dock
+from pai.tui.markdown import render as md_render
 from pai.tui.clipboard import copy as _copy_to_clipboard
 from pai.tui.scroll import ScrollState
 from pai.tui.selection import Selection
@@ -97,9 +98,13 @@ class TuiApp:
                  scroll: Optional[ScrollState] = None,
                  selection: Optional[Selection] = None,
                  now: Optional[Callable[[], float]] = None,
-                 color: bool = False) -> None:
+                 color: bool = False,
+                 markdown: bool = True) -> None:
         self.renderer = renderer
         self.color = color
+        # 答案是否走 markdown 渲染（feature 44）。关掉 = 原样上屏，
+        # 与 44 之前逐字相同——纯视觉改动必须留一个退得回去的口子。
+        self.markdown = markdown
         # alt 屏下 pai 自己持有整份会话文档；main-screen 下这两个是闲置的
         # （`keeps_transcript` 为假时 commit 不往里塞，不白涨内存）。
         self.transcript = transcript if transcript is not None else Transcript()
@@ -510,7 +515,7 @@ class TuiApp:
             # `budget`/`max_steps`/`interrupted` 是 loop **合成**的，从来没流过，必须打。
             self._flush_answer(None)
             if event.reason != "final" and event.text:
-                self.commit(_answer_lines(event.text, color=self.color))
+                self.commit(self._answer_entry(event.text))
             if summary is not None:
                 self.commit(summary)
             return
@@ -532,14 +537,34 @@ class TuiApp:
         answer = self._streaming or (content or "")
         self._streaming = ""
         if answer.strip():
-            self.commit(_answer_lines(answer, color=self.color))
+            self.commit(self._answer_entry(answer))
+
+    def _answer_entry(self, text: str):
+        """答案条目。**按宽度现渲染**（`dynamic_entry`）而不是存一份定死的行——
+        表格跟着窗口宽度重排靠的就是这个（feature 44 拍板问 4 那条承诺的落点）。"""
+        color, markdown = self.color, self.markdown
+        return dynamic_entry(lambda w: _answer_lines(text, w, color=color,
+                                                     markdown=markdown))
 
 
-def _answer_lines(text: str, *, color: bool = False) -> List[str]:
-    """答案的形态：第一行戴一个圆点，其余原样。"""
-    prefix = theme.paint(theme.ANSWER, theme.CYAN, color=color) + " "
-    lines = text.split("\n")
-    return [prefix + lines[0]] + lines[1:]
+# 圆点是个 gutter：首行戴点、后续行缩进到正文下面。顶格的话多块内容会与
+# 「新的一条答案」混起来。
+_ANSWER_INDENT = "  "
+
+
+def _answer_lines(text: str, width: int, *, color: bool = False,
+                  markdown: bool = True) -> List[str]:
+    """答案的形态：第一行戴一个圆点，其余缩进对齐。"""
+    room = max(1, width - len(_ANSWER_INDENT))
+    if markdown:
+        body = md_render(text, room, color=color)
+    else:
+        body = [ln for line in text.split("\n") for ln in (theme.wrap(line, room) or [""])]
+    if not body:
+        body = [""]
+    dot = theme.paint(theme.ANSWER, theme.CYAN, color=color) + " "
+    # 空行不加缩进：缩进过的空行是一串尾随空格，选中复制时会带出来
+    return [dot + body[0]] + [(_ANSWER_INDENT + line if line else "") for line in body[1:]]
 
 
 def _display_result(event) -> str:
