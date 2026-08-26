@@ -34,6 +34,7 @@ DETAIL_INDENT = "    "      # 续行缩进：与「  └ 」之后的正文对�
 # 「read_file ×2」。写成表而不是 if 链：加工具时只加一行。
 _ACTIONS = {
     "read_file": "读文件",
+    "search_files": "搜代码",
     "write_file": "写文件",
     "edit_file": "改文件",
     "bash": "跑命令",

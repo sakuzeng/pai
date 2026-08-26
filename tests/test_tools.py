@@ -855,16 +855,18 @@ def test_the_registry_is_restored_between_tests():
 def test_the_previous_probe_did_not_leak_into_this_test():
     """上一条留下的探针不该出现在这里——这条与它是一对，拆开看都没意义。"""
     assert "_leak_probe" not in get_tools()
-    assert set(get_tools()) == {"bash", "read_file", "write_file", "edit_file",
-                                "remember", "skill"}, "内置工具集之外不该有别的"
+    assert set(get_tools()) == {"bash", "read_file", "search_files", "write_file",
+                                "edit_file", "remember", "skill"}, "内置工具集之外不该有别的"
 
 
-def test_read_file_truncation_tells_the_model_how_to_get_the_rest(tmp_path):
-    """截断提示要给出路，不能只报状态（R#17）。
+def test_a_single_over_budget_line_says_offset_cannot_help(tmp_path):
+    """行坐标系够不着的那一格：整个文件就一行、而这一行超了字符上限。
 
-    只说「截断，共 N 字符」的话，模型拿着残缺视图直接去 edit_file——
-    它并不知道自己看到的不是全文，也不知道还能怎么读。零成本的修法就是
-    在提示语里点名 bash 分段读（同 bash 超时文案那条规矩：报状态之外给做法）。
+    这条测试本来是 R#17 的「截断提示要给出路」（feature 34），内容写的是
+    `"x" * N` 没有换行——offset 落地后它就落进了单行病态分支，还照样绿。
+    与其留一条名字与实际覆盖对不上的测试，不如让它如实钉住这一格：
+    续读点在行内，offset 表达不了，此时必须说清这一点并把出路指回 bash，
+    而不是给一个假的 offset（那才是真正会骗到模型的答法）。
     """
     from pai.core.tools.fs import MAX_OUTPUT_CHARS, read_file
 
@@ -874,7 +876,9 @@ def test_read_file_truncation_tells_the_model_how_to_get_the_rest(tmp_path):
 
     assert "截断" in out
     assert str(MAX_OUTPUT_CHARS + 1234) in out          # 总量照旧说清
-    assert "sed" in out or "bash" in out, "提示语里没有「怎么读到剩下的」"
+    assert "没法用 offset 续读" in out, "没说清这一格 offset 够不着"
+    assert not re.search(r"offset=\d", out), "给了一个假的续读点"
+    assert "sed" in out or "bash" in out, "没把出路指回真能读到全行的工具"
     assert "edit_file" in out, "没有提醒模型别拿残缺视图去改文件"
 
 
@@ -917,3 +921,157 @@ def test_the_normal_degraded_paths_stay_silent(capsys):
     assert REGISTRY["read_file"].read_only(None) is False       # 参数不是 dict
     assert REGISTRY["write_file"].read_only({"path": "x"}) is False   # 未声明只读
     assert capsys.readouterr().err == ""
+
+
+# ---- read_file 的 offset / limit（feature 41 Task 1）----
+#
+# 上游是 TODO 两条：R#17 那条的注记「真正的分页/offset 参数仍没做」，
+# 与 34 复盘质疑三「倾向于 offset 参数才是正解（那是可测的），
+# 零成本做法只是把成本转移给了模型」。坐标系取「行」（拍板问 1·A）。
+
+
+def test_read_file_offset_starts_at_that_line(tmp_path):
+    """offset 是 1-based 行号：offset=3 的第一行就是文件第 3 行。
+
+    1-based 不是随手定的——截断文案此前教模型用 `sed -n '起始,结束p'`，
+    那也是 1-based；两套坐标并存的话模型每次都要猜差一。
+    """
+    from pai.core.tools.fs import read_file
+
+    p = tmp_path / "a.txt"
+    p.write_text("一\n二\n三\n四\n五\n", encoding="utf-8")
+
+    out = read_file(path=str(p), offset=3)
+    body = out.split("\n\n[")[0]
+    assert body == "三\n四\n五\n"
+
+
+def test_read_file_limit_caps_the_line_count(tmp_path):
+    """limit 是行数上限，与 offset 组合出「取中间一段」。"""
+    from pai.core.tools.fs import read_file
+
+    p = tmp_path / "a.txt"
+    p.write_text("".join(f"L{i}\n" for i in range(1, 21)), encoding="utf-8")
+
+    out = read_file(path=str(p), offset=5, limit=3)
+    body = out.split("\n\n[")[0]
+    assert body == "L5\nL6\nL7\n"
+
+
+def test_segmented_reads_reassemble_the_file_verbatim(tmp_path):
+    """验收标准（用户点名）：不是「测试还绿」，是解析后的值逐字相等。
+
+    只该影响表示层的改动，判据只能是这个——分段读拼起来若与全文差一个字符，
+    模型就会拿着一份「看起来完整」的错内容去 edit_file。
+    """
+    from pai.core.tools.fs import read_file
+
+    p = tmp_path / "big.txt"
+    original = "".join(f"第{i}行 内容 content-{i}\n" for i in range(1, 501))
+    p.write_text(original, encoding="utf-8")
+
+    pieces = []
+    offset = 1
+    for _ in range(50):                     # 上限防死循环，正常几轮就读完
+        out = read_file(path=str(p), offset=offset, limit=60)
+        pieces.append(out.split("\n\n[")[0])
+        offset += 60
+        if offset > 500:
+            break
+    assert "".join(pieces) == original
+
+
+def test_truncation_cuts_at_a_line_boundary_so_the_next_offset_is_exact(tmp_path):
+    """字符上限撞上时必须切在整行边界。
+
+    切在行中间的话，文案报的「继续读用 offset=N」就是错的：那半行要么丢、
+    要么在下一段里重复一遍。而这两种错都不会让任何断言变红——除非有这一条。
+    """
+    from pai.core.tools.fs import MAX_OUTPUT_CHARS, read_file
+
+    p = tmp_path / "big.txt"
+    line = "x" * 99 + "\n"                  # 每行 100 字符，整除关系明确
+    original = line * 100                   # 10000 字符，必然撞上限
+    p.write_text(original, encoding="utf-8")
+
+    out = read_file(path=str(p))
+    body = out.split("\n\n[")[0]
+    assert body.endswith("\n"), "切在了行中间"
+    assert len(body) <= MAX_OUTPUT_CHARS
+    read_lines = body.count("\n")
+
+    # 文案报的续读点必须正好接上，不重不漏
+    m = re.search(r"offset=(\d+)", out)
+    assert m, f"截断文案里没有可续读的 offset：{out[-300:]!r}"
+    assert int(m.group(1)) == read_lines + 1
+
+    rest = read_file(path=str(p), offset=int(m.group(1)))
+    assert body + rest.split("\n\n[")[0] == original[:len(body) + len(rest.split("\n\n[")[0])]
+
+
+def test_read_file_truncation_points_at_offset_not_at_sed(tmp_path):
+    """截断文案改指自家 offset（此前教模型走 `sed -n`，那是把成本转嫁给模型）。
+
+    保留的是 R#17 那条的内核：报状态之外必须给做法，且明说别拿残缺视图去 edit。
+    """
+    from pai.core.tools.fs import MAX_OUTPUT_CHARS, read_file
+
+    p = tmp_path / "big.txt"
+    p.write_text("".join(f"line-{i}\n" for i in range(1, 2001)), encoding="utf-8")
+    assert p.stat().st_size > MAX_OUTPUT_CHARS
+
+    out = read_file(path=str(p))
+    assert "截断" in out
+    assert "offset=" in out, "提示语没给出自家的续读方式"
+    assert "2000" in out, "没说清全文共几行"
+    assert "edit_file" in out, "没有提醒模型别拿残缺视图去改文件"
+
+
+def test_read_file_rejects_negative_offset_and_limit(tmp_path):
+    """错误路径：静默改用默认值 = 模型永远不知道自己传错了（同 bash 负 timeout 那条）。"""
+    from pai.core.tools.fs import read_file
+
+    p = tmp_path / "a.txt"
+    p.write_text("一\n二\n", encoding="utf-8")
+
+    assert "错误" in read_file(path=str(p), offset=-1)
+    assert "错误" in read_file(path=str(p), limit=-5)
+
+
+def test_read_file_offset_past_the_end_says_how_many_lines_there_are(tmp_path):
+    """错误路径：越过末尾要报出真实行数，模型才知道该往回退多少。
+
+    回空串是最坏的答法——与「文件到这里就没了」无法区分。
+    """
+    from pai.core.tools.fs import read_file
+
+    p = tmp_path / "a.txt"
+    p.write_text("一\n二\n三\n", encoding="utf-8")
+
+    out = read_file(path=str(p), offset=99)
+    assert "错误" in out
+    assert "3" in out, "没报出真实行数"
+
+
+def test_read_file_schema_exposes_offset_and_limit_as_optional_integers():
+    """0 哨兵的落点：两个参数都不在 required 里，类型都是 integer。
+
+    不能用 Optional[int]——`@tool` 的 PY_TO_JSON 只认 str/int/float/bool，
+    会当场 raise（shell.py 的 clamp_timeout 为同一条约束用了 0 哨兵）。
+    """
+    fn = get_tools()["read_file"].schema()["function"]
+    props = fn["parameters"]["properties"]
+    assert set(props) == {"path", "offset", "limit"}
+    assert props["offset"]["type"] == "integer"
+    assert props["limit"]["type"] == "integer"
+    assert fn["parameters"]["required"] == ["path"]
+    assert props["offset"]["description"] and props["limit"]["description"]
+
+
+def test_whole_file_read_is_byte_for_byte_unchanged(tmp_path):
+    """不传 offset/limit 且没超上限时，返回值与改动前逐字相同——没有多出任何脚注。"""
+    from pai.core.tools.fs import read_file
+
+    p = tmp_path / "a.txt"
+    p.write_text("一\n二\n三\n", encoding="utf-8")
+    assert read_file(path=str(p)) == "一\n二\n三\n"

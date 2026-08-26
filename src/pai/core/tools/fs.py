@@ -52,22 +52,79 @@ def atomic_write(path: str, content: str) -> None:
         raise
 
 
+def _take_whole_lines(lines: list, budget: int) -> list:
+    """按字符预算取整行，**至少取一行**。
+
+    切在行中间会让「继续读用 offset=N」变成假话：那半行要么丢、要么在下一段里
+    重复一遍，而两种错都不会让别的断言变红（feature 41 专门钉了一条测试）。
+    至少取一行是为了单行超预算的病态文件——返回零行等于告诉模型「读完了」。
+    """
+    kept, size = [], 0
+    for line in lines:
+        if kept and size + len(line) > budget:
+            break
+        kept.append(line)
+        size += len(line)
+    return kept
+
+
 @tool
-def read_file(path: Annotated[str, "要读取的文件路径（相对或绝对）"]) -> str:
-    """读取一个文件的全部内容。"""
+def read_file(
+    path: Annotated[str, "要读取的文件路径（相对或绝对）"],
+    offset: Annotated[int, "可选：从第几行开始读（1 起）。0 = 从头读"] = 0,
+    limit: Annotated[int, "可选：最多读几行。0 = 不限行数（仍受输出字符上限收口）"] = 0,
+) -> str:
+    """读取一个文件的内容，可用 offset/limit 只读其中一段（按行）。
+
+    坐标系是**行**而不是字符（feature 41 拍板问 1）：模型定位代码时手里只有行号，
+    字符坐标要它自己换算一遍。`0` 是「没传」的哨兵而不是 `None`——`@tool` 的
+    schema 生成器只认 str/int/float/bool，`Optional[int]` 会被当场拒
+    （同 `shell.clamp_timeout` 那条注释，那里为同一条约束用了同一个哨兵）。
+    """
+    if offset < 0 or limit < 0:
+        # 静默改用默认值 = 模型永远不知道自己传错了（同 bash 的负 timeout）
+        return f"错误：offset/limit 不能是负数（收到 offset={offset}, limit={limit}），未读取。"
+
     with open(path, "r", encoding="utf-8") as f:
         content = f.read()
     if not content:
         return "(文件为空)"
-    if len(content) > MAX_OUTPUT_CHARS:
-        # 提示语给出路而不只报状态（R#17，同 bash 超时文案那条规矩）：只说「截断了」
-        # 的话，模型并不知道自己拿的是残缺视图，会照着它去 edit_file。
-        return (content[:MAX_OUTPUT_CHARS]
-                + f"\n\n[... 截断：以上是前 {MAX_OUTPUT_CHARS} 字符，"
-                  f"全文共 {len(content)} 字符。要看剩下的，"
-                  f"用 bash 分段读（如 `sed -n '起始,结束p' 文件`）；"
+
+    all_lines = content.splitlines(keepends=True)
+    total_lines = len(all_lines)
+    start = offset - 1 if offset > 0 else 0
+    if start >= total_lines:
+        # 回空串是最坏的答法：与「文件到这里就没了」无法区分，模型不知道该往回退多少
+        return (f"错误：{path} 只有 {total_lines} 行，offset={offset} 已越过末尾"
+                f"（全文共 {len(content)} 字符）。")
+
+    end = total_lines if limit <= 0 else min(total_lines, start + limit)
+    kept = _take_whole_lines(all_lines[start:end], MAX_OUTPUT_CHARS)
+    body = "".join(kept)
+    last = start + len(kept)
+
+    # 从头读、且整个读完了：逐字返回原内容，一个脚注都不加——加 offset 之前
+    # 这条路径返回什么，现在还返回什么。
+    if start == 0 and last == total_lines and len(body) <= MAX_OUTPUT_CHARS:
+        return body
+
+    # 单行超预算的病态情况：行边界救不了它，只能按字符截并如实说这一行读不全。
+    # 刻意不给 offset 出路——续读点在行内，本工具的坐标系表达不了（诚实边界，档案 41）。
+    if len(kept) == 1 and len(body) > MAX_OUTPUT_CHARS:
+        return (body[:MAX_OUTPUT_CHARS]
+                + f"\n\n[... 截断：第 {last} 行单行就有 {len(body)} 字符，"
+                  f"以上只是它的前 {MAX_OUTPUT_CHARS} 字符。这一行没法用 offset 续读，"
+                  f"要看全行请用 bash（如 `sed -n '{last}p' 文件`）；"
                   f"别拿这份残缺内容直接去 edit_file]")
-    return content
+
+    # 提示语给出路而不只报状态（R#17，同 bash 超时文案那条规矩）：只说「截断了」
+    # 的话，模型并不知道自己拿的是残缺视图，会照着它去 edit_file。
+    where = f"以上是第 {start + 1}-{last} 行，全文共 {total_lines} 行、{len(content)} 字符"
+    if last < total_lines:
+        return (body + f"\n\n[... 截断：{where}。要看剩下的，"
+                       f"用 read_file(offset={last + 1}) 继续读；"
+                       f"别拿这份残缺内容直接去 edit_file]")
+    return body + f"\n\n[{where}，已到文件末尾]"
 
 
 @tool
