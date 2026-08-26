@@ -1,6 +1,16 @@
 # 当前状态快照
 
-最后更新：2026-08-26（feature 39 交付——干活期间的键盘不再像死了（用户从四处
+最后更新：2026-08-26（feature 40 交付——还三类旧账（用户点名），全程不改行为、
+测试数字一个不动（1503 passed）。①共享测试夹具层：跨测试文件的 import 归零
+（此前 5 处），`tests/helpers.py` 与 `tests/trajectories.py` 分别装动作与数据；
+②拆文件一个不拆一个真拆——`compaction.py` 重估后不拆（392 行，条目自带的参照是
+pi 的 893 行，且与 AGENTS「一个阶段一个模块」相抵），真拆的是 `interactive.py`
+（1365 → 1007，抽出 `modes/commands.py`：`/命令` 与 `!shell` 被两条主循环共用，
+不该住在其中一条的文件里；中断三件套同时搬回 `core/interrupt.py`）；
+③方法论欠账清 6 条（两篇新笔记 + 两处追记）。档案
+[features/40](features/40-20260826-old-debts/README.md)。
+1503 passed）。
+同日早些：feature 39 交付——干活期间的键盘不再像死了（用户从四处
 体验候选里点名这一处）：一条跑着的长命令期间打的字当场上屏。新增
 `core/heartbeat.py`（进程级心跳，形状照 `core/interrupt.py`），`shell._wait` 的
 轮询循环每轮一跳，TUI 把读键盘那段抽成 `pump_keys()` 给事件路径与心跳共用。
@@ -170,6 +180,7 @@ MCP client（手写 stdio JSON-RPC、`mcp__<server>__<tool>` 桥接、settings �
 | `core/tools/` | 可用 | `@tool` 从签名生成 schema；bash / read_file / write_file / edit_file |
 | `core/compaction.py` | 可用 | 见下——阶段 1 主线（触发→切→摘→重建→熔断）全部接进 loop |
 | `modes/once.py` | 可用 | 单次任务，跑完即退出（对应 pi 的 print-mode）。client/model 可注入故可离线测；`context_window()` + `CompactionSettings()` 默认透传；装配走 `modes/assembly.py` |
+| `modes/commands.py` | 可用 | `/命令` 与 `!shell` 模式（feature 40 从 interactive 抽出）：两条主循环共用的那一半。只放「一条命令怎么执行、打什么字」，不放循环本身；跨轮状态一律由调用方传入，不认识 driver 与 app |
 | `modes/assembly.py` | 可用 | 共用装配序列（feature 31）：rules/hooks → skills 信任 → MCP 信任与并表 → boundary → gate → memory → recall 一份实现，once/interactive 只注入差异点（asker / 权限模式 / 事件通道）；不 import loop 内部，MCP 关闭归各模式单出口 finally |
 | `viz/` | 可用 | `pai-viz` 本地网页：运行时流转可视化（feature 17）——结构图（工具自省上图、阶段状态解析本表、每处标代码位置可点击跳编辑器）+ 回合时间线（读会话 JSONL 与并排的 `.events.jsonl`，分组配对成回合，2s 游标轮询实时点亮）。页面纯观察，无对话输入 |
 | `core/trace.py` | 可用 | 观测流落盘：`EventTrace` 当 `on_event` 用，事件（类型数以 `core/events.py` 的 `AgentEvent` Union 为准，勿在文档里抄数）追加进 `<会话同名>.events.jsonl`（`MessageDelta` 刻意不落）；写失败吞掉且只告警一次——观测流挂了不连累正事。`compose()` 扇出渲染器与落盘器 |

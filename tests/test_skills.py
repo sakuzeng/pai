@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from helpers import OPEN_RULES, run_repl as _repl, scripted_reader
 from pai.core import paths
 from pai.core.skills import Skill, scan_skills
 
@@ -750,7 +751,7 @@ def test_compaction_reinjects_loaded_skill_body(tmp_path, monkeypatch):
     from pai.core.compaction import CompactionSettings
     from pai.core.loop import run_agent
     from pai.core.tools import get_tools
-    from tests.test_compaction import REAL_TRAJECTORY
+    from trajectories import REAL_TRAJECTORY
 
     catalog = _catalog_from(tmp_path, ("alpha", "ALPHA-REATTACH-TOKEN"))
     loaded = LoadedSkills()
@@ -796,27 +797,9 @@ def test_compaction_reinjects_loaded_skill_body(tmp_path, monkeypatch):
 # ---------------------------------------------------------------- T6 · /skill 命令与 REPL 装配
 
 from pai.core.permissions import RuleSet as _RuleSet  # noqa: E402
-from pai.modes.interactive import HELP, run_interactive  # noqa: E402
+from pai.modes.commands import HELP  # noqa: E402
+from pai.modes.interactive import run_interactive  # noqa: E402
 
-_OPEN = _RuleSet.from_lists(default_decision="allow")
-
-
-def _repl(lines, script, tmp_path, monkeypatch):
-    home = Path.home()                       # conftest 已隔离
-    proj = tmp_path / "proj"
-    proj.mkdir(exist_ok=True)
-    monkeypatch.chdir(proj)
-    out: list = []
-    client = FakeClient(script)
-
-    def reader(prompt=""):
-        if not lines:
-            raise EOFError
-        return lines.pop(0)
-
-    run_interactive(client=client, model="fake", reader=reader, out=out.append,
-                    on_event=lambda _: None, no_session=True, rules=_OPEN)
-    return client, "\n".join(out)
 
 
 def test_help_mentions_skill_command():

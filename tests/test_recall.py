@@ -24,7 +24,7 @@ from pai.core.recall import (
 )
 
 from tests.fake_llm import FakeClient
-from tests.test_memory_scan import write_memory
+from helpers import recall_reply as reply, write_memory
 
 
 def ts(text: str) -> float:
@@ -32,13 +32,6 @@ def ts(text: str) -> float:
 
 
 NOW = ts("2026-08-11 10:00")
-
-
-def reply(names: list, usage: dict = None) -> dict:
-    turn = {"content": json.dumps({"selected": names}, ensure_ascii=False)}
-    if usage:
-        turn["usage"] = usage
-    return turn
 
 
 class RaisingClient:
@@ -241,7 +234,7 @@ def test_real_trajectory_query_flows_through_recall_and_compaction(tmp_path: Pat
     from pai.core.compaction import context_tokens, find_cut_point
     from pai.core.recall import make_recall
 
-    from tests.test_compaction import REAL_USAGE_TRAJECTORY
+    from trajectories import REAL_USAGE_TRAJECTORY
 
     write_memory(tmp_path, "usage-check", description="创建文件再读回的老套路")
     query = [m for m in REAL_USAGE_TRAJECTORY if m["role"] == "user"][0]["content"]

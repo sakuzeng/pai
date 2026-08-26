@@ -228,7 +228,7 @@ def test_multiline_content_does_not_stair_step(session, tmp_path):
     # 来自 `interactive.HELP` 文案自身。阶梯的定义是「屏幕缩进 ≠ 源头缩进」，
     # 所以断言两者严格相等——第一版的 `row.startswith((marker, " "))` 只要
     # 行首有一个空格就恒真，1~11 格的阶梯全放过（R4#T2）。
-    from pai.modes.interactive import HELP
+    from pai.modes.commands import HELP
 
     def indent_of(line: str) -> int:
         return len(line) - len(line.lstrip(" "))

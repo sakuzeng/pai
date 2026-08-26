@@ -17,11 +17,11 @@ from pathlib import Path
 
 from fake_llm import FakeClient
 
+from helpers import OPEN_RULES
 from pai.core.paths import sessions_dir
 from pai.core.permissions import RuleSet
 from pai.modes.once import run_once
 
-_OPEN = RuleSet.from_lists(default_decision="allow")
 
 
 def events_of(directory: Path) -> list:
@@ -36,7 +36,7 @@ def test_once_writes_the_event_stream_next_to_the_session(tmp_path, monkeypatch)
         {"content": "好了"},
     ])
 
-    run_once("改点东西", client=client, model="fake", rules=_OPEN, on_event=lambda _: None)
+    run_once("改点东西", client=client, model="fake", rules=OPEN_RULES, on_event=lambda _: None)
 
     directory = sessions_dir()
     rows = events_of(directory)
@@ -56,7 +56,7 @@ def test_events_carry_their_payload_not_just_the_type_name(tmp_path):
         {"content": "好了"},
     ])
 
-    run_once("x", client=client, model="fake", rules=_OPEN, on_event=lambda _: None)
+    run_once("x", client=client, model="fake", rules=OPEN_RULES, on_event=lambda _: None)
 
     rows = events_of(sessions_dir())
     tool_end = next(r for r in rows if r["event"] == "ToolEnd")
@@ -82,7 +82,7 @@ def test_the_caller_supplied_handler_still_runs(tmp_path):
     seen = []
     client = FakeClient([{"content": "ok"}])
 
-    run_once("x", client=client, model="fake", rules=_OPEN, on_event=seen.append)
+    run_once("x", client=client, model="fake", rules=OPEN_RULES, on_event=seen.append)
 
     assert [type(e).__name__ for e in seen][0] == "AgentStart"
     assert any(type(e).__name__ == "AgentEnd" for e in seen)
@@ -99,7 +99,7 @@ def test_interactive_writes_one_event_file_for_the_whole_repl(tmp_path):
     lines = iter(["第一句", "/clear", "第二句", "/exit"])
     client = FakeClient([{"content": "答一"}, {"content": "答二"}])
 
-    run_interactive(client=client, model="fake", rules=_OPEN,
+    run_interactive(client=client, model="fake", rules=OPEN_RULES,
                     reader=lambda _prompt="": next(lines),
                     out=lambda _s: None, on_event=lambda _e: None)
 
@@ -118,7 +118,7 @@ def _repl(lines, script, **kwargs):
 
     it = iter(lines)
     client = FakeClient(script)
-    run_interactive(client=client, model="fake", rules=_OPEN,
+    run_interactive(client=client, model="fake", rules=OPEN_RULES,
                     reader=lambda _prompt="": next(it),
                     out=lambda _s: None, on_event=lambda _e: None, **kwargs)
     return events_of(sessions_dir())

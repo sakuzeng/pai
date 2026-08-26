@@ -10,6 +10,8 @@ schema，给 bash 加个 flag 参数就会把它发给模型看。工具需要�
 
 from __future__ import annotations
 
+import contextlib
+import signal
 import threading
 from typing import Optional
 
@@ -42,3 +44,41 @@ def set_current(flag: Optional[InterruptFlag]) -> None:
     """装配期注入；传 None = 卸载，换回一个干净的默认标志（测试复位靠它）。"""
     global _CURRENT
     _CURRENT = flag if flag is not None else InterruptFlag()
+
+
+# ---- 「这段作用域里 Ctrl+C 只置标志」的三件套（feature 40 从 modes/interactive 搬来）----
+#
+# 搬家的理由与 `tui/width.py` 那次一样：它被两个消费者共用（交互主循环与
+# 命令/shell 分流），而共用的东西住在其中一个消费者的文件里，本身就是位置错误。
+# 论主题它也该在这儿——它讲的正是「中断怎么工作」，与本模块的 InterruptFlag 同题。
+
+def _install_sigint(flag: InterruptFlag):
+    """干活期间 Ctrl+C 只置标志：抛 KeyboardInterrupt 会把已完成的工作连同栈一起丢掉，
+    而官方对中断的承诺恰恰是「保留迄今完成的工作」。"""
+    try:
+        return signal.signal(signal.SIGINT, lambda *_: flag.set())
+    except ValueError:
+        return None              # 不在主线程（如某些测试宿主）时装不上，退化为不可中断
+
+
+def _restore_sigint(previous) -> None:
+    if previous is not None:
+        try:
+            signal.signal(signal.SIGINT, previous)
+        except ValueError:
+            pass
+
+
+@contextlib.contextmanager
+def _interruptible(flag: InterruptFlag):
+    """在这个作用域里，Ctrl+C 只置标志不抛异常——执行侧（loop / bash 轮询）自己找地方收尾。
+
+    模型轮次与 `!命令` **两条路径都必须进来**：`!` 分支曾经漏在外面，
+    于是 Ctrl+C 打断 `!sleep 300` 会把整个 REPL 带栈掀掉（同 401 炸会话那一类）。
+    """
+    flag.clear()
+    previous = _install_sigint(flag)
+    try:
+        yield
+    finally:
+        _restore_sigint(previous)
