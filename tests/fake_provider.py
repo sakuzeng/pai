@@ -30,7 +30,7 @@ MODEL = "fake-model"
 
 
 def turn(content: str = "", tool_calls: Optional[List[dict]] = None,
-         delay: float = 0.0) -> dict:
+         delay: float = 0.0, prompt_tokens: Optional[int] = None) -> dict:
     """脚本里的一轮 assistant 响应。
 
     `tool_calls` 用人话写：`[{"name": "bash", "arguments": {"command": "ls"}}]`，
@@ -43,15 +43,21 @@ def turn(content: str = "", tool_calls: Optional[List[dict]] = None,
     第一版 e2e 因此假绿（屏幕上两个「用时」= 那条消息其实是当新一轮发的）。
     逐字符停顿是对的做法而不是整轮停顿：TUI 靠**每个事件**顺手 poll 一次键盘，
     整轮停顿期间一个事件都不发，键还是读不到。
+
+    `prompt_tokens` = 这一轮回多少上下文 token。不给就走**随对话增长**的默认值
+    （见 `FakeProvider._usage`）。要精确构造「第几轮跨过压缩阈值」时才按轮钉死。
     """
-    return {"content": content, "tool_calls": tool_calls or [], "delay": delay}
+    item = {"content": content, "tool_calls": tool_calls or [], "delay": delay}
+    if prompt_tokens is not None:
+        item["prompt_tokens"] = prompt_tokens
+    return item
 
 
 def _sse(payload: dict) -> bytes:
     return b"data: " + json.dumps(payload, ensure_ascii=False).encode() + b"\n\n"
 
 
-def _chunks(item: dict) -> Iterable[bytes]:
+def _chunks(item: dict, usage: dict) -> Iterable[bytes]:
     """把一轮响应拆成与真实 provider 同形的 SSE 块。"""
     base = {"id": "chatcmpl-fake", "object": "chat.completion.chunk", "model": MODEL}
 
@@ -81,12 +87,11 @@ def _chunks(item: dict) -> Iterable[bytes]:
                                          "function": {"arguments": piece}}]})
 
     finish = "tool_calls" if item.get("tool_calls") else "stop"
-    usage = {"prompt_tokens": 100, "completion_tokens": 20, "total_tokens": 120}
     yield frame({}, finish=finish, usage=usage)   # usage 在末块且 choices 非空
     yield b"data: [DONE]\n\n"
 
 
-def _blocking(item: dict) -> dict:
+def _blocking(item: dict, usage: dict) -> dict:
     """非流式响应（召回的侧查询走这条）。"""
     message = {"role": "assistant", "content": item.get("content") or ""}
     calls = item.get("tool_calls") or []
@@ -100,8 +105,7 @@ def _blocking(item: dict) -> dict:
     return {"id": "chatcmpl-fake", "object": "chat.completion", "model": MODEL,
             "choices": [{"index": 0, "message": message,
                          "finish_reason": "tool_calls" if calls else "stop"}],
-            "usage": {"prompt_tokens": 100, "completion_tokens": 20,
-                      "total_tokens": 120}}
+            "usage": usage}
 
 
 class FakeProvider:
@@ -112,17 +116,44 @@ class FakeProvider:
     让它 500 会把「脚本没写够」伪装成「pai 崩了」。
     """
 
-    def __init__(self, script: List[dict], *, exhausted: str = "（脚本已用完）") -> None:
+    def __init__(self, script: List[dict], *, exhausted: str = "（脚本已用完）",
+                 prompt_tokens: int = 100, growth: int = 60) -> None:
         self.script = list(script)
         self.exhausted = exhausted
         self.requests: List[dict] = []
+        self._served = 0
+        self._base_prompt_tokens = prompt_tokens
+        self._growth = growth
         self._lock = threading.Lock()
         self._server = None
         self._thread = None
 
     def _next(self) -> dict:
         with self._lock:
-            return self.script.pop(0) if self.script else turn(self.exhausted)
+            self._served += 1
+            item = self.script.pop(0) if self.script else turn(self.exhausted)
+            return item, self._usage(item, self._served - 1)
+
+    def _usage(self, item: dict, served_before: int) -> dict:
+        """`prompt_tokens` 随对话增长——真 provider 就是这样，而这不是「像不像」
+        的问题（feature 38）：
+
+        pai 的锚点簿记的就是这个数，`find_cut_point` 靠**相邻锚的差值**反推切点。
+        此前每轮恒为 100，差值恒为 0，于是无论对话多长、`keep_recent_tokens`
+        设多小，切点永远算成「无可压」——压缩链路在 e2e 里结构上走不到。
+        测量仪器把被测路径堵死了，而且它一声不吭（同
+        K engineering/instruments-lie.md 那四种骗法的第五种）。
+
+        增量取常数而不是按 messages 真算：真算等于在测试基建里重实现一遍
+        `estimate_tokens`，那样它就不再是独立的第二个事实源了。
+        每轮固定长 `growth`（默认 60）已经足够让差值非零、且完全可预测。
+        `turn(prompt_tokens=...)` 按轮钉死，用于精确构造跨阈值的那一轮。
+        """
+        pinned = item.get("prompt_tokens")
+        prompt = (pinned if pinned is not None
+                  else self._base_prompt_tokens + self._growth * served_before)
+        return {"prompt_tokens": prompt, "completion_tokens": 20,
+                "total_tokens": prompt + 20}
 
     # --- 生命周期 -----------------------------------------------------
 
@@ -139,25 +170,47 @@ class FakeProvider:
                 length = int(self.headers.get("Content-Length") or 0)
                 body = json.loads(self.rfile.read(length) or b"{}")
                 provider.requests.append(body)
-                item = provider._next()
+                item, usage = provider._next()
                 if body.get("stream"):
                     self.send_response(200)
                     self.send_header("Content-Type", "text/event-stream")
                     self.send_header("Transfer-Encoding", "chunked")
                     self.end_headers()
-                    for chunk in _chunks(item):
-                        self.wfile.write(b"%x\r\n" % len(chunk) + chunk + b"\r\n")
-                        self.wfile.flush()
-                    self.wfile.write(b"0\r\n\r\n")
+                    try:
+                        for chunk in _chunks(item, usage):
+                            self.wfile.write(b"%x\r\n" % len(chunk) + chunk + b"\r\n")
+                            self.wfile.flush()
+                        self.wfile.write(b"0\r\n\r\n")
+                    except (BrokenPipeError, ConnectionResetError):
+                        # 客户端中途走人（Ctrl+C 掐在流中途）是**正常事件**，
+                        # 真服务器不会因此喷栈。不吞的话中断那条 e2e 每跑一次
+                        # 就往测试输出里倒一段 traceback，看着像失败（feature 38）。
+                        return
                 else:
-                    payload = json.dumps(_blocking(item), ensure_ascii=False).encode()
+                    payload = json.dumps(_blocking(item, usage),
+                                         ensure_ascii=False).encode()
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json")
                     self.send_header("Content-Length", str(len(payload)))
                     self.end_headers()
                     self.wfile.write(payload)
 
-        self._server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        class Quiet(ThreadingHTTPServer):
+            """客户端中途断开不喷栈。
+
+            吞的位置必须在这里而不是 handler 里：socketserver 是在 handler
+            返回之后 flush `wfile` 时才撞上 EPIPE 的，handler 内部的 try 够不着
+            （feature 38 实测——包了 try 之后 traceback 照旧）。
+            只吞连接类错误，别的照常抛：假 provider 自己坏了必须看得见。
+            """
+
+            def handle_error(self, request, client_address):
+                import sys as _sys
+                if not isinstance(_sys.exc_info()[1],
+                                  (BrokenPipeError, ConnectionResetError)):
+                    super().handle_error(request, client_address)
+
+        self._server = Quiet(("127.0.0.1", 0), Handler)
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()
         return self
