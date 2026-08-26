@@ -1,6 +1,17 @@
 # 当前状态快照
 
-最后更新：2026-08-26（feature 40 交付——还三类旧账（用户点名），全程不改行为、
+最后更新：2026-08-26（feature 41 交付——推到「能拿来做日常开发」这一格
+（用户指示，能力补齐不是批清 TODO）。两条：①`read_file` 有了按行的
+`offset`/`limit`（0 哨兵，坐标系与截断文案同源）——本仓库 160 个 `.py` 里
+92 个超过 4000 字符上限，`test_loop.py` 此前要分 21 次读，且只能靠提示语教模型
+走 `sed -n`（成本转嫁给模型）；截断改切在整行边界，文案给出的续读 offset
+逐字接得上。②新工具 `search_files`（内容正则 + 文件名 glob，空 pattern 只按
+文件名找）——纯 Python 不依赖 ripgrep，三件声明齐全，于是走
+`_boundary_fallback` 的「读 → 界内 allow」：界内搜索一次都不问，且不需要用户
+配任何 allow 白名单去换（那条路会绕开目录边界，D#52；本轮的取舍记 D#76）。
+档案 [features/41](features/41-20260826-daily-driver/README.md)。
+1534 passed）。
+同日早些：feature 40 交付——还三类旧账（用户点名），全程不改行为、
 测试数字一个不动（1503 passed）。①共享测试夹具层：跨测试文件的 import 归零
 （此前 5 处），`tests/helpers.py` 与 `tests/trajectories.py` 分别装动作与数据；
 ②拆文件一个不拆一个真拆——`compaction.py` 重估后不拆（392 行，条目自带的参照是
@@ -177,7 +188,7 @@ MCP client（手写 stdio JSON-RPC、`mcp__<server>__<tool>` 桥接、settings �
 | 模块 | 状态 | 说明 |
 |---|---|---|
 | `core/loop.py` | 可用 | agent loop：依赖注入、max_steps 兜底、每条消息落盘、usage 落盘、用量预算熔断、自动压缩触发/熔断；主循环走流式（侧查询刻意不走）、工具按批调度、权限按批前置（D#59）；截断轮次（`finish_reason=="length"`）tool_calls 全判失败回填不执行（2026-08-24，pi 同款判据） |
-| `core/tools/` | 可用 | `@tool` 从签名生成 schema；bash / read_file / write_file / edit_file |
+| `core/tools/` | 可用 | `@tool` 从签名生成 schema；bash / read_file（按行 `offset`/`limit` 分段，截断切在整行边界、文案给出可续读的 offset）/ `search_files`（内容正则 + 文件名 glob；纯 Python 不依赖 ripgrep；三件声明齐全故界内不问、可与 read_file 并发；跳噪音目录与越界软链）/ write_file / edit_file |
 | `core/compaction.py` | 可用 | 见下——阶段 1 主线（触发→切→摘→重建→熔断）全部接进 loop |
 | `modes/once.py` | 可用 | 单次任务，跑完即退出（对应 pi 的 print-mode）。client/model 可注入故可离线测；`context_window()` + `CompactionSettings()` 默认透传；装配走 `modes/assembly.py` |
 | `modes/commands.py` | 可用 | `/命令` 与 `!shell` 模式（feature 40 从 interactive 抽出）：两条主循环共用的那一半。只放「一条命令怎么执行、打什么字」，不放循环本身；跨轮状态一律由调用方传入，不认识 driver 与 app |

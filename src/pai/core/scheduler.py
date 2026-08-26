@@ -17,8 +17,9 @@ from dataclasses import dataclass, field
 from typing import Callable, List
 
 # 并发上限。**这个数从哪来、依赖什么前提**（TODO「给照抄来的常数建一条检查习惯」的落实）：
-# CC 默认 10 且可用 CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY 调；pai 目前唯一的并发安全工具
-# 是 read_file（纯 IO 不吃 CPU），8 是**未实测的经验值**，真实并发度还受限于模型一轮
+# CC 默认 10 且可用 CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY 调；pai 的并发安全工具
+# 是 read_file 与 search_files（都是纯 IO 不吃 CPU；后者 feature 41 加入），
+# 8 是**未实测的经验值**，真实并发度还受限于模型一轮
 # 发几个工具（实测见过 3 个）。**改它之前先拿数字**——没有数字的调参不是 perf。
 MAX_TOOL_WORKERS = 8
 

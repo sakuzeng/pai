@@ -255,8 +255,9 @@ src/pai/
     skills.py           skills：扫描 / 目录渲染 / 正文加载 / 压缩后重挂
     mcp.py              MCP client：stdio JSON-RPC、工具桥接、清洗与预算
     queue.py / interrupt.py     排队消息 / 进程级中断标志
-    tools/              @tool 注册表；bash / read_file / write_file / edit_file /
-                        ask_user_question / remember / skill
+    tools/              @tool 注册表；bash / read_file（可按行 offset/limit 分段）/
+                        search_files（内容正则 + 文件名 glob，参与目录边界）/
+                        write_file / edit_file / ask_user_question / remember / skill
   modes/
     assembly.py         once 与 interactive 共用的装配序列（一份实现）
     once.py             单次任务；interactive.py  REPL 与 TUI；echo.py / statusline.py 输出
