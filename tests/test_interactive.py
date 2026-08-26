@@ -823,3 +823,51 @@ def test_resume_in_the_same_directory_says_nothing_about_cwd(tmp_path, monkeypat
                     out=printed.append, on_event=lambda _: None,
                     no_session=True, resume=str(path))
     assert not any("录制于" in line for line in printed), printed
+
+
+# ---- /memory 要看得见规则（feature 36 Task 6）----
+
+
+def test_memory_lists_path_scoped_rules(tmp_path, monkeypatch):
+    """这层机制的失效方式天然是沉默的：规则没进上下文，模型照样给一个像样的回答。
+    所以规则文件必须能在 `/memory` 里被看见——它首先是个调试工具。"""
+    from pai.modes.interactive import _handle_command
+
+    monkeypatch.chdir(tmp_path)
+    directory = tmp_path / ".pai" / "rules"
+    directory.mkdir(parents=True)
+    (directory / "前端.md").write_text("---\npaths: web/**\n---\n\n正文",
+                                       encoding="utf-8")
+
+    said: list = []
+    _handle_command("/memory", **_command_kwargs(out=said.append))
+    text = "\n".join(said)
+    assert "前端" in text and "web/**" in text
+
+
+def test_memory_marks_which_rules_are_already_injected(tmp_path, monkeypatch):
+    from pai.core.rules import RuleState, scan_rules, select_and_render
+    from pai.modes.interactive import _handle_command
+
+    monkeypatch.chdir(tmp_path)
+    directory = tmp_path / ".pai" / "rules"
+    directory.mkdir(parents=True)
+    (directory / "前端.md").write_text("---\npaths: web/**\n---\n\n正文",
+                                       encoding="utf-8")
+    state = RuleState()
+    select_and_render(["web/a.css"], scan_rules(warn=lambda _s: None), state,
+                      root=tmp_path)
+
+    said: list = []
+    _handle_command("/memory", **_command_kwargs(out=said.append, rule_state=state))
+    assert any("已注入" in line for line in said), said
+
+
+def test_memory_without_rules_says_nothing_about_them(tmp_path, monkeypatch):
+    """反向守卫：没有规则目录时不许多打一节（`/memory` 已经够长了）。"""
+    from pai.modes.interactive import _handle_command
+
+    monkeypatch.chdir(tmp_path)
+    said: list = []
+    _handle_command("/memory", **_command_kwargs(out=said.append))
+    assert not any("规则" in line for line in said), said

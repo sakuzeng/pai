@@ -82,6 +82,7 @@ def run_once(
             compaction=CompactionSettings(keep_recent_tokens=keep_recent_tokens()),
             before_tool_call=asm.gate,
             on_context_rewritten=asm.on_context_rewritten,
+            on_paths_touched=asm.on_paths_touched,
         )
     finally:
         # once 跑完即退：MCP 子进程随 run 收尾（幂等，单个失败不拦下一个）

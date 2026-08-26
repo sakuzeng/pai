@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Callable, List, Optional
+from typing import TYPE_CHECKING, Callable, List, Optional, Sequence
 
 from pai.core.protocols import ChatClient
 from pai.core import interrupt as interrupt_module
@@ -150,6 +150,7 @@ def run_agent(
     system_prompt: Optional[str] = None,
     entry_ledger: Optional[List[Optional[str]]] = None,
     on_context_rewritten: Optional[Callable[[], None]] = None,
+    on_paths_touched: Optional[Callable[[Sequence[str]], str]] = None,
 ) -> str:
     """跑一次 agent 任务，返回最终回答。
 
@@ -411,6 +412,7 @@ def run_agent(
         # 非并发批结构上恒为单个调用，`execute` 对单调用不起线程池——
         # 于是 bash 这类要装信号、要管进程组的工具**永远在主线程跑**。
         filled: set = set()
+        touched: List[str] = []              # 这一步碰过的文件（feature 36）
         try:
           for batch in partition(msg.tool_calls, tools):
             # ① 本批权限**串行判完再派发**（与 CC 的主要偏离，见 features/11 spec）。
@@ -472,6 +474,18 @@ def run_agent(
                 on_event(ToolEnd(tool_call_id=tc.id, name=tc.function.name, args=args,
                                  result=result, is_error=is_error))
 
+            # ④ 这一步碰了哪些文件（feature 36）。路径怎么从 args 里取**下放给
+            #    工具自己声明**（`Tool.get_path`，与「匹配语义下放给工具」同一条
+            #    架构约束）——loop 只负责问一句、收集、交给注入回调，它不认识规则。
+            #    只算真跑过的：被拒绝的调用连跑都没跑，中断的批同理。
+            if on_paths_touched is not None and not flag.is_set():
+                for tc in batch.calls:
+                    if not _allowed(decisions.get(tc.id)):
+                        continue
+                    path = _touched_path(tools, tc)
+                    if path and path not in touched:
+                        touched.append(path)
+
         finally:
             # **配对是硬不变量，异常路径上也得成立。** assistant 已经声明了这些
             # tool_call，缺一条下一轮就是 400（R#11 有真实复现）。正常路径每个都
@@ -490,12 +504,44 @@ def run_agent(
             return finish("interrupted",
                           f"已中断：第 {step} 步的工具执行被终止，已完成的工作保留在会话里。")
 
+        if on_paths_touched is not None and touched:
+            # 与 steering 同一个注入点（所有结果都回填之后）：插在中间会劈开
+            # tool_calls 与它的结果，配对当场断裂。空串不插——塞一条空 user
+            # 消息是白烧 token 且让模型困惑（同 `_inject_instructions`）。
+            # 不发事件：这是框架按路径加载的背景上下文，不是用户插话
+            # （与召回块同款，`_extend` 的 on_event 默认 None 即此意）。
+            scoped = on_paths_touched(tuple(touched))
+            if scoped and scoped.strip():
+                _extend(messages, [{"role": "user", "content": scoped}], session, ledger)
+
         if get_steering_messages:
             # 注入点在**本轮所有工具结果都回填之后**：插在中间会劈开 tool_calls 与
             # 它的结果，配对当场断裂
             _extend(messages, get_steering_messages(), session, ledger, on_event)
 
     return finish("max_steps", f"达到最大步数（{max_steps}），任务可能未完成。")
+
+
+def _touched_path(tools: dict, tc) -> Optional[str]:
+    """这个调用碰的是哪个文件。判不出来就返回 None——判定期拿到脏输入是常态
+    （参数不是 dict、没有 path 键、工具没声明路径语义、getter 自己炸了）。
+
+    `bash` 在这里恒为 None：它不声明 `get_path`（同 D#52「bash 不参与目录边界
+    判定」的判据），所以 `cat 文件` 这条路对规则管线是不可见的。已知豁口，
+    写在 `core/rules.py` 的模块注释里，不假装堵住了。
+    """
+    tool = tools.get(getattr(getattr(tc, "function", None), "name", ""))
+    getter = getattr(tool, "get_path", None)
+    if getter is None:
+        return None
+    try:
+        args = _safe_args(tc.function.arguments)
+        if not isinstance(args, dict):
+            return None
+        path = getter(args)
+    except Exception:      # noqa: BLE001 - 收集路径炸了不该连累这一轮
+        return None
+    return path if isinstance(path, str) and path else None
 
 
 def _instruction_message(text: str) -> dict:
