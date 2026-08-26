@@ -157,3 +157,39 @@ def test_context_window_accepts_valid_values(monkeypatch, clean_env):
     assert context_window() == 65536
     monkeypatch.delenv("PAI_CONTEXT_WINDOW", raising=False)
     assert context_window() == 1_000_000
+
+
+# ---- PAI_KEEP_RECENT_TOKENS：让压缩在真实使用里跑得到（TODO「压缩链路的可验证性」）----
+
+
+def test_keep_recent_tokens_defaults_to_the_settings_default(monkeypatch, clean_env):
+    """不配就是 CompactionSettings 的默认值——这个 env 是**降低门槛**用的口子，
+    不是第二个真相来源。"""
+    from pai.config import keep_recent_tokens
+    from pai.core.compaction import CompactionSettings
+
+    monkeypatch.setattr("pai.config._load_env", lambda: None)
+    monkeypatch.delenv("PAI_KEEP_RECENT_TOKENS", raising=False)
+    assert keep_recent_tokens() == CompactionSettings().keep_recent_tokens
+
+
+def test_keep_recent_tokens_reads_the_env(monkeypatch, clean_env):
+    from pai.config import keep_recent_tokens
+
+    monkeypatch.setattr("pai.config._load_env", lambda: None)
+    monkeypatch.setenv("PAI_KEEP_RECENT_TOKENS", "500")
+    assert keep_recent_tokens() == 500
+
+
+def test_keep_recent_tokens_rejects_bad_values(monkeypatch, clean_env):
+    """与 PAI_CONTEXT_WINDOW 同款报错（02 终审 Minor#7 定的先例）：
+    说清是哪个 env、当前值是什么。非正数一并挡——0 会让切点算法把整段历史都压掉。"""
+    from pai.config import keep_recent_tokens
+
+    monkeypatch.setattr("pai.config._load_env", lambda: None)
+    for bad in ("20k", "0", "-1"):
+        monkeypatch.setenv("PAI_KEEP_RECENT_TOKENS", bad)
+        with pytest.raises(SystemExit) as exc:
+            keep_recent_tokens()
+        assert "PAI_KEEP_RECENT_TOKENS" in str(exc.value)
+        assert bad in str(exc.value)

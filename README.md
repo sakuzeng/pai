@@ -128,9 +128,12 @@ PAI_CONTEXT_WINDOW=1000000              # 可选：上下文窗口（压缩触�
 
 ## 指令与记忆
 
-- 分层指令：`~/.pai/PAI.md`（用户级）→ 项目根到当前目录沿途的 `PAI.md` /
-  `PAI.local.md`（个人，建议 gitignore），支持 `@path` 导入；压缩后自动
-  从磁盘重读重注入，长会话里指令不失效。
+- 分层指令：`~/.pai/` 下的 `AGENTS.md` / `PAI.md`（用户级）→ 项目根到当前
+  目录沿途的 `AGENTS.md` / `PAI.md` / `PAI.local.md`（个人，建议 gitignore），
+  支持 `@path` 导入；同目录内后读到的更靠近对话（`PAI.md` 压得住 `AGENTS.md`）。
+  压缩后自动从磁盘重读重注入，长会话里指令不失效；会话中途改了文件用
+  `/memory reload` 让它下一轮生效。读 `AGENTS.md` 是 2026-08-26 的复议结论：
+  pai 要在别人的项目里跑，那份文件就是那个项目写给 agent 的规矩。
 - 自动记忆：模型用 `remember` 工具一事一文件写进
   `~/.pai/projects/<项目>/memory/`，索引自动重建；每轮一次侧查询按当前任务
   召回 ≤5 篇注入（失败会明说，连续失败自动停用）。
@@ -169,7 +172,7 @@ pai 只写用户目录，不碰你的项目目录（布局对齐 Claude Code）�
 ```
 ~/.pai/
   .env                     可选：任何目录都生效的环境变量
-  PAI.md                   可选：用户级指令
+  AGENTS.md / PAI.md       可选：用户级指令（两个都读，PAI.md 更靠近对话）
   settings.json            可选：用户级设置（见上）
   skills/                  用户级 skills
   history/<cwd 哈希>        REPL 输入历史（按工作目录分）

@@ -699,3 +699,20 @@ def test_once_stays_silent_when_no_default_mode_configured(tmp_path, monkeypatch
     run_once("x", client=FakeClient([{"content": "done"}]), model="fake",
              no_session=True, on_event=lambda _: None)
     assert "defaultMode" not in capsys.readouterr().out
+
+
+def test_once_wires_keep_recent_tokens_from_the_env(monkeypatch, tmp_path):
+    """`PAI_KEEP_RECENT_TOKENS` 装配期要真传到 loop——不接线的话这个 env 就是个摆设，
+    而它存在的全部理由就是让压缩在真实使用里跑得到（TODO「压缩链路的可验证性」）。"""
+    captured: dict = {}
+
+    def fake_run_agent(*args, **kwargs):
+        captured.update(kwargs)
+        return "ok"
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("pai.modes.once.run_agent", fake_run_agent)
+    monkeypatch.setenv("PAI_KEEP_RECENT_TOKENS", "777")
+    run_once("x", client=FakeClient([{"content": "ok"}]), model="fake",
+             no_session=True, on_event=lambda _: None)
+    assert captured["compaction"].keep_recent_tokens == 777

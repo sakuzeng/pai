@@ -214,6 +214,22 @@ def find_cut_point(
     return max(cut, 1)
 
 
+def keep_recent_shortfall(anchors: Sequence[Anchor], keep_recent_tokens: int) -> int:
+    """还差多少 token，历史才够长到切得动。0 = 差额不是原因（够长了）。
+
+    `find_cut_point` 的门槛是「最新锚与某个更早的锚之间的真实差值 ≥ keep_recent」，
+    所以能拿到的最大差值就是最新锚减最早锚。锚不足两个时一个差值都算不出来，
+    如实返回整个门槛——返回 0 会被读成「够了」。
+
+    存在的理由是 `/compact` 的提示语（TODO「压缩链路的可验证性」）：
+    「无可压」三个字分不清「坏了」与「还没到量」，用户只能猜。
+    """
+    if len(anchors) < 2:
+        return keep_recent_tokens
+    span = anchors[-1].tokens - anchors[0].tokens
+    return max(0, keep_recent_tokens - span)
+
+
 def serialize_conversation(
     messages: Iterable[Mapping[str, object]],
     max_chars: int = MAX_CHARS_PER_FIELD,

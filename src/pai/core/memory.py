@@ -24,6 +24,12 @@ from pai.core import paths as _paths
 
 PROJECT_FILE = "PAI.md"
 LOCAL_FILE = "PAI.local.md"
+# 通用的 agent 规约文件（D#43 复议，2026-08-26 用户拍板）：pai 的立意是在**别人的**
+# 项目里跑，那里的 AGENTS.md 就是该项目写给 agent 的规矩，是最该读的上下文。
+# 原裁决「不读」的理由（「那是给写 pai 的 AI 的规矩」）只在本仓库成立。
+# 排在 PROJECT_FILE 之前：同目录内后读到的更靠近对话，PAI.md 该压得住通用那份。
+# 只翻这一条——CLAUDE.md 等别家入口照旧不读（要用就显式 @ 导入）。
+AGENTS_FILE = "AGENTS.md"
 USER_DIR = ".pai"
 
 MAX_IMPORT_DEPTH = 4                    # 官方数字：最大 4 跳
@@ -54,21 +60,28 @@ def discover(*, cwd: Optional[Path] = None, home: Optional[Path] = None) -> List
     """按加载顺序返回存在的指令文件：用户级 → 根 → … → cwd，同目录内 local 在后。
 
     两个参数都可注入：不注入就只能靠 chdir + 改 HOME 来测，那种测试既慢又互相干扰。
-    cwd **之下**的子目录不收集——官方同款语义，模型要用时自己 read_file。
+
+    cwd **之下**的子目录 pai 彻底不收集。这**不是**官方同款语义（原注释这么写是错的，
+    2026-08-19 逐条对照官方 memory 文档时发现）：官方对子目录的 CLAUDE.md 是
+    **框架懒加载**——启动时发现但不加载，等模型真去读那个目录里的文件时自动注入。
+    也就是说那边仍是「框架主动」，只是延迟到需要时；pai 比它弱一档，是刻意的能力差
+    （懒加载要一条「读文件时检查该目录有无 PAI.md」的管线，且注入时机不确定，
+    与压缩锚点簿有交互）。写成「同款语义」会让人以为行为一致。
     """
     cwd = Path(cwd) if cwd is not None else Path.cwd()
     home = Path(home) if home is not None else Path.home()
 
     found: List[Path] = []
-    user_level = home / USER_DIR / PROJECT_FILE
-    if user_level.is_file():
-        found.append(user_level)
+    for name in (AGENTS_FILE, PROJECT_FILE):
+        user_level = home / USER_DIR / name
+        if user_level.is_file():
+            found.append(user_level)
 
     # 向上收集再反序：官方顺序是从文件系统根向下到 cwd，
     # 于是「越靠近你启动的位置，越晚被读到」——同名指令后者赢
     ancestors = [cwd, *cwd.parents]
     for directory in reversed(ancestors):
-        for name in (PROJECT_FILE, LOCAL_FILE):
+        for name in (AGENTS_FILE, PROJECT_FILE, LOCAL_FILE):
             candidate = directory / name
             if candidate.is_file():
                 found.append(candidate)

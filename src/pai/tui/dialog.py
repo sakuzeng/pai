@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from pai.modes.statusline import display_width, _truncate
+from pai.tui.width import display_width, _truncate
 from pai.tui import theme
 from pai.tui.component import Component
 from pai.tui.keys import Key

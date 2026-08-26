@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Callable, List, Optional
 
 from pai.config import context_window as default_context_window
+from pai.config import keep_recent_tokens as default_keep_recent_tokens
 from pai.config import make_client, model_name, recall_model
 from pai.core.compaction import (
     AnchorBook,
@@ -36,6 +37,7 @@ from pai.core.compaction import (
     compact,
     context_tokens,
     find_cut_point,
+    keep_recent_shortfall,
 )
 from pai.core.events import (
     AgentEnd,
@@ -48,7 +50,7 @@ from pai.core.events import (
 )
 from pai.core import mcp
 from pai.core.interrupt import InterruptFlag, set_current
-from pai.core.loop import build_system_prompt, run_agent
+from pai.core.loop import build_system_prompt, drop_instructions, run_agent
 from pai.core.permissions import (
     DEFAULT_MODE,
     MODE_CYCLE,
@@ -58,6 +60,7 @@ from pai.core.permissions import (
 )
 from pai.core.paths import sessions_dir
 from pai.core.memory import (
+    AGENTS_FILE,
     LOCAL_FILE,
     MEMORY_INDEX,
     PROJECT_FILE,
@@ -99,7 +102,7 @@ HISTORY_BASE = Path.home() / ".pai" / "history"
 HELP = """可用命令：
   /help     这张表
   /status   上下文估算、锚点数、压缩熔断状态
-  /memory   本次加载了哪些指令文件 + 自动记忆目录在哪
+  /memory   本次加载了哪些指令文件 + 自动记忆目录在哪（`/memory reload` 重新读盘）
   /mode     查看/切换权限模式（TUI 里也可按 shift+tab 轮转）
   /permissions  当前生效的权限规则与各自来源
   /compact  手动压缩当前对话
@@ -357,8 +360,20 @@ def run_interactive(
         r_msgs, r_led = build_messages(entries)
         resumed_messages, resumed_ledger = trim_unfinished(r_msgs, r_led)
         parent_id = str(header.get("id") or "")
-        resume_note = (f"↩️ 已恢复会话 {parent_id[:8]}"
-                       f"（{len(resumed_messages)} 条消息，来自 {target.name}）")
+        # 恢复的**只有对话**：权限模式 / 模型 / system prompt / 工作目录边界
+        # 全部取当前环境（24 遗留）。dsh 明确警告「恢复到不同构图的组合是错误」，
+        # pai 此前连警告都没有——最容易咬人的是权限模式（上次在 bypass 里跑的活，
+        # 这次未必），以及换了目录：边界与项目指令都跟着 cwd 走。
+        notes = [f"↩️ 已恢复会话 {parent_id[:8]}"
+                 f"（{len(resumed_messages)} 条消息，来自 {target.name}）",
+                 "   恢复的只有对话，设置不跟着回来：权限模式、模型、"
+                 "system prompt 都按当前环境重新装配。"]
+        recorded_cwd = str(header.get("cwd") or "")
+        # 目录没变就不提——每次都喊等于没喊（同「无失败一个字不提」那条反向守卫）
+        if recorded_cwd and recorded_cwd != str(Path.cwd().absolute()):
+            notes.append(f"   注意：该会话录制于 {recorded_cwd}，"
+                         "当前目录不同——工作目录边界与项目指令都会不一样。")
+        resume_note = "\n".join(notes)
     session = None if no_session else SessionLog(parent_session=parent_id or None)
     # 观测流落盘（feature 17）。**只在这里包一次**:session 整个 REPL 生命周期只建一次,
     # 下游三处 run_agent 调用共用同一个 on_event；`/clear` 只截断 messages 不换会话,
@@ -370,7 +385,8 @@ def run_interactive(
     if trace is not None:
         on_event = compose(on_event, trace)
     context_window = context_window if context_window is not None else default_context_window()
-    compaction = compaction if compaction is not None else CompactionSettings()
+    compaction = compaction if compaction is not None else CompactionSettings(
+        keep_recent_tokens=default_keep_recent_tokens())
     history = history_path if history_path is not None else history_path_for()
 
     messages: List[dict] = []
@@ -413,6 +429,7 @@ def run_interactive(
                    mode=mode_state, asker=asker_ref, rules=rules)
     rules, hooks, tools = asm.rules, asm.hooks, asm.tools
     gate, recall = asm.gate, asm.recall
+    on_context_rewritten = asm.on_context_rewritten
     skills_catalog, instructions = asm.skills_catalog, asm.instructions
     mcp_sessions = asm.mcp_sessions
 
@@ -425,7 +442,7 @@ def run_interactive(
         recall=recall, rules=rules, hooks=hooks, mode_state=mode_state,
         history=history, asker_state=asker_state, asker_ref=asker_ref, trace=trace,
         skills_catalog=skills_catalog, instructions=instructions,
-        event_sink=event_sink,
+        event_sink=event_sink, on_context_rewritten=on_context_rewritten,
     )
     try:
         if _use_tui(reader):
@@ -471,7 +488,8 @@ def run_interactive(
                                           context_window=context_window,
                                           compaction=compaction, before_tool_call=gate,
                                           recall=recall, skills_catalog=skills_catalog,
-                                          instructions=instructions)
+                                          instructions=instructions,
+                                          on_context_rewritten=on_context_rewritten)
                             except KeyboardInterrupt:
                                 out("⛔ 已中断")
                     continue
@@ -479,7 +497,8 @@ def run_interactive(
                                    state=state, tools=tools, client=client, model=model,
                                    compaction=compaction, context_window=context_window,
                                    rules=rules, hooks=hooks, mode_state=mode_state,
-                                   on_event=on_event, session=session, ledger=ledger):
+                                   on_event=on_event, session=session, ledger=ledger,
+                                   on_context_rewritten=on_context_rewritten):
                     break
                 continue
 
@@ -508,7 +527,8 @@ def run_interactive(
                           session=session, on_event=on_event, out=out, max_steps=max_steps,
                           max_total_tokens=max_total_tokens, context_window=context_window,
                           compaction=compaction, before_tool_call=gate, recall=recall,
-                          skills_catalog=skills_catalog, instructions=instructions)
+                          skills_catalog=skills_catalog, instructions=instructions,
+                          on_context_rewritten=on_context_rewritten)
             except (EOFError, KeyboardInterrupt):
                 raise                       # Ctrl+D / Ctrl+C 是正常控制流，不吞
             except Exception as e:          # noqa: BLE001 - REPL 这一层的价值就是「对话留着」
@@ -548,7 +568,8 @@ def _run_turn(task: str, *, client, model, tools, messages, anchors, state, stee
               ledger: Optional[List[Optional[str]]] = None,
               on_queue_change: Optional[Callable[[int], None]] = None,
               skills_catalog: Optional[str] = None,
-              instructions: Optional[Callable[[], str]] = None) -> None:
+              instructions: Optional[Callable[[], str]] = None,
+              on_context_rewritten: Optional[Callable[[], None]] = None) -> None:
     with _interruptible(flag):
         answer = _guarded_run(
             out,
@@ -563,6 +584,7 @@ def _run_turn(task: str, *, client, model, tools, messages, anchors, state, stee
             # visible_tools 可能删过——常量那句「你有这些工具」在这条路上是谎话
             system_prompt=build_system_prompt(tools, skills_catalog=skills_catalog),
             entry_ledger=ledger,
+            on_context_rewritten=on_context_rewritten,
             # 组合 loader（feature 25）：压缩重建后重挂已加载 skills；不传时退回纯记忆
             instructions=instructions if instructions is not None else build_context,
             # 谓词把 `/`、`!` 滤掉且留在队列里——它们是给客户端执行的，
@@ -678,7 +700,8 @@ def _expand_skill_line(line: str, out: Callable[[str], None]) -> Optional[str]:
 def _handle_command(line: str, *, out, messages, anchors, state, tools, client, model,
                     compaction, context_window, rules=None, hooks=(),
                     mode_state=None, on_event=None, session=None,
-                    ledger: Optional[List[Optional[str]]] = None) -> bool:
+                    ledger: Optional[List[Optional[str]]] = None,
+                    on_context_rewritten: Optional[Callable[[], None]] = None) -> bool:
     """返回 True 表示要退出 REPL。"""
     command = line.split()[0]
     if command in ("/exit", "/quit"):
@@ -695,6 +718,10 @@ def _handle_command(line: str, *, out, messages, anchors, state, tools, client, 
         # 不发这个事件的话时间线会把它们画成连贯的一段
         if on_event is not None:
             on_event(ConversationCleared(kept=len(messages)))
+        if on_context_rewritten is not None:
+            # 比压缩更彻底的一次改写：召回的去重表若不跟着清，那几篇记忆
+            # 此后再也不会被选中（10 遗留 6 的第二半边）
+            on_context_rewritten()
         out("🧹 已清空对话（保留 system）")
     elif command == "/status":
         latest = anchors.latest()
@@ -706,6 +733,13 @@ def _handle_command(line: str, *, out, messages, anchors, state, tools, client, 
         out(f"📊 消息 {len(messages)} 条 | 估算 {estimated} token / 窗口 {context_window}"
             f" | 锚点 {len(anchors.entries)} 个 | 压缩：{breaker}")
     elif command == "/memory":
+        if line.split()[1:2] == ["reload"]:
+            # 06 task 4：`_inject_instructions` 认出已有指令消息就直接返回，
+            # 连 loader 都不调——多轮 REPL 只在第一轮读盘。丢掉那条消息，
+            # 下一轮的注入点就会重新读盘（压缩后的重注入走的也是这条路）。
+            dropped = drop_instructions(messages, ledger if ledger is not None else [])
+            out("🔄 指令消息已丢弃，下一轮重新读盘。" if dropped
+                else "🔄 当前上下文里还没有指令消息，下一轮本来就会读盘。")
         _show_memory(out)
     elif command == "/mode":
         _handle_mode(line, out=out, mode_state=mode_state)
@@ -714,7 +748,8 @@ def _handle_command(line: str, *, out, messages, anchors, state, tools, client, 
     elif command == "/compact":
         _manual_compact(messages=messages, anchors=anchors, state=state,
                         client=client, model=model, compaction=compaction, out=out,
-                        on_event=on_event, session=session, ledger=ledger)
+                        on_event=on_event, session=session, ledger=ledger,
+                        on_context_rewritten=on_context_rewritten)
     elif command == "/skill":
         # 只有对话框 handoff 这类没有轮次机器的调用方会走到这里：
         # 列表照常给，「加载并执行」提示去空闲时做
@@ -803,8 +838,8 @@ def _show_memory(out: Callable[[str], None]) -> None:
     第一步永远是确认文件到底有没有被加载——所以列的是路径与行数，不是内容。"""
     files = discover()
     if not files:
-        out(f"📄 没有加载任何指令文件（找的是 {PROJECT_FILE} / {LOCAL_FILE}，"
-            f"从当前目录向上逐级，外加 ~/{USER_DIR}/{PROJECT_FILE}）")
+        out(f"📄 没有加载任何指令文件（找的是 {AGENTS_FILE} / {PROJECT_FILE} / "
+            f"{LOCAL_FILE}，从当前目录向上逐级，外加 ~/{USER_DIR}/ 下的同名文件）")
     else:
         out("📄 已加载的指令文件（按加载顺序，后面的更靠近对话）：")
         for path in files:
@@ -823,14 +858,23 @@ def _show_memory(out: Callable[[str], None]) -> None:
 
 def _manual_compact(*, messages, anchors, state, client, model, compaction, out,
                     on_event=None, session=None,
-                    ledger: Optional[List[Optional[str]]] = None) -> None:
+                    ledger: Optional[List[Optional[str]]] = None,
+                    on_context_rewritten: Optional[Callable[[], None]] = None) -> None:
     cut = find_cut_point(messages, anchors.entries,
                          keep_recent_tokens=compaction.keep_recent_tokens)
     if cut <= 1:
         if len(anchors.entries) < 2:
             out("🗜️ 锚点不足（<2）：真实切点要靠相邻锚的差值反推，先聊两轮再压。")
         else:
-            out("⚠️ 无可压：保留预算已吞下全部历史（或只剩一个超长轮次）。")
+            # 「无可压」分不清「坏了」与「还没到量」，而差额是算得出来的
+            # （TODO「压缩链路的可验证性」：/compact 在真实会话里几乎永远走到这里）
+            short = keep_recent_shortfall(anchors.entries, compaction.keep_recent_tokens)
+            if short:
+                out(f"⚠️ 无可压：还差约 {short} token 才切得动"
+                    f"（保留门槛 {compaction.keep_recent_tokens}）。"
+                    "继续聊几轮，或用 PAI_KEEP_RECENT_TOKENS 把门槛调小。")
+            else:
+                out("⚠️ 无可压：历史够长，但可切的锚点都落在开头（或只剩一个超长轮次）。")
         return
     before = len(messages)
     # firstKeptEntryId 要在 messages 被替换之前取（cut 是旧列表下标，feature 24）
@@ -847,6 +891,8 @@ def _manual_compact(*, messages, anchors, state, client, model, compaction, out,
         return
     anchors.reset()                        # 历史被改写，旧锚全部作废（D#18/32）
     state.awaiting_verify = True           # 成败仍只认压缩后首次真实 usage（D#34）
+    if on_context_rewritten is not None:
+        on_context_rewritten()             # 与自动压缩同一条通道（10 遗留 6）
     # 落盘与台账重建与自动压缩同款（feature 24）：/compact 此前根本不落盘，
     # resume 这类读盘重建的消费者一到就露馅
     comp_id = None
@@ -871,7 +917,7 @@ def _run_tui(*, out, client, model, tools, messages, ledger, anchors, state, ste
              flag, session, max_steps, max_total_tokens, context_window, compaction,
              gate, recall, rules, hooks, mode_state, history, asker_state, asker_ref,
              trace=None, skills_catalog=None, instructions=None,
-             event_sink=None) -> None:
+             event_sink=None, on_context_rewritten=None) -> None:
     """scrollback 在上、dock 在下。
 
     与纯 REPL 的**唯一**语义差别在输入层：谁拥有键盘由 `InputArbiter` 算出来，
@@ -954,6 +1000,7 @@ def _run_tui(*, out, client, model, tools, messages, ledger, anchors, state, ste
                                           client=client, model=model, compaction=compaction,
                                           context_window=context_window, rules=rules,
                                           hooks=hooks, mode_state=mode_state, session=session,
+                                          on_context_rewritten=on_context_rewritten,
                                           flag=flag, app=app, steering=steering, skills_catalog=skills_catalog, on_event=on_event)
                 if quit_:
                     # `/exit`：与 REPL asker 的同款逃生口对齐（R4#15）——
@@ -1066,6 +1113,7 @@ def _run_tui(*, out, client, model, tools, messages, ledger, anchors, state, ste
                                          model=model, compaction=compaction,
                                          context_window=context_window, rules=rules,
                                          hooks=hooks, mode_state=mode_state,
+                                         on_context_rewritten=on_context_rewritten,
                                          session=session, flag=flag, app=app, steering=steering,
                                          skills_catalog=skills_catalog, on_event=on_event):
                         return
@@ -1085,6 +1133,7 @@ def _run_tui(*, out, client, model, tools, messages, ledger, anchors, state, ste
                                   before_tool_call=gate, recall=recall,
                                   skills_catalog=skills_catalog,
                                   instructions=instructions,
+                                  on_context_rewritten=on_context_rewritten,
                                   # 补 2：本轮内 drain 掉多少，dock 的待决数就跟着减多少
                                   on_queue_change=app.dock.set_queued)
 
@@ -1097,6 +1146,7 @@ def _run_tui(*, out, client, model, tools, messages, ledger, anchors, state, ste
                                 model=model, compaction=compaction,
                                 context_window=context_window, rules=rules, hooks=hooks,
                                 mode_state=mode_state, session=session, flag=flag,
+                                on_context_rewritten=on_context_rewritten,
                                 app=app, steering=steering, skills_catalog=skills_catalog, on_event=on_event):
                             exiting["v"] = True
                         return exiting["v"]
@@ -1168,7 +1218,8 @@ def _dispatch_command(line: str, *, commit, app, session, flag, on_event, **kw) 
                            context_window=kw["context_window"], rules=kw["rules"],
                            hooks=kw["hooks"], mode_state=kw["mode_state"],
                            on_event=on_event, session=session,
-                           ledger=kw.get("ledger"))
+                           ledger=kw.get("ledger"),
+                           on_context_rewritten=kw.get("on_context_rewritten"))
 
 
 MAX_QUEUE_ROUNDS = 8

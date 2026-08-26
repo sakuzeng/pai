@@ -35,6 +35,14 @@ MAX_RECALL_FAILURES = 3
 # 调高不额外花钱，调低却会静默丢结果。量测脚本 pai_playground/smoke/recall_max_tokens.py。
 RECALL_MAX_TOKENS = 4096
 
+# 单篇记忆注入上限。**这个数从哪来、依赖什么前提**：取的是 `read_file` 的
+# `MAX_OUTPUT_CHARS`（4000），理由是「一段进上下文的外部文本」在两条路上该同价——
+# 而不是因为量过。此前召回这条路一个上限都没有：`MAX_RECALL_FILES = 5` 只限篇数，
+# 正文整篇读进来，于是写一篇特别长的记忆，召回一次就把它整个顶进上下文，
+# 而预算估算的尾部根本没算它（2026-08-19 走读发现，PAI-04 诚实边界已记）。
+# 中文按字符截偏严（一个汉字 ~0.6 token），与 25 遗留 3 的换算校准同批再定。
+MAX_RECALL_CHARS = 4000
+
 SELECTOR_PROMPT = f"""你在为一个编码 agent 挑选可能相关的长期记忆。
 
 规则：
@@ -207,7 +215,13 @@ def recall_block(headers: Sequence[MemoryHeader], now: Optional[float] = None) -
             body = h.path.read_text(encoding="utf-8")
         except OSError:
             continue                        # 选中之后文件没了：跳过，不炸
-        parts.append(f"## {h.name}（{memory_age(h.mtime, now)}）\n\n{body.strip()}")
+        text = body.strip()
+        if len(text) > MAX_RECALL_CHARS:
+            # 截断要说出来：模型看到的是残篇，不说的话它会拿半截内容当全文用
+            text = (text[:MAX_RECALL_CHARS]
+                    + f"\n\n[... 截断：以上是前 {MAX_RECALL_CHARS} 字符，"
+                      f"全文共 {len(text)} 字符，需要全文就 read_file 读 {h.path}]")
+        parts.append(f"## {h.name}（{memory_age(h.mtime, now)}）\n\n{text}")
         note = freshness_note(h.mtime, now)
         if note:
             parts.append(note)

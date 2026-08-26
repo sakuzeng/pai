@@ -12,7 +12,8 @@ from __future__ import annotations
 from typing import Callable, Optional
 
 from pai.core.protocols import ChatClient
-from pai.config import context_window, make_client, model_name, recall_model
+from pai.config import (context_window, keep_recent_tokens, make_client,
+                        model_name, recall_model)
 from pai.core import mcp
 from pai.core.compaction import CompactionSettings
 from pai.core.loop import build_system_prompt, run_agent
@@ -78,8 +79,9 @@ def run_once(
             instructions=asm.instructions,
             recall=asm.recall,
             context_window=context_window(),
-            compaction=CompactionSettings(),
+            compaction=CompactionSettings(keep_recent_tokens=keep_recent_tokens()),
             before_tool_call=asm.gate,
+            on_context_rewritten=asm.on_context_rewritten,
         )
     finally:
         # once 跑完即退：MCP 子进程随 run 收尾（幂等，单个失败不拦下一个）

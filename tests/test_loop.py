@@ -1956,3 +1956,86 @@ def test_something_without_chat_is_not_a_chat_client():
         pass
 
     assert not isinstance(NotAClient(), ChatClient)
+
+
+# ---------- 压缩改写了上下文，要告诉外面（10 遗留 6）----------
+
+
+def test_compaction_notifies_that_the_context_was_rewritten(tmp_path, monkeypatch):
+    """压缩把一段历史换成了摘要——任何「记着自己已经放过什么进上下文」的东西
+    （召回的 `surfaced` 是第一个）都作废了。loop 不认识召回，所以给一个注入回调。
+    只在**真压成了**之后调：暂缓与失败都没有改写上下文。
+    """
+    monkeypatch.chdir(tmp_path)
+    from pai.core.compaction import CompactionSettings
+    from pai.core.loop import run_agent
+    from pai.core.tools import get_tools
+
+    calls: list = []
+    tool_turn = {"tool_calls": [("bash", json.dumps({"command": "true"}))]}
+    script = [
+        {**tool_turn, "usage": _usage(100)},
+        {**tool_turn, "usage": _usage(850)},
+        {"content": "这是摘要"},
+        {"content": "done"},
+    ]
+    answer = run_agent("x", client=FakeClient(script), model="fake", tools=get_tools(),
+                       context_window=1000, max_steps=6,
+                       compaction=CompactionSettings(reserve_tokens=200,
+                                                     keep_recent_tokens=1),
+                       on_context_rewritten=lambda: calls.append("rewritten"),
+                       on_event=lambda _: None)
+    assert answer == "done"
+    assert calls == ["rewritten"], "压成了就该通知，且只通知一次"
+
+
+def test_no_notification_when_there_is_nothing_to_compact(tmp_path, monkeypatch):
+    """反向守卫：没压成（锚不足 / 无可压）时一个字都不该说——
+    白白清掉召回去重表就是白花一次注入的钱。"""
+    monkeypatch.chdir(tmp_path)
+    from pai.core.compaction import CompactionSettings
+    from pai.core.loop import run_agent
+    from pai.core.tools import get_tools
+
+    calls: list = []
+    script = [
+        {"tool_calls": [("bash", json.dumps({"command": "true"}))], "usage": _usage(100)},
+        {"tool_calls": [("bash", json.dumps({"command": "true"}))], "usage": _usage(850)},
+        {"content": "done"},
+    ]
+    run_agent("x", client=FakeClient(script), model="fake", tools=get_tools(),
+              context_window=1000,
+              compaction=CompactionSettings(reserve_tokens=200,
+                                            keep_recent_tokens=1_000_000),
+              on_context_rewritten=lambda: calls.append("rewritten"),
+              on_event=lambda _: None)
+    assert calls == []
+
+
+# ---------- 指令消息可丢弃：/memory reload 的地基（06 task 4）----------
+
+
+def test_drop_instructions_removes_the_message_and_keeps_the_ledger_aligned():
+    """`_inject_instructions` 认出已有指令消息就直接返回、连 loader 都不调——
+    所以多轮 REPL 只在第一轮读盘，改了 PAI.md 要等一次压缩或重启。
+    丢掉那条消息就够了：下一轮的注入点会重新读盘。
+    台账必须同步删，否则下次压缩 `ledger[cut]` 指错条目（feature 24 那条坑）。"""
+    from pai.core.loop import INSTRUCTION_HEADER, drop_instructions
+
+    messages = [{"role": "system", "content": "s"},
+                {"role": "user", "content": f"{INSTRUCTION_HEADER}\n\n旧内容"},
+                {"role": "user", "content": "问题"}]
+    ledger = ["id-sys", "id-instr", "id-q"]
+
+    assert drop_instructions(messages, ledger) is True
+    assert [m["content"] for m in messages] == ["s", "问题"]
+    assert ledger == ["id-sys", "id-q"]
+
+
+def test_drop_instructions_is_a_no_op_when_there_is_none():
+    from pai.core.loop import drop_instructions
+
+    messages = [{"role": "system", "content": "s"}]
+    ledger = ["id-sys"]
+    assert drop_instructions(messages, ledger) is False
+    assert len(messages) == 1 and len(ledger) == 1

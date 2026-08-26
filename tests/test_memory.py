@@ -42,7 +42,9 @@ def test_user_level_comes_first(tmp_path):
 
 
 def test_subdirectory_files_are_not_loaded(tmp_path):
-    """cwd 之下的文件不进启动上下文——模型要用时自己 read_file（官方同款语义）。"""
+    """cwd 之下的文件不进启动上下文。注意这不是官方同款语义：官方是框架懒加载
+    （读到那个目录里的文件时才注入），pai 是彻底不收集——刻意的能力差，
+    理由见 `discover` 的 docstring。"""
     _write(tmp_path / "PAI.md", "根")
     _write(tmp_path / "sub" / "PAI.md", "子目录")
 
@@ -54,14 +56,44 @@ def test_missing_files_are_skipped_silently(tmp_path):
     assert memory.discover(cwd=tmp_path, home=tmp_path / "home") == []
 
 
-def test_agents_md_is_not_read(tmp_path):
-    """问 2 的裁决要被钉死：AGENTS.md 写的是「给写 pai 的 AI 的规矩」，
-    pai 自己当 agent 跑时读到会把开发规约当成任务指令。要用它请显式 @AGENTS.md 导入。
+def test_agents_md_is_read(tmp_path):
+    """D#43 复议（06 复盘质疑三，用户 2026-08-26 拍板）：原裁决「不读 AGENTS.md」
+    的理由是「那是给写 pai 的 AI 的规矩」——那条理由只在**本仓库**成立。
+    pai 的立意是在别人的项目里跑，那里的 AGENTS.md 恰恰是该项目写给 agent 的规矩。
     """
-    _write(tmp_path / "AGENTS.md", "先写测试跑红再写实现")
+    _write(tmp_path / "AGENTS.md", "别人项目写给 agent 的规矩")
+
+    found = memory.discover(cwd=tmp_path, home=tmp_path / "home")
+    assert [p.name for p in found] == ["AGENTS.md"]
+
+
+def test_pai_md_comes_after_agents_md_in_the_same_dir(tmp_path):
+    """同目录内的顺序 = 优先级：后读到的更靠近对话。PAI.md 是 pai 自己的入口，
+    它该压得住通用的 AGENTS.md（与 local 排在 plain 之后同一条规矩）。"""
+    _write(tmp_path / "AGENTS.md", "通用")
+    _write(tmp_path / "PAI.md", "pai 专用")
+    _write(tmp_path / "PAI.local.md", "私人")
+
+    found = memory.discover(cwd=tmp_path, home=tmp_path / "home")
+    assert [p.name for p in found] == ["AGENTS.md", "PAI.md", "PAI.local.md"]
+
+
+def test_other_agents_entry_files_are_still_not_read(tmp_path):
+    """复议只翻了 AGENTS.md 这一条：CLAUDE.md 是另一家的入口文件，照旧不读
+    （要用它就显式 @CLAUDE.md 导入）。"""
     _write(tmp_path / "CLAUDE.md", "别的 agent 的入口")
 
     assert memory.discover(cwd=tmp_path, home=tmp_path / "home") == []
+
+
+def test_user_level_agents_md_is_read_too(tmp_path):
+    """用户级目录同款：~/.pai/AGENTS.md 也算数，排在 ~/.pai/PAI.md 之前。"""
+    home = tmp_path / "home"
+    _write(home / ".pai" / "AGENTS.md", "用户级通用")
+    _write(home / ".pai" / "PAI.md", "用户级 pai")
+
+    found = memory.discover(cwd=tmp_path, home=home)
+    assert [p.name for p in found] == ["AGENTS.md", "PAI.md"]
 
 
 # ---- task 2：@path 导入展开 ----

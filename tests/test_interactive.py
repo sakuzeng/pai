@@ -4,6 +4,7 @@
 「输入源可注入」是这一层能被测的唯一原因，也是 modes/ 层依赖注入约束的延续。
 """
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -53,13 +54,15 @@ def test_ctrl_d_ends_loop():
     assert "再见" in printed
 
 
-def test_conversation_persists_across_turns():
+def test_conversation_persists_across_turns(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)      # 别捡到仓库自己的 AGENTS.md（D#43 复议后它算指令文件）
     client, _ = _run(["第一问", "第二问"], [{"content": "一"}, {"content": "二"}])
     second = client.requests[1]["messages"]
     assert [m["content"] for m in second][1:] == ["第一问", "一", "第二问"]
 
 
-def test_slash_clear_keeps_system_and_drops_history():
+def test_slash_clear_keeps_system_and_drops_history(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)      # 同上：仓库根的 AGENTS.md 会变成一条指令消息
     client, printed = _run(["第一问", "/clear", "第二问"],
                            [{"content": "一"}, {"content": "二"}])
     second = client.requests[1]["messages"]
@@ -555,3 +558,268 @@ def test_slash_permissions_tells_the_whole_truth():
     assert ".git/hooks" in printed
     assert ".ssh" in printed
     assert "settings.json" in printed
+
+
+def test_repl_wires_keep_recent_tokens_from_the_env(monkeypatch):
+    """REPL 侧同款接线（once 那条在 test_modes）。两处都要：装配序列虽已收敛进
+    assembly，`CompactionSettings` 仍是各自构造的。"""
+    captured: dict = {}
+
+    def fake_run_agent(*args, **kwargs):
+        captured.update(kwargs)
+        return "ok"
+
+    monkeypatch.setattr("pai.modes.interactive.run_agent", fake_run_agent)
+    monkeypatch.setenv("PAI_KEEP_RECENT_TOKENS", "888")
+    _run(["问一句"], [{"content": "ok"}])
+    assert captured["compaction"].keep_recent_tokens == 888
+
+
+# ---- /compact 的「无可压」要可操作（TODO「压缩链路的可验证性」第二条）----
+
+
+def test_manual_compact_says_how_far_short_the_history_is():
+    """「无可压」三个字分不清「坏了」与「还没到量」。用户按 `/compact` 时
+    唯一想知道的是「那我还要聊多久」——差额是算得出来的，就该说出来。"""
+    from pai.core.compaction import AnchorBook, CompactionState
+    from pai.modes.interactive import _manual_compact
+
+    anchors = AnchorBook()
+    anchors.record(2, 1000)
+    anchors.record(4, 1800)          # 可用差值只有 800，门槛 20000
+
+    said: list = []
+    _manual_compact(messages=[{"role": "system", "content": "s"}],
+                    anchors=anchors, state=CompactionState(),
+                    client=None, model="fake",
+                    compaction=CompactionSettings(keep_recent_tokens=20000),
+                    out=said.append)
+    text = "\n".join(said)
+    assert "19200" in text, f"要说清还差多少 token，实际：{said}"
+    assert "PAI_KEEP_RECENT_TOKENS" in text, "还要给出第二条出路：把门槛调小"
+
+
+def test_manual_compact_without_anchors_does_not_pretend_to_know_the_gap():
+    """锚不足两个时一个差值都算不出来，不许拿门槛冒充「还差这么多」。"""
+    from pai.core.compaction import AnchorBook, CompactionState
+    from pai.modes.interactive import _manual_compact
+
+    said: list = []
+    _manual_compact(messages=[{"role": "system", "content": "s"}],
+                    anchors=AnchorBook(), state=CompactionState(),
+                    client=None, model="fake",
+                    compaction=CompactionSettings(keep_recent_tokens=20000),
+                    out=said.append)
+    text = "\n".join(said)
+    assert "锚点不足" in text
+    assert "还差" not in text, f"算不出来就别说，实际：{said}"
+
+
+# ---- /clear 与 /compact 同样改写上下文（10 遗留 6 的第二半边，2026-08-26 复核发现）----
+
+
+def _command_kwargs(**overrides):
+    from pai.core.compaction import AnchorBook, CompactionState
+
+    kwargs = dict(out=lambda _s="": None,
+                  messages=[{"role": "system", "content": "s"},
+                            {"role": "user", "content": "一"}],
+                  anchors=AnchorBook(), state=CompactionState(), tools={},
+                  client=None, model="fake", compaction=CompactionSettings(),
+                  context_window=1000)
+    kwargs.update(overrides)
+    return kwargs
+
+
+def test_clear_reports_that_the_context_was_rewritten():
+    """`/clear` 把整段对话删了——比压缩更彻底。召回的 `surfaced` 若不跟着清，
+    那几篇记忆此后再也不会被选中，而且完全静默。"""
+    from pai.modes.interactive import _handle_command
+
+    calls: list = []
+    _handle_command("/clear", **_command_kwargs(
+        on_context_rewritten=lambda: calls.append("rewritten")))
+    assert calls == ["rewritten"]
+
+
+def test_other_commands_do_not_report_a_rewrite():
+    """反向守卫：`/status` 不动上下文，不许顺手把去重表清了。"""
+    from pai.modes.interactive import _handle_command
+
+    calls: list = []
+    _handle_command("/status", **_command_kwargs(
+        on_context_rewritten=lambda: calls.append("rewritten")))
+    assert calls == []
+
+
+def test_manual_compact_reports_that_the_context_was_rewritten():
+    from pai.core.compaction import AnchorBook, CompactionState
+    from pai.modes.interactive import _manual_compact
+
+    anchors = AnchorBook()
+    anchors.record(2, 100)
+    anchors.record(4, 900)
+    calls: list = []
+    messages = [{"role": "system", "content": "s"}]
+    messages += [{"role": "user", "content": f"第 {i} 句"} for i in range(6)]
+    _manual_compact(messages=messages, anchors=anchors, state=CompactionState(),
+                    client=FakeClient([{"content": "摘要"}]), model="fake",
+                    compaction=CompactionSettings(keep_recent_tokens=1),
+                    out=lambda _s="": None,
+                    on_context_rewritten=lambda: calls.append("rewritten"))
+    assert calls == ["rewritten"]
+
+
+def test_manual_compact_that_fails_reports_nothing():
+    """失败的压缩没有改写任何东西（历史原样留着），不该清去重表。"""
+    from pai.core.compaction import AnchorBook, CompactionState
+    from pai.modes.interactive import _manual_compact
+
+    class Exploding:
+        def __init__(self):
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(create=self._boom))
+
+        def _boom(self, **kwargs):
+            raise RuntimeError("429 Too Many Requests")
+
+    anchors = AnchorBook()
+    anchors.record(2, 100)
+    anchors.record(4, 900)
+    calls: list = []
+    messages = [{"role": "system", "content": "s"}]
+    messages += [{"role": "user", "content": f"第 {i} 句"} for i in range(6)]
+    _manual_compact(messages=messages, anchors=anchors, state=CompactionState(),
+                    client=Exploding(), model="fake",
+                    compaction=CompactionSettings(keep_recent_tokens=1),
+                    out=lambda _s="": None,
+                    on_context_rewritten=lambda: calls.append("rewritten"))
+    assert calls == []
+
+
+# ---- /memory reload：REPL 中途改 PAI.md 要能生效（06 task 4）----
+
+
+def test_memory_reload_makes_a_changed_instruction_file_take_effect(tmp_path, monkeypatch):
+    """症状（06 task 4 登记）：`_inject_instructions` 认出已有指令消息就直接返回，
+    连 loader 都不调——于是多轮 REPL 只在第一轮读盘，改了 PAI.md 得等一次压缩或重启。
+    这条测试跑的是真实症状：第一轮之后改文件，`/memory reload`，第三轮该看见新内容。
+    """
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "PAI.md").write_text("旧指令甲", encoding="utf-8")
+
+    lines = ["一", "/memory reload", "二"]
+
+    def reader(prompt=""):
+        if not lines:
+            raise EOFError
+        line = lines.pop(0)
+        if line == "/memory reload":         # 第一轮已经跑完了，此刻才改盘上的文件
+            (tmp_path / "PAI.md").write_text("新指令乙", encoding="utf-8")
+        return line
+
+    client = FakeClient([{"content": "答一"}, {"content": "答二"}])
+    printed: list = []
+    run_interactive(client=client, model="fake", reader=reader, rules=_OPEN,
+                    out=printed.append, on_event=lambda _: None, no_session=True)
+
+    first = json.dumps(client.requests[0]["messages"], ensure_ascii=False)
+    second = json.dumps(client.requests[1]["messages"], ensure_ascii=False)
+    assert "旧指令甲" in first
+    assert "新指令乙" in second, "reload 之后必须重新读盘"
+    assert "旧指令甲" not in second, "旧的那条要被丢掉，不能两份并存"
+
+
+def test_memory_reload_says_what_it_did():
+    from pai.core.loop import INSTRUCTION_HEADER
+    from pai.modes.interactive import _handle_command
+
+    messages = [{"role": "system", "content": "s"},
+                {"role": "user", "content": f"{INSTRUCTION_HEADER}\n\n旧"}]
+    said: list = []
+    _handle_command("/memory reload", **_command_kwargs(
+        out=said.append, messages=messages, ledger=[None, None]))
+    assert len(messages) == 1, "指令消息要被丢掉"
+    assert any("下一轮" in line for line in said), f"要说清什么时候生效，实际：{said}"
+
+
+def test_plain_memory_still_lists_files():
+    """反向守卫：不带 reload 的 `/memory` 一个字都不该动上下文。"""
+    from pai.core.loop import INSTRUCTION_HEADER
+    from pai.modes.interactive import _handle_command
+
+    messages = [{"role": "system", "content": "s"},
+                {"role": "user", "content": f"{INSTRUCTION_HEADER}\n\n旧"}]
+    said: list = []
+    _handle_command("/memory", **_command_kwargs(out=said.append, messages=messages,
+                                                 ledger=[None, None]))
+    assert len(messages) == 2
+    assert any("记忆目录" in line for line in said)
+
+
+# ---- resume 只恢复对话不恢复设置，得说出来（24 遗留）----
+
+
+def _write_session(tmp_path, cwd="/somewhere/else"):
+    import json as _json
+    from pai.core.session import SessionLog
+
+    directory = tmp_path / "sessions"
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / "20260826-120000-abcdef12.jsonl"
+    lines = [
+        {"type": "session", "version": 1, "id": "abcdef1234", "timestamp": "t",
+         "cwd": cwd},
+        {"type": "message", "id": "u", "parentId": None, "ts": 1.0,
+         "message": {"role": "user", "content": "上次的问题"}},
+        {"type": "message", "id": "a", "parentId": "u", "ts": 2.0,
+         "message": {"role": "assistant", "content": "上次的回答"}},
+    ]
+    path.write_text("\n".join(_json.dumps(l, ensure_ascii=False) for l in lines) + "\n",
+                    encoding="utf-8")
+    assert SessionLog                                  # 只为说明格式出处
+    return path
+
+
+def test_resume_says_that_settings_are_not_restored(tmp_path, monkeypatch):
+    """dsh 明确警告「恢复到不同构图的组合是错误」，pai 连警告都没有（24 遗留）。
+    权限模式 / 模型 / system prompt 全取当前环境，而对话是旧的——
+    最容易咬人的是权限模式（上次在 bypass 里跑的活，这次未必）。"""
+    monkeypatch.chdir(tmp_path)
+    path = _write_session(tmp_path)
+
+    printed: list = []
+    run_interactive(client=FakeClient([]), model="fake",
+                    reader=_reader([EOFError]), rules=_OPEN,
+                    out=printed.append, on_event=lambda _: None,
+                    no_session=True, resume=str(path))
+    text = "\n".join(printed)
+    assert "已恢复会话" in text
+    assert "设置" in text and "权限模式" in text, f"要说清恢复的只是对话，实际：{printed}"
+
+
+def test_resume_points_out_a_different_working_directory(tmp_path, monkeypatch):
+    """header 里存着录制时的 cwd（feature 24 的格式给了这个事实）。
+    换了目录才是真正会咬人的那一档：工作目录边界与项目指令都跟着 cwd 走。"""
+    monkeypatch.chdir(tmp_path)
+    path = _write_session(tmp_path, cwd="/一个/别的/目录")
+
+    printed: list = []
+    run_interactive(client=FakeClient([]), model="fake",
+                    reader=_reader([EOFError]), rules=_OPEN,
+                    out=printed.append, on_event=lambda _: None,
+                    no_session=True, resume=str(path))
+    assert any("/一个/别的/目录" in line for line in printed), printed
+
+
+def test_resume_in_the_same_directory_says_nothing_about_cwd(tmp_path, monkeypatch):
+    """反向守卫：目录没变就别提——每次都喊等于没喊。"""
+    monkeypatch.chdir(tmp_path)
+    path = _write_session(tmp_path, cwd=str(Path(tmp_path).absolute()))
+
+    printed: list = []
+    run_interactive(client=FakeClient([]), model="fake",
+                    reader=_reader([EOFError]), rules=_OPEN,
+                    out=printed.append, on_event=lambda _: None,
+                    no_session=True, resume=str(path))
+    assert not any("录制于" in line for line in printed), printed

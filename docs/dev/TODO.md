@@ -281,10 +281,14 @@
 
 ### feature 32（evals）遗留 —— 2026-08-24
 
-- [ ] 任务文本启发式取「首条非空 user 消息」（32 遗留 1）：录制会话若带
-      指令消息（PAI.md 注入），`derive_replay` 会误取指令当任务。铸造夹具
-      无指令故本轮无害；修法是识别指令消息头部（与 26 复盘「指令消息识别
-      靠头部字符串」同一处脆弱点，动哪个先动哪个）。
+- [x] ~~任务文本启发式取「首条非空 user 消息」（32 遗留 1）：录制会话若带
+      指令消息（PAI.md 注入），`derive_replay` 会误取指令当任务。修法是识别
+      指令消息头部（与 26 复盘「指令消息识别靠头部字符串」同一处脆弱点）。~~
+      已修 2026-08-26（feature 35，修法即条目既定）：跳过框架注入的两种 user
+      消息——指令消息（`INSTRUCTION_HEADER` 前缀）与召回块（`<system-reminder>`
+      前缀），两者都排在真任务前面，所以「首条非空」必然取到它们。
+      全是框架消息时报错而不是硬凑一个任务出来。脆弱点照旧记在代码旁：
+      消息没有身份字段，只能看内容开头，改哪个都该顺手改另一个。
 - [ ] 回放判分无声明式「期望产物」描述（32 遗留 2）：逐夹具手写断言，
       夹具多了会重复。等第二三份夹具看形状再抽，别预防性设计。
 - [ ] 评测单场景（32 遗留 3）：回放 1 夹具 + 真模型 1 任务。扩任务集与
@@ -714,16 +718,16 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
       ⚠️ 动工第一步是实测：确认 DeepSeek 在 OpenAI 兼容协议下回的是
       `finish_reason == "length"`（未实测，别照 Anthropic 的字段名写）。
 
-- [ ] 注入进 messages 的消息不发事件，界面看不见（出处：
-      K [loop/cc-loop.md](../../knowledge/loop/cc-loop.md) 第四节）：
-      `loop.py:395-399` 的 `_extend` 只 append 进 `messages` 与 `session`，不发任何事件，
-      TUI 完全不知道有东西被注入——用户看不见自己刚插的话进了上下文。
-      CC 踩过同款并修了：`utils/messages.ts` 的 `case 'queued_command'` 曾硬编码
-      `isMeta:true`，把用户自己打的字从 transcript 里隐藏了（注释原话：
-      *"Previously this hardcoded isMeta:true, which hid user-typed messages"*）。
-      连带一条：`dock.set_queued` 只在 `interactive.py:766`/`:831` 被调用，
-      `run_agent` 内部 drain 掉队列后没人更新，队列区会一直显示旧数字。
-      随 feature 18 一并处理（已登记进该 feature 的补充项）。
+- [x] ~~注入进 messages 的消息不发事件，界面看不见（出处：
+      K [loop/cc-loop.md](../../knowledge/loop/cc-loop.md) 第四节）：`_extend` 只
+      append 进 `messages` 与 `session`，TUI 完全不知道有东西被注入；连带
+      `dock.set_queued` 在 `run_agent` 内部 drain 之后没人更新，队列区一直显示旧数字。~~
+      2026-08-26 对账核销（feature 35 复核）：两半都已由 feature 18 做掉
+      （2026-08-13），本条漏勾——`_extend` 收 `on_event` 并在追加完成后发
+      `SteeringInjected`（三个 steering 注入点都传了；`_inject_instructions` 那类
+      系统注入刻意不发，它不是用户插话），e2e `test_the_injection_is_visible_on_screen`
+      钉屏幕可见；剩余量由 `_steering_source(after_drain=...)` 在取完当场报给
+      `dock.set_queued`（那段注释里连「为什么不挂在事件上」都写着）。
 
 ### feature 09（工作目录边界）遗留（2026-08-11 交付）
 
@@ -811,17 +815,24 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
 输出里只有两次「🗜️ 锚点不足（<2）…暂缓压缩」，从未出现 `🗜️ 压缩：切于 N`——
 即压缩链路（含 D#42 的压缩后重注入）在真实使用中一次都没被走到过。
 
-- [ ] 没有可负担的办法在真实使用中触发一次压缩。压缩要同时满足两个条件：
-      ① `should_compact`：估算 > 窗口 − `reserve_tokens`；
-      ② `find_cut_point`：锚点 ≥2 且某两锚的真实差值累计 ≥ `keep_recent_tokens`。
-      `PAI_CONTEXT_WINDOW` 能让①永远成立，但 `keep_recent_tokens`（默认 20000）
-      没有任何环境变量能改——小对话里相邻锚差值只有几百，②永远不成立。
-      结果：要真跑通一次压缩，得攒够 2 万 token 的真实对话（几毛钱且很慢）或改代码。
-      修法：暴露 `PAI_KEEP_RECENT_TOKENS`（几行，与 `context_window()` 同款）。
-      归阶段 1（压缩）范畴，单独开 `fix/` 分支。
-- [ ] REPL 的 `/compact` 在真实会话里几乎永远不可用（同一道坎）：它调同一个
-      `find_cut_point`，所以手动敲 `/compact` 大概率只得到「锚点不足」或「无可压」。
-      至少该让提示语可操作（告诉用户还差多少 token 才切得动），而不是让人以为坏了。
+- [x] ~~没有可负担的办法在真实使用中触发一次压缩：`PAI_CONTEXT_WINDOW` 能让
+      ①（should_compact）永远成立，但 `keep_recent_tokens`（默认 20000）没有任何
+      环境变量能改——小对话里相邻锚差值只有几百，②（find_cut_point）永远不成立。
+      修法：暴露 `PAI_KEEP_RECENT_TOKENS`（几行，与 `context_window()` 同款）。~~
+      已做 2026-08-26（feature 35，`fix/35-todo-backlog-batch-2`，方向即条目既定）：
+      `config.keep_recent_tokens()` 与 `context_window()` 同款——不配回
+      `CompactionSettings` 的默认值，非整数与非正数在门口 `sys.exit` 说清是哪个 env
+      （0 会让切点落在最新锚上，把整段历史一次压光）。once 与 REPL 两处装配
+      各有一条接线测试（捕获传给 `run_agent` 的 `compaction`），漏传不再是静默的。
+- [x] ~~REPL 的 `/compact` 在真实会话里几乎永远不可用（同一道坎）：手动敲
+      `/compact` 大概率只得到「锚点不足」或「无可压」，让人以为坏了。
+      至少该让提示语可操作（告诉用户还差多少 token 才切得动）。~~
+      已做 2026-08-26（feature 35）：新增纯函数
+      `compaction.keep_recent_shortfall(anchors, keep_recent)`（最新锚减最早锚的
+      真实差值 vs 门槛；锚不足两个时如实返回整个门槛，返回 0 会被读成「够了」），
+      `/compact` 的「无可压」分支改说「还差约 N token（门槛 M）」并点名
+      `PAI_KEEP_RECENT_TOKENS` 这条出路。反向守卫钉住：锚不足两个时一个「还差」
+      都不许说——算不出来就别装作算得出。
 - [ ] 这是「测试全绿但真实不可用」的又一例，值得记进方法论：离线测试之所以全绿，
       是因为测试里直接传了 `CompactionSettings(keep_recent_tokens=1)` 把这道坎绕过去了。
       与 feature 06 的「冒烟脚本显式传 `DEEPSEEK_API_KEY=dummy` 掩盖了 .env 解析 bug」
@@ -900,10 +911,17 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
       状态行进了 dock。原文留档：
       Task 8 把 `run_interactive` 的默认 `on_event` 换成了状态行处理器，
       开着就不再滚动打 `🔧`——这个行为改变从没被拍过板。考虑默认关、显式打开。
-- [ ] 06 复盘质疑三：「不读 AGENTS.md」的理由可能只在自家成立（06 复盘，D#43 复议候选）：
-      论据是「那是给开发 pai 的 AI 的规矩」——在本仓库成立；但 pai 的立意是在别人的项目
-      里跑，那里的 `AGENTS.md` 恰恰是该项目写给 agent 的规矩，是最该读的上下文。
-      用只在自家成立的理由定了一条对外默认行为，值得重开。
+- [x] ~~06 复盘质疑三：「不读 AGENTS.md」的理由可能只在自家成立（06 复盘，
+      D#43 复议候选）：论据「那是给开发 pai 的 AI 的规矩」在本仓库成立，但 pai 的
+      立意是在别人的项目里跑，那里的 `AGENTS.md` 恰恰是该项目写给 agent 的规矩。~~
+      已复议 2026-08-26（feature 35，用户当场拍板「改成也读」）：`discover()` 的
+      候选加 `AGENTS.md`，用户级与项目级都读，同目录内排在 `PAI.md` 之前
+      （后读到的更靠近对话）。`CLAUDE.md` 等别家入口照旧不读。
+      [D#43](decisions.md) 已记推翻半边（原文划掉保留），代价如实写在那里：
+      本仓库自己跑 pai 时这份 26KB 规约会进每轮上下文。
+      连带修掉两条测试的隔离缺口：`test_conversation_persists_across_turns` 与
+      `test_slash_clear_keeps_system_and_drops_history` 不 chdir，此前捡不到
+      仓库根的指令文件纯属侥幸（仓库没有 PAI.md），现在会捡到 AGENTS.md。
 - [ ] 06 复盘质疑四：`MEMORY.md` 的 200 行 / 25KB 是照抄官方，没有 pai 依据：
       官方数字是给英文 + Claude 调的；pai 跑中文、token 密度差一倍以上。
       与 `reserve_tokens=16384`「从 pi 借来的经验值」同一类债。
@@ -945,9 +963,14 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
 - [ ] `once` 的输出形态变了（11 复盘质疑三）：多了 `🤖 ` 前缀与空行，stdout 被多次写入。
       拍板时当作「预期内的代价」轻轻放过了，但 once 是给脚本用的模式，
       `pai "..." > out.txt` 这类用法迟早要回来处理。
-- [ ] 能力判定的三条退化路径不可分辨（11 task 3）：未声明 / 参数不是 dict /
+- [x] ~~能力判定的三条退化路径不可分辨（11 task 3）：未声明 / 参数不是 dict /
       判定器抛异常，全部返回 False 且不留痕——「判定器写错了」与「工具确实不安全」
-      在外部完全一样。工具多了会变成静默的性能损失。
+      在外部完全一样。工具多了会变成静默的性能损失。~~
+      已修 2026-08-26（feature 35）：只给第三条留痕——前两条是常态（没声明就是
+      没声明、模型发来的 arguments 本就可能是 `null`/`[1,2]`），判定器自己炸了
+      才是 bug。`Tool._ask` 捕获异常时按 (工具, 判定器) 去重、往 stderr 喊一次
+      （形状照 `EventTrace` 落盘失败那条：每次判定刷一行会淹掉真正要看的输出），
+      行为一字不变仍返回 False。反向守卫钉住前两条保持沉默。
 - [ ] `assemble` 不认 `finish_reason` 提前收尾（11 task 1）：读到迭代器结束为止。
       真实 SDK 在 `[DONE]` 后就停，暂不影响；provider 若在 finish 之后还发东西会继续消费。
 - [ ] 流式中断的粒度是「块与块之间」（11 task 1）：巨大 chunk 传输中按 Ctrl+C
@@ -973,9 +996,13 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
       已修 2026-08-25（feature 34，`fix/34-todo-backlog-batch`）：`PendingMessageQueue.__len__` 加上，
       `_queue_size` 改成 `len(queue)`；两条测试覆盖（含"被谓词留在队列里的命令
       要照样计数"——dock 上那个数字说的就是它们）。
-- [ ] `tui/driver.py` 一条测试都没有（12 复盘质疑五）：唯一碰真 tty/select 的文件，
-      靠 `pai_playground/tui-probe/p5_tui_smoke.py` 冒烟顶着，而冒烟脚本不在 `./test.sh` 里——
-      改坏它不会有任何东西变红。至少该给 `poll()` 的分支注入假 fd 测一测。
+- [x] ~~`tui/driver.py` 一条测试都没有（12 复盘质疑五）：唯一碰真 tty/select 的
+      文件，靠不在 `./test.sh` 里的冒烟脚本顶着，改坏它不会有任何东西变红。~~
+      2026-08-26 对账核销（feature 35 复核）：已由 feature 16 收尾（2026-08-19，
+      `fix/16-drag-render-throttle`）补上，本条漏勾——`tests/test_tui_driver.py`
+      118 行，注入假 fd 测 `poll()`（含「真终端是很多批各一条、离线测试是一批很多条」
+      这个被检验的假设本身）。那次的条目里写着「顺带给 driver.py 补了它此前一条都
+      没有的测试」，只是没回来划掉这条。
 - [ ] `run_interactive` 现在有两条主循环（12 复盘质疑四）：tty 走 TUI、非 tty 走老 REPL。
       与被否掉的方案 C 是「同一种东西的两个剂量」。代价是交互语义改动要改两处，
       而只改了一处不会让任何测试变红。
@@ -1128,8 +1155,14 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
 
 - [x] ~~「跑一次真 pai 然后出图」这条链路没有自动化~~ 已做（14 遗留由 15 关闭）：
       `tests/test_e2e_tui.py` 5 条进了 `./test.sh`。
-- [ ] e2e 把主套件从 12s 拖到 34s：没做分层（没有 `-m "not e2e"` 的快循环）。
-      再多几条就该分了。
+- [x] ~~e2e 把主套件从 12s 拖到 34s：没做分层（没有 `-m "not e2e"` 的快循环）。
+      再多几条就该分了。~~ 已做 2026-08-26（feature 35，触发条件到了：e2e 现在
+      占掉大半墙钟）：`./test.sh --fast` 跑 `-m "not llm and not e2e"`。
+      标记由 conftest 按文件名自动挂（`test_e2e_*.py`），不靠每个文件自己写
+      `pytestmark`——自觉的那种漏一个不会红，而漏掉的后果正是快循环里混进一条起
+      真 pty 的测试。实测（2026-08-26 本机，串行）：全量 1447 passed / 163.16s，
+      `--fast` 1416 passed + 1 skipped / 36.23s（4.5×，31 条 e2e 占掉 78% 墙钟）。
+      交付前仍必须跑全量，快循环只用于改一行看一眼。
 - [ ] e2e 依赖 pty 与 select 的时序，理论上仍可能偶发；已用「等到出现为止」
       压到最小，但没做重试。
 - [ ] 没有测「中断」与「压缩」：Ctrl+C 掐在流中途、自动压缩触发——
@@ -1175,10 +1208,23 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
 
 ### feature 12（TUI）实现中冒出来的 —— 2026-08-11
 
-- [ ] `display_width` 的家不对了（12 T1）：它住在 `modes/statusline.py`，
-      而 `pai/tui/` 要用它，形成 tui → modes 的依赖（无环，statusline 不反向依赖 tui）。
-      T6 把状态行搬进 dock 时，应把这个宽度原语一并挪进 tui 包，
-      并同步 K tui/terminal-width.md 的锚点。
+- [x] ~~`display_width` 的家不对了（12 T1）：它住在 `modes/statusline.py`，
+      而 `pai/tui/` 要用它，形成 tui → modes 的依赖。应把这个宽度原语一并挪进
+      tui 包，并同步 K tui/terminal-width.md 的锚点。~~
+      已挪 2026-08-26（feature 35）：新增 `src/pai/tui/width.py`
+      （`display_width` / `_truncate` / `_ESCAPES` / `ELLIPSIS`），十个 tui 模块
+      改从它 import，`statusline` 反过来从 tui 拿并 re-export（不动九处调用点与
+      十处测试 import——搬家是结构修正不是接口变更）；K tui/terminal-width.md
+      锚点同步。方向由一条 AST 守卫测试钉住（`pai/tui/*.py` 不许 import
+      `pai.modes`，唯一豁免见下条）。
+      验收不是「测试还绿」：拿 HEAD 的旧实现与新模块对同一批 4090 条样本
+      （中英/全角/组合记号/ZWJ/CSI/OSC/APC/制表符）做 36810 次比对，
+      `display_width` 与 `_truncate`（8 档宽度）零处不一致，`_ESCAPES` 正则逐字相等。
+- [ ] `_preview` 仍住在 `modes/statusline.py`，是 tui → modes 的唯一残余
+      （出处：feature 35 搬 `display_width` 时顺带发现）：它被 statusline 与
+      `tui/dock.py` 共用，但它不是宽度原语，塞进 `tui/width.py` 是错的家。
+      守卫测试已把它写成显式豁免（多一个名字就红）。等第三个消费者出现，
+      或 dock 与状态行的渲染再有共用件时，一起找个合适的家。
 
 ### feature 12（TUI）拍板后已知的功能回退 —— 2026-08-11
 
@@ -1232,10 +1278,17 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
       `max_tokens=256`（CC 的 Sonnet 档）、`MEMORY.md` 200 行/25KB（英文调的）、
       `reserve_tokens=16384`（从 pi 借的）——三条都是抄来的数字带着它原本的模型/语言假设。
       至少在常量旁强制写「这个数从哪来、依赖什么前提」，让下一个人看得见前提。
-- [ ] 召回块被压缩摘掉后不会重来，召回在长会话里单调衰减到零（10 遗留 6，复盘质疑四）：
-      指令消息有重注入兜底（D#42），召回块没有；而 `RecallState.surfaced` 还记着
-      「已经注入过」，于是那几篇再也不会被选中。`surfaced` 的语义（「已经在上下文里」）
-      被压缩证伪了。这条比一般遗留严重。
+- [x] ~~召回块被压缩摘掉后不会重来，召回在长会话里单调衰减到零（10 遗留 6，
+      复盘质疑四）：`RecallState.surfaced` 还记着「已经注入过」，于是那几篇再也
+      不会被选中。`surfaced` 的语义（「已经在上下文里」）被压缩证伪了。~~
+      已修 2026-08-26（feature 35，用户拍板「上下文被改写就全清」）：
+      `run_agent` 新增注入回调 `on_context_rewritten`（loop 仍不认识召回），
+      装配层接成 `recall_state.surfaced.clear()`；自动压缩、`/compact`、`/clear`
+      三处共用同一条通道。复核时发现的第二半边一并修掉：`/clear` 同样没清
+      ——它比压缩更彻底（整段删），而那几篇记忆此后永不再被选中且完全静默。
+      测试两头钉：装配层「注入过→再选就空→改写后又能选中」，loop 层
+      「压成了才通知、暂缓与失败一个字不说」，命令层 `/clear` 报、`/status` 不报。
+      代价如实记：压缩后那几篇可能被再召回一次，多花一次注入的 token。
 - [ ] 一事一文件让索引膨胀变快，而本次没引入任何收缩机制（10 遗留 4，复盘质疑二）：
       索引行数从「主题数」变成「记忆条数」，200 行上限撞得早得多。CC 靠写入侧提示词
       让模型查重/删除，pai 抄了「更新而不是新建」（做进工具了）但没抄「删」——
@@ -1256,8 +1309,14 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
 
 - [ ] `--resume` 只进交互模式：与任务参数组合（CC 的 `-c -p`）被拒绝，
       once 续跑未做（出处：24 README 遗留）。
-- [ ] resume 只恢复对话不恢复设置：权限模式/模型/system prompt 取当前环境，
-      dsh 明确警告「恢复不同构图的组合是错误」而 pai 连警告都没有（同上）。
+- [x] ~~resume 只恢复对话不恢复设置：权限模式/模型/system prompt 取当前环境，
+      dsh 明确警告「恢复不同构图的组合是错误」而 pai 连警告都没有（同上）。~~
+      警告已加 2026-08-26（feature 35）：`--resume` 的提示多两行——「恢复的只有
+      对话，设置不跟着回来：权限模式、模型、system prompt 都按当前环境重新装配」，
+      以及（仅当 header 里的 `cwd` 与当前目录不同时）「该会话录制于 X，
+      当前目录不同——工作目录边界与项目指令都会不一样」。目录没变一个字不提
+      （反向守卫钉住）。真正「恢复设置」仍未做：那要把模式/模型写进 header，
+      是格式的事，等真实需要。
 - [x] ~~`resolve_resume_target` 同秒 mtime tie 时 latest 未定义：排序键补
       st_mtime_ns 或文件名即可，一行的事（出处：24 复盘质疑四）。~~
       已修 2026-08-25（feature 34，`fix/34-todo-backlog-batch`）：排序键改 `(st_mtime_ns, f.name)`，
@@ -1280,13 +1339,14 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
 `MEMORY.md` 200 行 / 25KB、不读 `AGENTS.md` 而建议显式导入、压缩后从磁盘重读重注入——
 这几条与官方一致。下面是对不上的。
 
-- [ ] `memory.py:57` 的注释「官方同款语义，模型要用时自己 read_file」不成立（准确度，先改）：
-      官方对 cwd 之下子目录的 `CLAUDE.md` 是框架懒加载——发现了但不在启动时加载，
-      等 Claude 真去读那个子目录里的文件时自动注入。不是「靠模型自己 read_file」。
-      pai 现在是彻底不收集，比官方弱一档。注释这么写会让人（包括面试时的我）
-      误以为行为一致。改成「pai 不收集；官方是懒加载，这是刻意的能力差不是同款语义」。
-      这条与召回层反复强调的「框架主动 vs 指望模型想起来」是同一个区分——
-      官方在这里也是框架主动，只是延迟到需要时。
+- [x] ~~`memory.py:57` 的注释「官方同款语义，模型要用时自己 read_file」不成立
+      （准确度，先改）：官方对 cwd 之下子目录的 `CLAUDE.md` 是框架懒加载，
+      不是「靠模型自己 read_file」；pai 彻底不收集，比官方弱一档。~~
+      已改 2026-08-26（feature 35，纯文档）：`discover` 的 docstring 写明这不是
+      同款语义、官方那边仍是「框架主动」（只是延迟到需要时）、pai 弱一档是刻意的
+      能力差（懒加载要一条读文件时检查的管线，且注入时机不确定，与压缩锚点簿有
+      交互）。`test_subdirectory_files_are_not_loaded` 的 docstring 同步订正——
+      它此前抄的是同一句错话。
 - [ ] 子目录指令的懒加载未实现（能力缺口）—— 用户 2026-08-19 表态要做，已转 [需求池](需求池.md) 待评估，与下一条一起设计：
       要做的话需要一条「读文件时检查该目录有无 PAI.md，没加载过就注入」的管线，
       挂点大概在 fs 工具的结果回填处。代价是注入时机变得不确定（上下文会中途变长），
@@ -1308,11 +1368,14 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
       要做的是一次端到端真实验证：让 pai 自己 remember 三五条，再问一个能命中的问题，
       确认召回块真的注入了。与「json_object 一次都没真验过」那条不同——
       那条验的是侧查询本身（已完成 2026-08-11），这条验的是从写入到召回的整条链。
-- [ ] 召回注入没有单篇字符上限（2026-08-19 走读时发现，PAI-04 诚实边界已记）：
-      `MAX_RECALL_FILES = 5` 只限篇数，记忆文件是整篇读进来的。
-      工具输出在源头截到 4000 字符，召回这条路不走那个截断。
-      于是上下文估算的尾部这里有个口子：写一篇特别长的记忆，召回一次就顶上来。
-      与 PAI-02 的「reserve 真余量只剩 ~3600」是同一笔账，那边已经点名了这条。
+- [x] ~~召回注入没有单篇字符上限（2026-08-19 走读时发现，PAI-04 诚实边界已记）：
+      `MAX_RECALL_FILES = 5` 只限篇数，记忆文件是整篇读进来的；工具输出在源头
+      截到 4000 字符，召回这条路不走那个截断。写一篇特别长的记忆，召回一次就顶上来。~~
+      已修 2026-08-26（feature 35）：`MAX_RECALL_CHARS = 4000`（取 `read_file` 的
+      `MAX_OUTPUT_CHARS`，理由是「一段进上下文的外部文本」两条路上该同价，
+      不是因为量过——常量旁写明来路），超了截断并说出来（前 N / 全文 M /
+      需要全文就 read_file 读哪个路径）。反向守卫：没超的一个字不许动。
+      中文按字符截偏严，与 25 遗留 3 的换算校准同批再定。
 
 ### feature 06（记忆）遗留 —— 2026-08-10
 
@@ -1321,6 +1384,13 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
       退出时的 `killpg` 会误杀无关进程。真实风险低（macOS pid 空间大、回绕慢）
       但不为零。可行的收紧：登记时一并记 `proc`，收割前用 `proc.poll()` 确认
       我们那个子进程还在（组仍属于我们）。
+      追记 2026-08-26（feature 35 挑条目时先看代码，结论是这个修法不能照做）：
+      `reap_spawned` 的 docstring 自己写着它存在的理由是 `sleep 300 &`——
+      父 shell 立刻就退了、后台孙子还活着。而 `proc.poll() is not None` 恰恰在
+      这种情况下为真，照这个修法收紧就会跳过 killpg，把主用例的后台进程漏掉。
+      换句话说：拿一个几乎不会发生的误杀，换一个每次都发生的泄漏。
+      真要修得换判据（组里是否还有属于我们的进程，POSIX 层面查不了），
+      或接受现状。本条维持开着，但修法一栏作废——下次动它先读这条追记。
 
 - [x] ~~REPL 主循环应兜一层「任何异常都回提示符」（2026-08-10，同类问题第三次）~~
       已做 2026-08-11（feature 12 T8）：纯 REPL 与 TUI 两条主循环都兜了，
@@ -1340,9 +1410,16 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
       修法：`load_dotenv(find_dotenv(usecwd=True))`（项目级真按当前目录找）+
       `~/.pai/.env` 用户级兜底，优先级 真实环境变量 > 项目 > 用户。测试 4 条钉死。
 
-- [ ] REPL 中途改 `PAI.md` 不生效（06 task 4）：`_inject_instructions` 认出已有指令
-      消息就直接返回，连 loader 都不调——所以多轮 REPL 只在第一轮读盘，改了文件要等
-      一次压缩（重注入会重读）或重启。可加 `/memory reload`，几行的事。
+- [x] ~~REPL 中途改 `PAI.md` 不生效（06 task 4）：`_inject_instructions` 认出已有
+      指令消息就直接返回，连 loader 都不调——多轮 REPL 只在第一轮读盘，改了文件
+      要等一次压缩或重启。可加 `/memory reload`，几行的事。~~
+      已做 2026-08-26（feature 35，方向即条目既定）：`loop.drop_instructions`
+      丢掉当前指令消息（台账同步删，否则下次压缩 `ledger[cut]` 指错条目），
+      下一轮的注入点重新调 loader = 从磁盘重读。不在命令里立即重注入：注入点
+      本来就在每轮开头，多一条路径就多一处要对齐的语义。落盘侧天然自洽——
+      `session.build_messages` 只留最后一条指令消息，重注入的那条自然赢。
+      测试跑的是真实症状：第一轮之后改盘上的 PAI.md、`/memory reload`、
+      第二轮的请求里必须是新内容且旧的不并存。
 - [ ] `MEMORY.md` 无自动剪枝（06 spec 非目标）：写多了会撞 200 行上限被截断
       （有提示，不静默）。等它真长起来再设计「谁来剪、剪掉的进哪个主题文件」。
 - [ ] `memory_dir` 的 key 是 hash，不可读（06 task 3）：调试时得靠 `/memory` 才知道
@@ -1380,8 +1457,14 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
       18 补上的是「那些字进哪条队列、什么时候发出去」。
 - [ ] `AgentStart.task` 在多轮 REPL 里语义歧义（05 task 5）：字段是「本轮的任务」
       而非「整个会话的任务」，多轮时名字容易误读。改名或拆事件，小事。
-- [ ] `statusline._preview` 只取第一个参数值（05 task 8）：`bash` 只有 command 正好，
-      `edit_file` 这类多参数工具的预览只显示 path，够用但不精确。
+- [x] ~~`statusline._preview` 只取第一个参数值（05 task 8）：`bash` 只有 command
+      正好，`edit_file` 这类多参数工具的预览只显示 path，够用但不精确。~~
+      2026-08-26 对账核销（feature 35 复核）：「取第一个值」这个机制已在
+      2026-08-18 的 `fix/bash-timeout` 里改掉，本条漏勾——现在按声明的主参数名取
+      （`_PREVIEW_KEYS = ("command", "path", "name")`，认不出才退回第一个值）。
+      当时是被 bash 的 `timeout` 参数当场引爆的：模型把它排在前面，状态行就显示
+      光秃秃的「300」。剩下的「多参数工具只显示一个字段」是刻意取舍（一行状态行
+      放不下第二个），代码注释里写着，不再当待办。
 - [ ] REPL 无会话恢复（05 spec 非目标）：`messages` 只活在进程内，
       落盘仍是 append-only JSONL，没有 `/resume`。要做得先有会话树。
 - [x] ~~`_install_sigint` 在非主线程装不上（05 task 7）~~ 2026-08-11 由 feature 12 关闭：
@@ -1508,6 +1591,39 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
       不是记性问题是流程缺口——修的时候在别的档案里，销账要回全局 TODO，而那是纯自觉动作。
       做法：写复盘前拿 `git diff --name-only` 的文件名/函数名去 grep TODO 的开放条目，
       逐条问「这次是不是顺手把它关掉了」。五分钟的事，且正对着漏勾发生的机制。
+
+### feature 35（TODO 存量批清第二轮）复盘引出 —— 2026-08-26
+
+档案：[features/35](features/35-20260826-todo-backlog-batch-2/README.md)、
+[复盘](features/35-20260826-todo-backlog-batch-2/复盘.md)
+
+- [ ] AGENTS.md 该「读多少」值得复议（35 复盘质疑一）：本轮拍板解决的是
+      「读不读」，代价面比问的时候说的更宽——任何用 pai 的仓库，它的
+      `AGENTS.md` 都会每轮常驻，而那份文件通常是写给「开发这个仓库的人/AI」的
+      （构建命令、测试规约、提交格式），与当轮任务的相关性未必高。
+      CC 至今仍不直接读它、让用户显式 `@` 导入，不见得只是保守。
+      真正该议的是常驻整篇 vs 相关时才加载——与「没有路径作用域规则」
+      （`.claude/rules/` + `paths:`）是同一件事，做时一起。
+- [ ] `on_context_rewritten` 可能该是一条事件而不是回调（35 复盘质疑二）：
+      现在只有一个消费者（清召回去重表），而 loop 在同一位置本来就发
+      `Compacted`——装配层要回调、观测流要事件，各修各的。合并的前提是先想清
+      `/clear` 那条路的关系（它发的是 `ConversationCleared`）。
+      触发条件：第二个「记着自己往上下文里放过什么」的消费者出现时。
+- [ ] 「参数不是 dict 属于常态」这个判断没有数据（35 复盘质疑三）：
+      能力判定的三条退化路径本轮只给「判定器崩溃」留了痕，另两条判为常态是
+      推理不是实测。真跑起来若发现并发频繁退化成串行，第一个该查的就是它。
+- [ ] 给「够格升格 knowledge/concepts」建一个触发点（35 复盘「下次怎么做更好」）：
+      TODO 里现在躺着四条「够格升格成方法论笔记」（2026-08-10 一条、
+      2026-08-19 两条、35 复盘一条），全停在「够格」上没人动——不像遗留问题
+      有「必须同步登记 TODO」的硬规矩。做法：交付前扫一遍本轮 devlog 与复盘里
+      的「够格升格」字样，有就当场写；写不出 pai 锚点就降级成 TODO 一行说明
+      为什么写不出，不留「以后再说」。
+- [ ] 本轮那条方法论本身还没写（35 复盘「学到了什么」第一段）：
+      「待办清单会随代码漂移而失真，且失真不止过期一种——还有『修法当初想对了、
+      后来前提变了』与『当初只看见半个问题』；所以复核要问三问：它还在吗、
+      修法还成立吗、是不是只写了一半」。本轮 15 条里有 5 条属于这三类。
+      与既有那条「测试为了让被测路径跑起来而注入的参数，正是真实路径上会卡住的
+      地方」同族（都是记录与现实的漂移），写的时候一起收。
 
 ## P3 · 可选
 

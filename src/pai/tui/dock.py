@@ -17,7 +17,8 @@ import time
 from typing import Callable, Dict, List, Optional
 
 from pai.core.events import AgentEnd, AgentEvent, AgentStart, ToolEnd, ToolStart
-from pai.modes.statusline import _preview, _truncate, display_width
+from pai.modes.statusline import _preview
+from pai.tui.width import _truncate, display_width
 from pai.tui import theme
 from pai.tui.component import Component
 

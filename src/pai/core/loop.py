@@ -149,6 +149,7 @@ def run_agent(
     recall: Optional[Callable[[str], "tuple"]] = None,
     system_prompt: Optional[str] = None,
     entry_ledger: Optional[List[Optional[str]]] = None,
+    on_context_rewritten: Optional[Callable[[], None]] = None,
 ) -> str:
     """跑一次 agent 任务，返回最终回答。
 
@@ -275,6 +276,12 @@ def run_agent(
                 else:
                     anchors.reset()                  # 历史被改写，旧锚全部作废（D#18/32）
                     state.awaiting_verify = True     # 成败等首次真实 usage（D#34）
+                    if on_context_rewritten is not None:
+                        # 旧锚不是唯一被压缩证伪的东西：召回的 `surfaced`
+                        # （「这几篇已经在上下文里」）也一样，而 loop 不认识召回
+                        # ——所以是注入回调，不是 import（10 遗留 6）。
+                        # 只在真压成了之后调：暂缓与失败都没改写上下文。
+                        on_context_rewritten()
                     # 压缩条目先落盘、指令重注入在后（feature 24）：重建算法把
                     # 「压缩条目之后的消息」整段保留，指令条目落在它前面就会被
                     # 归进已摘掉的旧段、恢复时丢失
@@ -499,6 +506,27 @@ def _has_instructions(messages: List[dict]) -> bool:
     return any(m.get("role") == "user"
                and str(m.get("content") or "").startswith(INSTRUCTION_HEADER)
                for m in messages)
+
+
+def drop_instructions(messages: List[dict], ledger: List[Optional[str]]) -> bool:
+    """丢掉当前的指令消息，返回是否真丢了一条。`/memory reload` 的地基（06 task 4）。
+
+    不在这里重新注入：注入点在每轮开头的 `_inject_instructions`，它会重新调
+    loader（= 从磁盘重读）。丢掉就等于让下一轮重来一遍。
+
+    台账同步删是硬要求（feature 24）：`ledger` 与 `messages` 逐项平行，
+    错一位下次压缩的 `ledger[cut]` 就指错条目。落盘的旧条目不动——会话文件是
+    append-only 的历史，`session.build_messages` 只留最后一条指令消息，
+    重注入之后自然是新的那条赢。
+    """
+    for i, m in enumerate(messages):
+        if (m.get("role") == "user"
+                and str(m.get("content") or "").startswith(INSTRUCTION_HEADER)):
+            del messages[i]
+            if i < len(ledger):
+                del ledger[i]
+            return True
+    return False
 
 
 def _record(messages: List[dict], entry: dict, session: SessionLog | None,

@@ -850,3 +850,25 @@ class TestCompactAndBreaker:
         state = verify_compaction(500, 1000, settings, state)   # 降回线内，计数清零
         assert state.failures == 0
         assert state.tripped                                    # 但熔断不回落
+
+
+# ---- 「还差多少 token 才切得动」（TODO「压缩链路的可验证性」第二条）----
+
+
+def test_shortfall_says_how_much_history_is_still_missing():
+    """`/compact` 在真实会话里几乎永远只得到「无可压」，而用户无从判断
+    是坏了还是没到量。差额是可算的：最新锚与最早锚之间的真实差值 vs 门槛。"""
+    from pai.core.compaction import Anchor, keep_recent_shortfall
+
+    anchors = [Anchor(1, 1000), Anchor(3, 1500), Anchor(5, 1800)]
+    assert keep_recent_shortfall(anchors, 20000) == 19200      # 门槛 20000 - 已累计 800
+    assert keep_recent_shortfall(anchors, 800) == 0            # 刚好够：差额不是原因
+
+
+def test_shortfall_of_a_single_anchor_is_the_whole_threshold():
+    """锚不足两个时一个差值都算不出来——如实返回整个门槛，而不是 0（0 会被
+    读成「够了」）。"""
+    from pai.core.compaction import Anchor, keep_recent_shortfall
+
+    assert keep_recent_shortfall([Anchor(1, 900)], 20000) == 20000
+    assert keep_recent_shortfall([], 20000) == 20000

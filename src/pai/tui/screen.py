@@ -25,7 +25,7 @@ from __future__ import annotations
 import re
 from typing import List, Optional
 
-from pai.modes.statusline import display_width
+from pai.tui.width import display_width
 
 _CSI = re.compile(r"\x1b\[(\??)([0-9;]*)([A-Za-z])")
 

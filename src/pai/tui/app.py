@@ -21,7 +21,7 @@ from pai.core.events import (
     MessageDelta,
     render_text,
 )
-from pai.modes.statusline import _truncate
+from pai.tui.width import _truncate
 from pai.tui import logo, theme
 from pai.tui.arbiter import EDITOR, InputArbiter
 from pai.tui.component import Container, Component
