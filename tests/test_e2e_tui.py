@@ -224,18 +224,29 @@ def test_multiline_content_does_not_stair_step(session, tmp_path):
     lines = [l for l in s.screen_text().split("\n")]
     while lines and not lines[-1].strip():
         lines.pop()
-    # 期望缩进锚到**源头文本**：答案续行在 `answer` 里顶格，/help 行的缩进
-    # 来自 `interactive.HELP` 文案自身。阶梯的定义是「屏幕缩进 ≠ 源头缩进」，
-    # 所以断言两者严格相等——第一版的 `row.startswith((marker, " "))` 只要
-    # 行首有一个空格就恒真，1~11 格的阶梯全放过（R4#T2）。
+    # 期望缩进锚到**那条路该有的样子**，两条路不同（feature 44 起）：
+    #
+    # - `/help` 是**整个多行字符串交给 commit** 的唯一现存路径，屏幕缩进必须
+    #   与 `commands.HELP` 文案逐格相等——真正守住「commit 必须拆 \n」的是它。
+    # - 答案那条走 markdown 渲染，缩进由渲染器给（圆点 gutter 2 格 + 列表符号），
+    #   不再等于源文本。所以这一半改钉「渲染后的固定形状」：
+    #   续行一律 2 格、列表符号是 •。阶梯的直接反面仍在——递增的缩进立刻会红。
+    #
+    # 第一版的 `row.startswith((marker, " "))` 只要行首有一个空格就恒真，
+    # 1~11 格的阶梯全放过（R4#T2），所以这里一律用严格相等。
     from pai.modes.commands import HELP
 
     def indent_of(line: str) -> int:
         return len(line) - len(line.lstrip(" "))
 
-    sources = answer.split("\n") + HELP.split("\n")
-    for marker in ("- file0.txt", "（后略）", "/status", "/permissions"):
-        want = indent_of(next(l for l in sources if marker in l))
+    for marker, want in (("• file0.txt", 2), ("• file1.txt", 2),
+                         ("• file2.txt", 2), ("（后略）", 2)):
+        row = next(l for l in lines if marker in l)
+        assert indent_of(row) == want, \
+            f"缩进漂了（阶梯）：屏幕 {indent_of(row)} 格，应为 {want} 格：{row!r}"
+
+    for marker in ("/status", "/permissions"):
+        want = indent_of(next(l for l in HELP.split("\n") if marker in l))
         row = next(l for l in lines if marker in l)
         assert indent_of(row) == want, \
             f"缩进漂了（阶梯）：屏幕 {indent_of(row)} 格，源头 {want} 格：{row!r}"

@@ -80,7 +80,8 @@ from pai.core.queue import PendingMessageQueue
 from pai.core.session import SessionLog
 from pai.core.skills import read_skill_body
 from pai.core.trace import EventTrace, compose
-from pai.core.settings import alt_screen_enabled, load_settings, mouse_enabled
+from pai.core.settings import (alt_screen_enabled, load_settings,
+                               markdown_enabled, mouse_enabled)
 from pai.core.tools import Tool, ask, get_tools
 from pai.core.tools import skill as skill_tool
 from pai.modes.assembly import assemble
@@ -623,6 +624,8 @@ def _run_tui(*, out, client, model, tools, messages, ledger, anchors, state, ste
     _settings = load_settings(warn=out)
     alt = alt_screen_enabled(_settings, warn=out)
     use_mouse = mouse_enabled(_settings, warn=out)
+    # 答案的 markdown 渲染（feature 44），`tui.markdown` 可关退回原文
+    use_markdown = markdown_enabled(_settings, warn=out)
     transcript, scroll = Transcript(), ScrollState()
     selection = Selection()
     if alt:
@@ -634,7 +637,8 @@ def _run_tui(*, out, client, model, tools, messages, ledger, anchors, state, ste
         renderer = DockRenderer(write=write, width=lambda: term.columns,
                                 rows=lambda: term.rows)
     app = TuiApp(renderer=renderer, transcript=transcript, scroll=scroll,
-                 selection=selection, history=_history_lines(history), color=color)
+                 selection=selection, history=_history_lines(history), color=color,
+                 markdown=use_markdown)
     app.editor.color = color
     def _on_resize() -> None:
         # 全套动作（作废重绘记忆 + 清选区 + 重画）在 app.handle_resize 里，那里可离线测

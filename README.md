@@ -107,6 +107,11 @@ PAI_CONTEXT_WINDOW=1000000              # 可选：上下文窗口（压缩触�
     "defaultMode": "default",                         // 见上表；once 模式用不上时会告警
     "additionalDirectories": ["~/notes"]              // 边界的额外允许根
   },
+  "tui": {
+    "altScreen": true,                                // 备用屏（features/13）
+    "mouse": true,                                    // 鼠标上报（features/16）
+    "markdown": true                                  // 答案走 md 渲染（features/44）
+  },
   "tests": {                                          // run_tests 工具用
     "command": "./test.sh",                           // 不配则自动探测（test.sh / pytest /
     "timeoutSeconds": 600                             //   npm test / cargo test / go test）
@@ -274,6 +279,7 @@ src/pai/
                         component / keys / editor（折行）/ arbiter（输入归属）/ dialog /
                         dock / transcript / scroll / selection / mouse / clipboard /
                         sanitize / screen（模拟器）/ record / replay / theme / logo / app / driver
+                        markdown（答案的 md 渲染：表格按显示列宽对齐、超宽压缩）
   evals/                评测的可复用逻辑：runs.jsonl 工件索引、轨迹→回放脚本派生
   viz/                  pai-viz 网页与数据装配
 evals/                  评测套件本体（./eval.sh 跑；fixtures/ 是签入的真实轨迹）
