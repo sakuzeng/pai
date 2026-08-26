@@ -107,6 +107,10 @@ PAI_CONTEXT_WINDOW=1000000              # 可选：上下文窗口（压缩触�
     "defaultMode": "default",                         // 见上表；once 模式用不上时会告警
     "additionalDirectories": ["~/notes"]              // 边界的额外允许根
   },
+  "tests": {                                          // run_tests 工具用
+    "command": "./test.sh",                           // 不配则自动探测（test.sh / pytest /
+    "timeoutSeconds": 600                             //   npm test / cargo test / go test）
+  },
   "hooks": {
     "PreToolUse": [                                   // 外部命令门禁：退出码 0 放行、
       { "matcher": "Bash",                            // 2 拦下、其他不表态；崩溃/超时
@@ -257,7 +261,10 @@ src/pai/
     queue.py / interrupt.py     排队消息 / 进程级中断标志
     tools/              @tool 注册表；bash / read_file（可按行 offset/limit 分段）/
                         search_files（内容正则 + 文件名 glob，参与目录边界）/
+                        run_tests（命令来自设置或探测，模型不能指定跑什么）/
+                        git_read（只读子命令，argv 不过 shell）/
                         write_file / edit_file / ask_user_question / remember / skill
+                        output.py 是输出上限与「保头保尾」的家
   modes/
     assembly.py         once 与 interactive 共用的装配序列（一份实现）
     once.py             单次任务；interactive.py  REPL 与 TUI；echo.py / statusline.py 输出

@@ -82,6 +82,42 @@ def test_assemble_applies_bash_timeout_from_settings(monkeypatch, tmp_path):
     assert shell.default_timeout_seconds() == shell.TIMEOUT_SECONDS
 
 
+def test_assemble_applies_tests_settings(monkeypatch, tmp_path):
+    """settings 的 tests.command / tests.timeoutSeconds 经装配层落到 run_tests。
+
+    这条测试的出处是 feature 33 H9 的教训：`additionalDirectories` 在文档与
+    STATUS 里声称存在、实际从没接进装配——配了静默不生效，比没有这个键更糟。
+    每加一个配置键就补一条接线测试，是那次教训唯一可执行的落点。
+    """
+    import json
+
+    from pai.core import mcp as mcp_mod
+    from pai.core.tools import get_tools, tests_tool
+    from pai.modes.assembly import assemble
+
+    monkeypatch.setattr(mcp_mod, "connect_configured_servers",
+                        lambda **_kw: ([], [], []))
+    home = Path.home()                      # conftest 已隔离
+    p = home / ".pai" / "settings.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps({"tests": {"command": "./my-tests.sh",
+                                       "timeoutSeconds": 42}}), encoding="utf-8")
+
+    assemble(client=FakeClient([]), tools=get_tools(), warn=lambda _m: None,
+             on_event=lambda _e: None, session=None, recall_model="fake",
+             mode="dontAsk", rules=OPEN_RULES)
+    assert tests_tool.resolve_command(str(tmp_path))[0] == "./my-tests.sh"
+    assert tests_tool.timeout_seconds() == 42
+
+    p.write_text("{}", encoding="utf-8")
+    assemble(client=FakeClient([]), tools=get_tools(), warn=lambda _m: None,
+             on_event=lambda _e: None, session=None, recall_model="fake",
+             mode="dontAsk", rules=OPEN_RULES)
+    assert tests_tool.timeout_seconds() == tests_tool.DEFAULT_TIMEOUT_SECONDS
+    tests_tool.set_command(None)
+    tests_tool.set_timeout(None)
+
+
 def test_assemble_wires_additional_directories_into_boundary(monkeypatch, tmp_path):
     """feature 33（H9）：settings 的 permissions.additionalDirectories 落到
     WorkingDirs——此前只存在于文档里，配了静默不生效。"""

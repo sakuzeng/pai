@@ -26,8 +26,9 @@ from pai.core.tools import (
     path_access_for,
     tool,
 )
-
-MAX_OUTPUT_CHARS = 4000
+# 家在 output.py，这里原样再导出：`from pai.core.tools.fs import MAX_OUTPUT_CHARS`
+# 是既有写法（含 recall.py / rules.py 注释里引用的「read_file 的那个 4000」）
+from pai.core.tools.output import MAX_OUTPUT_CHARS  # noqa: F401
 
 
 def atomic_write(path: str, content: str) -> None:

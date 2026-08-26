@@ -16,8 +16,7 @@ from typing import Annotated, Optional, Tuple
 
 from pai.core import heartbeat, interrupt
 from pai.core.tools import matcher_for, tool
-
-MAX_OUTPUT_CHARS = 4000
+from pai.core.tools.output import MAX_OUTPUT_CHARS  # 家在 output.py，这里原样再导出
 # 默认 120s：**不是拍脑袋，是两家独立收敛的结果**——CC（`timeouts.ts` 的
 # DEFAULT_TIMEOUT_MS）与 dsh（`bash-local` 的 timeoutMs）各自定在 120s，
 # 上限各自定在 600s。原先的 60s 扛不住一次完整测试跑（本仓库自己就要 106s）
@@ -137,12 +136,46 @@ def _wait(proc: subprocess.Popen, seconds: int) -> Tuple[Optional[str], Optional
             raise _Killed(f"{collected}\n(进程退出码：{proc.returncode})")
 
 
-class _Killed(Exception):
-    """内部控制流：把「已经组织好给模型的话」带出轮询循环。"""
+class Killed(Exception):
+    """把「已经组织好给模型的话」带出轮询循环。
+
+    公开（feature 42）：`run_tests` / `git_read` 与 bash 共用同一套进程组 + 心跳 +
+    中断 + 超时，于是也共用这条控制流。名字去掉下划线是因为它现在跨模块了——
+    留着下划线再从别的模块 import 才是真的坏味道。
+    """
 
     def __init__(self, message: str) -> None:
         super().__init__(message)
         self.message = message
+
+
+_Killed = Killed        # 旧名保留：本模块内部若干处仍这么写，且外部可能引用
+
+
+def run_process(command, seconds: int, *, cwd=None, shell: bool = True):
+    """起**独立进程组**跑一条命令并等它结束，返回 `(输出, 退出码)`。
+
+    中断 / 超时时抛 `Killed`，消息已经组织好（含已产出的部分输出）——
+    调用方直接把 `killed.message` 回给模型即可。
+
+    这段从 `bash()` 里抽出来给 `run_tests` / `git_read` 共用（feature 42）。
+    共用的不是「起个进程」这点代码，是**整组收割 + 心跳 + 中断 + 超时**
+    那一整套已经踩过坑的语义（见模块 docstring 与 `_wait`）：
+    第二个实现只会把 `sleep 30 &` 留下的孙进程那类坑再踩一遍。
+
+    `shell=False` 时 `command` 传 argv 列表——`git_read` 要的正是这个：
+    不过 shell，于是 `git status; rm -rf x` 结构上构造不出来。
+    """
+    proc = subprocess.Popen(
+        command, shell=shell, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        text=True, start_new_session=True, cwd=cwd or None,
+    )
+    try:
+        _SPAWNED_GROUPS.add(os.getpgid(proc.pid))
+    except ProcessLookupError:
+        pass                    # 秒退的命令，组已经没了，本来也不用收割
+    out, err = _wait(proc, seconds)
+    return _text(out) + _text(err), proc.returncode
 
 
 @tool
@@ -164,22 +197,13 @@ def bash(
         # 直接回填「已取消」），这是防御性的第二道
         return "(已中断，命令未执行)"
 
-    proc = subprocess.Popen(
-        command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        text=True, start_new_session=True,
-    )
     try:
-        _SPAWNED_GROUPS.add(os.getpgid(proc.pid))
-    except ProcessLookupError:
-        pass                    # 秒退的命令，组已经没了，本来也不用收割
-    try:
-        out, err = _wait(proc, seconds)
-    except _Killed as killed:
+        output, returncode = run_process(command, seconds)
+    except Killed as killed:
         return killed.message
 
-    output = _text(out) + _text(err)
     if not output:
-        return f"(命令没有输出，退出码 {proc.returncode})"
+        return f"(命令没有输出，退出码 {returncode})"
     if len(output) > MAX_OUTPUT_CHARS:
         return output[:MAX_OUTPUT_CHARS] + f"\n\n[... 截断，共 {len(output)} 字符]"
     return output

@@ -23,7 +23,7 @@ from typing import Callable, Optional
 
 from pai.core import paths
 from pai.core.boundary import WorkingDirs, is_dangerous_write
-from pai.core.tools import READ, WRITE, MatchContext, all_tools, default_matcher
+from pai.core.tools import EXEC, READ, WRITE, MatchContext, all_tools, default_matcher
 
 SETTINGS_FILE = "settings.json"
 
@@ -260,8 +260,13 @@ def _boundary_fallback(
     """`workingdir` 兜底：**这就是 CC 那个「默认不是常量而是函数」**。
 
     读 → 界内 allow / 界外 ask；写 → 一律 ask（CC 的写路径兜底没有目录放行那一步）；
+    执行（`EXEC`，feature 42）→ 与读同档：界内 allow / 界外 ask。
     **不参与边界的工具（bash）→ ask**——它没声明 `get_path`，边界判定结构上碰不到它，
     所以只能落到最保守的一档。这是拍板问 2「不做 bash 边界」的直接代价。
+
+    EXEC 与 READ 待遇相同但**不是同一件事**：READ 问的是「碰哪个文件」，
+    EXEC 问的是「在哪个目录起进程」。合并成一档会在加下一个执行类工具时
+    失去判据，所以宁可两支写在一起也保留两个取值。
     """
     tool = tools.get(tool_name)
     if tool is not None and tool.boundary_exempt:
@@ -277,7 +282,7 @@ def _boundary_fallback(
         )
 
     path = tool.get_path(args)
-    if tool.access == READ:
+    if tool.access in (READ, EXEC):
         if working_dirs.contains(path):
             return Decision(kind="allow", reason="在工作目录内")
         return Decision(

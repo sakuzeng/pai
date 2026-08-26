@@ -34,10 +34,12 @@ from pai.core.skills import (LoadedSkills, Skill, apply_project_trust,
                              make_instructions, render_catalog, scan_skills,
                              user_skill_link_roots)
 from pai.core.settings import (additional_directories, bash_timeout_seconds,
+                               tests_command, tests_timeout_seconds,
                                load_settings)
 from pai.core.tools import memory_tool
 from pai.core.tools import shell
 from pai.core.tools import skill as skill_tool
+from pai.core.tools import tests_tool
 
 
 @dataclass
@@ -80,6 +82,9 @@ def assemble(*, client: ChatClient, tools: Dict[str, object],
     # 显式清空——上一个装配的残留不许漂给下一个。
     merged_settings = load_settings(warn=warn)
     shell.set_default_timeout(bash_timeout_seconds(merged_settings, warn=warn))
+    # 跑测试的命令与超时同理（feature 42）：未配传 None，走探测与默认值
+    tests_tool.set_command(tests_command(merged_settings, warn=warn))
+    tests_tool.set_timeout(tests_timeout_seconds(merged_settings, warn=warn))
     # 边界的额外允许根（feature 33 H9：文档声称已久、实际首次接线）
     extra_dirs = additional_directories(merged_settings, warn=warn)
     tools = visible_tools(tools, rules)      # 裸名 deny 的工具压根不摆给模型
