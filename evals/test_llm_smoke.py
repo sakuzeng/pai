@@ -1,7 +1,9 @@
 """真模型冒烟评测（feature 32 T5）：真 DeepSeek + 真 pai 进程跑一个
 可程序判定的任务。默认不跑（./eval.sh 的 -m "not llm" 摘除）；
-./eval.sh --llm 且环境里有 DEEPSEEK_API_KEY 才执行——评测的 HOME 是
-隔离的（conftest），~/.pai/.env 读不到，key 必须来自环境变量。
+./eval.sh --llm 且拿得到 DEEPSEEK_API_KEY 才执行。评测的 HOME 是隔离的
+（conftest），所以 `~/.pai/.env` 读不到；**项目级 .env 算数**（feature 47 起
+conftest 会 load_dotenv）——此前那条「key 必须来自环境变量」把项目 .env 也挡了，
+结果是配好 .env 的机器上 `./eval.sh --llm` 全 skip 且不出声。
 
 判分照 dsh 第一原则：重读文件（外部世界），不信 agent 自述。
 这是 evals/README 旧计划（execution accuracy 任务集）的第一条；

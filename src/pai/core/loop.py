@@ -127,6 +127,15 @@ def build_system_prompt(tools: dict, skills_catalog: str | None = None,
     if "list_dir" in tools:
         parts.append("要看某个目录里有什么用 list_dir（如 list_dir(path=\"src/pai/core\")），"
                      "不要用 bash 的 ls。")
+    if "bash" in tools:
+        # **给 bash 划回它的地盘**。feature 47 的评测抓到一个我自己引入的回归：
+        # 上面那几句「不要用 bash 的 …」把模型从 bash 推开得过头了——
+        # bash 该赢的 4 条 case 上，有引导 2.40/4 而无引导 3.20/4
+        # （「起一个 http server」被推去选 list_dir，5 次里 5 次）。
+        # 只写「别用 bash 干 X」而不写「bash 是用来干什么的」，
+        # 模型学到的是「少用 bash」而不是「按活选工具」。
+        parts.append("bash 用来做上面这些工具做不到的事："
+                     "跑任意命令、管道与重定向、改权限、起进程。")
     if "ask_user_question" in tools:
         parts.append("拿不准用户的意图、或不理解自己为什么被拒绝时，"
                      "用 ask_user_question 问真人，不要瞎猜。")
