@@ -125,3 +125,4 @@
 - 2026-08-26 跑测试与 git 从 bash 里摘出来——权限层加 `EXEC` 第三档（起进程，不是碰文件）+ `run_tests`（命令不由模型选、保尾部判决）+ `git_read`（argv 不过 shell、子命令与 flag 双白名单），1575 passed → [features/42](features/42-20260826-tests-and-git-tools/README.md)
 - 2026-08-26 改代码这条链补齐——`edit_file` 加 `near_line`（多处出现时按行号挑，old 仍逐字匹配）+ 编辑结果带 unified diff（落点选返回值，TUI 的折叠机制现成）+ 三份默认根解析抽进 `roots.py`（按逐字相等验收），1628 passed → [features/43](features/43-20260826-edit-and-diff/README.md)
 - 2026-08-26 模型回答的 markdown 渲染（用户点名）——新增 `tui/markdown.py`（自己写不引 rich，复用既有宽度/配色体系），表格按 display_width 对齐、超宽压缩截断、跟着窗口重排；单换行按硬换行（既有 e2e 撞出来的）+ 中文禁则避头（真跑看出来的），1656 passed → [features/44](features/44-20260826-markdown-rendering/README.md)
+- 2026-08-27 第一次真用（用户选定）——真 pai + 真 pty + 真模型跑三件真活 + 一次 A/B：最大发现是证伪，四轮工具建设的收益卡在提示层（整份 system prompt 只有一句工具引导、给 edit_file 的，而模型确实只听了那一句；run_tests 在任务明说「跑测试」时零次被选中，加一句引导后 1 次调用 0 弹窗 9 秒完成）。本轮一条不修，交付发现清单 + 给真人的收紧版手工清单 → [features/45](features/45-20260827-first-real-use/README.md)
