@@ -17,6 +17,8 @@
 
 from __future__ import annotations
 
+import os
+
 import json
 from typing import TYPE_CHECKING, Callable, List, Optional, Sequence
 
@@ -92,7 +94,8 @@ SYSTEM_PROMPT = (
 )
 
 
-def build_system_prompt(tools: dict, skills_catalog: str | None = None) -> str:
+def build_system_prompt(tools: dict, skills_catalog: str | None = None,
+                        project_root: str | None = None) -> str:
     """按实际工具集生成 system prompt（feature 22，R4#E2；形状照 CC 的
     `getSystemPrompt(tools, …)`——装配层算好、loop 收成品）。
 
@@ -105,11 +108,31 @@ def build_system_prompt(tools: dict, skills_catalog: str | None = None) -> str:
     parts = ["你是一个最小化的编码 agent。"]
     if tools:
         parts.append("你有这些工具：" + "、".join(tools) + "。工具的用法与参数见各自的说明。")
+    # 每个专用工具一句引导。**这一段是 feature 46 的核心**，出处是 feature 45 的
+    # 实测：此前整份提示里只有 edit_file 那一句，而模型**确实只听了那一句**——
+    # `run_tests` 在任务明说「跑测试」时零次被选中，走 bash、7 次权限弹窗、
+    # 烧完预算没做完；加一句引导后 1 次调用、0 弹窗、9 秒完成。
+    # 条件化（照 CC 的 enabledTools）：受限工具集里不许摆一句调不动的引导。
     if "edit_file" in tools:
         parts.append("改代码时优先用 edit_file 做精确修改，而不是用 bash 或整文件覆盖。")
+    if "read_file" in tools:
+        parts.append("读文件用 read_file（可以用 offset/limit 只读一段），"
+                     "不要用 bash 的 cat/head/tail。")
+    if "search_files" in tools:
+        parts.append("找代码用 search_files（可以只搜一个文件），不要用 bash 的 grep/find。")
+    if "run_tests" in tools:
+        parts.append("跑测试用 run_tests，不要用 bash 跑 pytest。")
+    if "git_read" in tools:
+        parts.append("看 git 状态/diff/log 用 git_read，不要用 bash 跑 git。")
+    if "list_dir" in tools:
+        parts.append("要看某个目录里有什么用 list_dir（如 list_dir(path=\"src/pai/core\")），"
+                     "不要用 bash 的 ls。")
     if "ask_user_question" in tools:
         parts.append("拿不准用户的意图、或不理解自己为什么被拒绝时，"
                      "用 ask_user_question 问真人，不要瞎猜。")
+    overview = _project_overview(project_root)
+    if overview:
+        parts.append(overview)
     parts.append("一步步来，看到工具结果再决定下一步。任务完成后用一句话简短总结。")
     if skills_catalog and "skill" in tools:
         # skills 目录（feature 25）：跟着 skill 工具走——没有工具的装配（受限工具集）
@@ -118,6 +141,33 @@ def build_system_prompt(tools: dict, skills_catalog: str | None = None) -> str:
                      " description 匹配时，先用 skill 工具加载完整说明再动手；"
                      "不匹配就别加载。\n" + skills_catalog)
     return "".join(parts)
+
+
+def _project_overview(root: str | None) -> str:
+    """开场的「你在哪、这个项目长什么样」。不传 root 就一个字都不加。
+
+    这一段直接消掉 feature 45 里那个**必然发生**的开场：两次真跑的第一个工具调用
+    都是 `pwd && ls`，而 bash 结构上不参与目录边界（D#52），于是必然弹窗——
+    用户在第一步就被打断。顺带修掉 45-C4（模型不知道自己 cwd，于是每条 bash 都
+    写 `cd /abs/path && …`）。
+
+    坏路径绝不许弄挂会话：读不了就当没有这一段（同「坏文件绝不弄挂 agent」）。
+    """
+    if not root:
+        return ""
+    from pai.core.tools.listing import render_tree
+
+    try:
+        if not os.path.isdir(root):
+            return ""
+        tree = render_tree(root)
+    except OSError:
+        return ""
+    if not tree:
+        return ""
+    return (f"\n\n当前工作目录：{root}\n"
+            f"项目结构（噪音目录已跳过，每个目录只列前几个文件；"
+            f"要看全的用 list_dir）：\n{tree}\n")
 
 
 def print_event(event: AgentEvent) -> None:

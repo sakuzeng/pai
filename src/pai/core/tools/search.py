@@ -49,6 +49,15 @@ SKIP_DIRS = frozenset({
     ".idea", ".vscode", "htmlcov", ".eggs", ".DS_Store",
 })
 
+# 后缀式噪音（`*.egg-info` 是每次 pip install -e 都会重建的构建产物，
+# 与 `__pycache__` 同类，只是名字带包名所以列不进上面那张表）。
+SKIP_SUFFIXES = (".egg-info",)
+
+
+def is_noise_dir(name: str) -> bool:
+    """这个目录名算不算噪音。列目录与搜索共用同一个判断（feature 46）。"""
+    return name in SKIP_DIRS or name.endswith(SKIP_SUFFIXES)
+
 
 # 这次调用真正要搜的那个根，与它配套的 matcher（feature 43 抽进 `roots.py`；
 # 「空 path 要回落 cwd」那条判断以及它复发三次的理由都写在那边的模块注释里）。
@@ -81,6 +90,19 @@ def _name_filter(glob: str):
     return lambda rel, name: fnmatch.fnmatchcase(name, glob)
 
 
+def _iter_one_file(path: str, accept):
+    """`path` 指向一个文件时的遍历（feature 46）。
+
+    这一格是 feature 45 真跑撞出来的：模型已经知道文件在哪、只想在里面找一行，
+    而当时 `search_files` 报「搜索根不是目录」，于是「找代码用 search_files」
+    这条引导在最该生效的时候失效，模型退回 bash 并弹一次窗。
+    glob 照常生效——指了一个不匹配 glob 的文件该是「没找到」，不是「无视 glob」。
+    """
+    name = os.path.basename(path)
+    if accept(name, name):
+        yield path, False
+
+
 def _iter_files(root: str, root_real: str, accept):
     """遍历搜索根下的候选文件，跳过噪音目录、越界软链、过大文件。
 
@@ -90,7 +112,7 @@ def _iter_files(root: str, root_real: str, accept):
     scanned = 0
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
         dirnames[:] = sorted(d for d in dirnames
-                             if d not in SKIP_DIRS
+                             if not is_noise_dir(d)
                              and not _escapes_root(os.path.join(dirpath, d), root_real))
         for name in sorted(filenames):
             full = os.path.join(dirpath, name)
@@ -156,9 +178,10 @@ def search_files(
     limit = max_results or DEFAULT_MAX_RESULTS
 
     root = search_root({"path": path})
-    if not os.path.isdir(root):
-        return f"错误：搜索根 {root} 不存在或不是目录。"
-    root_real = os.path.realpath(root)
+    single = os.path.isfile(root)
+    if not single and not os.path.isdir(root):
+        return f"错误：搜索根 {root} 不存在。"
+    root_real = os.path.realpath(root if not single else os.path.dirname(root))
 
     names_only = not pattern
     rx = None
@@ -170,13 +193,16 @@ def search_files(
             return f"错误：正则 {pattern!r} 编译失败：{e}"
 
     accept = _name_filter(glob)
+    # 单文件时相对路径的基准是它所在目录，否则 `relpath(f, f)` 会算出 "."
+    base = os.path.dirname(root) if single else root
+    walk = _iter_one_file(root, accept) if single else _iter_files(root, root_real, accept)
     hits: list = []
     capped = scan_capped = False
-    for full, hit_scan_cap in _iter_files(root, root_real, accept):
+    for full, hit_scan_cap in walk:
         if hit_scan_cap:
             scan_capped = True
             break
-        rel = os.path.relpath(full, root)
+        rel = os.path.relpath(full, base)
         if names_only:
             hits.append(rel)
         else:
