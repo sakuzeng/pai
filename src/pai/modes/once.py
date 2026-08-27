@@ -9,6 +9,8 @@ client 与 model 可注入，因此这层也能离线测（否则接线错了要
 
 from __future__ import annotations
 
+import os
+
 from typing import Callable, Optional
 
 from pai.core.protocols import ChatClient
@@ -75,7 +77,8 @@ def run_once(
             tools=asm.tools,
             # prompt 按过滤后的实际工具集生成（feature 22）——模型看见几个就说几个
             system_prompt=build_system_prompt(
-                asm.tools, skills_catalog=asm.skills_catalog),
+                asm.tools, skills_catalog=asm.skills_catalog,
+                project_root=os.getcwd()),
             max_steps=max_steps,
             max_total_tokens=max_total_tokens,
             session=session,

@@ -265,7 +265,8 @@ src/pai/
     mcp.py              MCP client：stdio JSON-RPC、工具桥接、清洗与预算
     queue.py / interrupt.py     排队消息 / 进程级中断标志
     tools/              @tool 注册表；bash / read_file（可按行 offset/limit 分段）/
-                        search_files（内容正则 + 文件名 glob，参与目录边界）/
+                        search_files（内容正则 + 文件名 glob，也可只搜一个文件）/
+                        list_dir（目录结构；与开场注入的项目摘要共用一份实现）/
                         run_tests（命令来自设置或探测，模型不能指定跑什么）/
                         git_read（只读子命令，argv 不过 shell）/
                         write_file / edit_file（`near_line` 消歧；两者都回一段 diff）/

@@ -1,6 +1,20 @@
 # 当前状态快照
 
-最后更新：2026-08-27（feature 45 交付——**第一次真用**（用户从四个候选里选定）。
+最后更新：2026-08-27（feature 46 交付——补上 feature 45 实测发现的 A1+A2
+（用户点名一起做）。①`build_system_prompt` 加五句条件化工具引导
+（read_file / search_files / run_tests / git_read / list_dir），`bash` 的工具描述
+收紧成「先确认没有更合适的专用工具再用它」——两个决策时刻各盖一个（读指令那一刻、
+在 schema 里挑工具那一刻）。②装配期把 cwd 与项目结构摘要注入 system prompt
+（顺带修掉 45-C4「模型不知道自己 cwd」），新增 `list_dir` 工具兜底会话中途新建的
+目录；`render_tree` 的预算**按层分配**而不是深度优先——深度优先 + 全局上限会让
+最重要的目录整个消失且看不出来（本仓库上 `src/` 真的没出现过）。
+③`search_files` 接受单个文件当搜索根。
+验收是 `tests/test_llm_steering.py` 三条 `--llm` 测试（真跑三遍全过）——
+这是本轮唯一能证明它有用的东西，离线断言「提示语里有那几个字」证明不了模型会听。
+端到端单次真跑方差极大（同一问题跑出 7 调用/2 弹窗与 12 调用/5 弹窗），
+刻意不拿它声称改进。档案 [features/46](features/46-20260827-tool-steering/README.md)。
+1683 passed）。
+同日早些：feature 45 交付——**第一次真用**（用户从四个候选里选定）。
 本轮不加功能，交付物是一份发现清单：真 pai 进程 + 真 pty + 真模型跑三件真活
 （查一处实现 / 改一个函数+加测试 / 跑测试）+ 一次 A/B 实验，累计约 20 万 token。
 最大的发现是**证伪**：feature 41～44 四轮工具建设的收益卡在提示层——
@@ -247,7 +261,7 @@ MCP client（手写 stdio JSON-RPC、`mcp__<server>__<tool>` 桥接、settings �
 | 模块 | 状态 | 说明 |
 |---|---|---|
 | `core/loop.py` | 可用 | agent loop：依赖注入、max_steps 兜底、每条消息落盘、usage 落盘、用量预算熔断、自动压缩触发/熔断；主循环走流式（侧查询刻意不走）、工具按批调度、权限按批前置（D#59）；截断轮次（`finish_reason=="length"`）tool_calls 全判失败回填不执行（2026-08-24，pi 同款判据） |
-| `core/tools/` | 可用 | `@tool` 从签名生成 schema；bash / read_file（按行 `offset`/`limit` 分段，截断切在整行边界、文案给出可续读的 offset）/ `search_files`（内容正则 + 文件名 glob；纯 Python 不依赖 ripgrep；三件声明齐全故界内不问、可与 read_file 并发；跳噪音目录与越界软链）/ write_file / edit_file / `run_tests`（命令来自 `tests.command` 或探测，模型只能给 filter/path；超时自成一档 600s；输出保头保尾——判决在尾部）/ `git_read`（只读子命令白名单 + 按子命令的 flag 白名单，argv 不过 shell；并发安全性取决于 subcommand）/ `output.py`（输出上限与保头保尾的家） / `edit_file` 带 `near_line`（多处出现时按行号挑，old 仍逐字匹配）与 diff 回执 / `diffs.py`（unified diff，超 80 行只报统计）/ `roots.py`（默认根解析 + matcher 包装，三工具共用）|
+| `core/tools/` | 可用 | `@tool` 从签名生成 schema；bash / read_file（按行 `offset`/`limit` 分段，截断切在整行边界、文案给出可续读的 offset）/ `search_files`（内容正则 + 文件名 glob；纯 Python 不依赖 ripgrep；三件声明齐全故界内不问、可与 read_file 并发；跳噪音目录与越界软链）/ write_file / edit_file / `run_tests`（命令来自 `tests.command` 或探测，模型只能给 filter/path；超时自成一档 600s；输出保头保尾——判决在尾部）/ `git_read`（只读子命令白名单 + 按子命令的 flag 白名单，argv 不过 shell；并发安全性取决于 subcommand）/ `output.py`（输出上限与保头保尾的家） / `edit_file` 带 `near_line`（多处出现时按行号挑，old 仍逐字匹配）与 diff 回执 / `diffs.py`（unified diff，超 80 行只报统计）/ `roots.py`（默认根解析 + matcher 包装，三工具共用） / `list_dir`（目录结构，与装配期注入共用 `render_tree`，预算按层分配）|
 | `core/compaction.py` | 可用 | 见下——阶段 1 主线（触发→切→摘→重建→熔断）全部接进 loop |
 | `modes/once.py` | 可用 | 单次任务，跑完即退出（对应 pi 的 print-mode）。client/model 可注入故可离线测；`context_window()` + `CompactionSettings()` 默认透传；装配走 `modes/assembly.py` |
 | `modes/commands.py` | 可用 | `/命令` 与 `!shell` 模式（feature 40 从 interactive 抽出）：两条主循环共用的那一半。只放「一条命令怎么执行、打什么字」，不放循环本身；跨轮状态一律由调用方传入，不认识 driver 与 app |

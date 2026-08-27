@@ -12,6 +12,8 @@
 
 from __future__ import annotations
 
+import os
+
 from typing import Callable, List, Optional
 
 from pai.core.events import Compacted, ConversationCleared
@@ -354,7 +356,8 @@ def _dispatch_command(line: str, *, commit, app, session, flag, on_event, **kw) 
                 _run_shell(line[1:].strip(), messages=kw["messages"],
                            session=session, out=commit,
                            system_prompt=build_system_prompt(
-                               kw["tools"], skills_catalog=kw.get("skills_catalog")),
+                               kw["tools"], skills_catalog=kw.get("skills_catalog"),
+                               project_root=os.getcwd()),
                            ledger=kw.get("ledger"))
             except KeyboardInterrupt:
                 commit("⛔ 已中断")

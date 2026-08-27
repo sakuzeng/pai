@@ -183,6 +183,53 @@ def test_symlinks_pointing_outside_the_search_root_are_skipped(tmp_path):
     assert "secret" not in out, "指向搜索根之外的软链没被跳过"
 
 
+def test_a_single_file_can_be_the_search_root(tmp_path):
+    """path 指向一个文件时就搜那个文件（feature 46，45-A2 实测发现）。
+
+    真跑里模型第三次走 bash 干的正是这件事：`grep -n 'X' src/.../output.py`
+    ——它已经知道文件在哪，只想在里面找一行，而 `search_files` 当场报
+    「搜索根不是目录」。于是「找代码用 search_files」这条引导在最该生效的
+    时候失效，模型只能退回 bash（并弹一次窗）。
+    """
+    from pai.core.tools.search import search_files
+
+    f = tmp_path / "one.py"
+    f.write_text("alpha\nbeta = 2\ngamma\n", encoding="utf-8")
+
+    out = search_files(pattern=r"beta", path=str(f))
+    assert "one.py:2:beta = 2" in out
+
+
+def test_searching_a_single_file_finds_nothing_gracefully(tmp_path):
+    from pai.core.tools.search import search_files
+
+    f = tmp_path / "one.py"
+    f.write_text("alpha\n", encoding="utf-8")
+    out = search_files(pattern="不存在的字样", path=str(f))
+    assert "没有找到" in out
+
+
+def test_a_single_file_root_still_respects_the_glob(tmp_path):
+    """给了 glob 又指了一个不匹配的文件：该是「没找到」，不是「无视 glob」。"""
+    from pai.core.tools.search import search_files
+
+    f = tmp_path / "one.py"
+    f.write_text("beta\n", encoding="utf-8")
+    assert "没有找到" in search_files(pattern="beta", path=str(f), glob="*.md")
+    assert "one.py:1:beta" in search_files(pattern="beta", path=str(f), glob="*.py")
+
+
+def test_directory_behaviour_is_byte_for_byte_unchanged(tmp_path):
+    """回归守卫：吃单个文件这件事，不许改变它吃目录时的任何一个字。"""
+    from pai.core.tools.search import search_files
+
+    _tree(tmp_path)
+    assert search_files(pattern="run_agent", path=str(tmp_path), glob="*.py") == (
+        "src/loop.py:1:def run_agent():\n"
+        "src/tools.py:1:def run_agent_shim():\n"
+        "src/tools.py:2:    # 中文注释：调用 run_agent")
+
+
 # ---- 错误路径 ----
 
 
@@ -196,14 +243,16 @@ def test_a_bad_regex_is_reported_not_raised(tmp_path):
 
 
 def test_a_missing_search_root_is_reported(tmp_path):
-    """错误路径二：搜索根不存在／不是目录。"""
+    """错误路径二：搜索根不存在。
+
+    这条原本还断言「path 是文件也算错」，那一半在 feature 46 被**刻意放开**了
+    ——feature 45 真跑证明它挡住的是一个合法且高频的用法（在已知文件里找一行），
+    于是模型被逼回 bash。放开之后这里只剩「不存在」一种错。
+    """
     from pai.core.tools.search import search_files
 
-    assert "错误" in search_files(pattern="x", path=str(tmp_path / "nope"))
-
-    f = tmp_path / "a.py"
-    f.write_text("x\n", encoding="utf-8")
-    assert "错误" in search_files(pattern="x", path=str(f))
+    out = search_files(pattern="x", path=str(tmp_path / "nope"))
+    assert "错误" in out and "不存在" in out
 
 
 def test_a_negative_max_results_is_reported_not_silently_ignored():

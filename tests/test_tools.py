@@ -855,8 +855,8 @@ def test_the_registry_is_restored_between_tests():
 def test_the_previous_probe_did_not_leak_into_this_test():
     """上一条留下的探针不该出现在这里——这条与它是一对，拆开看都没意义。"""
     assert "_leak_probe" not in get_tools()
-    assert set(get_tools()) == {"bash", "read_file", "search_files", "write_file",
-                                "edit_file", "run_tests", "git_read",
+    assert set(get_tools()) == {"bash", "read_file", "search_files", "list_dir",
+                                "write_file", "edit_file", "run_tests", "git_read",
                                 "remember", "skill"}, "内置工具集之外不该有别的"
 
 

@@ -515,7 +515,8 @@ def run_interactive(
                         _run_shell(line[1:].strip(), messages=messages,
                                    session=session, out=out,
                                    system_prompt=build_system_prompt(
-                                       tools, skills_catalog=skills_catalog),
+                                       tools, skills_catalog=skills_catalog,
+                                       project_root=os.getcwd()),
                                    ledger=ledger)
                     except KeyboardInterrupt:
                         # 信号可能落在装处理器之前/之后的缝隙里（或非主线程装不上），
@@ -571,7 +572,8 @@ def _run_turn(task: str, *, client, model, tools, messages, anchors, state, stee
             recall=recall,
             # 按实际工具集生成（feature 22）：REPL 有 ask_user_question、
             # visible_tools 可能删过——常量那句「你有这些工具」在这条路上是谎话
-            system_prompt=build_system_prompt(tools, skills_catalog=skills_catalog),
+            system_prompt=build_system_prompt(tools, skills_catalog=skills_catalog,
+                                              project_root=os.getcwd()),
             entry_ledger=ledger,
             on_paths_touched=on_paths_touched,
             # 组合 loader（feature 25）：压缩重建后重挂已加载 skills；不传时退回纯记忆
