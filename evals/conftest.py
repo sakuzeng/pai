@@ -12,6 +12,14 @@ import time
 from pathlib import Path
 
 import pytest
+from dotenv import load_dotenv
+
+# 项目 .env 也算数（feature 47）。原设计是「key 必须来自环境变量」，
+# 理由是 HOME 被隔离、`~/.pai/.env` 读不到——但那条把**项目级** .env 也一起挡了，
+# 于是 `./eval.sh --llm` 在一台配好 .env 的机器上什么都不跑、还一声不吭地全 skip。
+# 花钱的门禁没有放宽：它一直是 `PAI_RUN_LLM_TESTS=1`（显式选择），不是「有没有 key」。
+# 读项目 .env 与 HOME 隔离不冲突——隔离防的是**写进真实 HOME**。
+load_dotenv()
 
 from pai.evals.artifacts import append_run_record, build_run_record, new_run_dir
 
