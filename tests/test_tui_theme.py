@@ -15,7 +15,8 @@ from pai.tui import theme
 
 
 ALL_GLYPHS = [theme.ANSWER, theme.SUMMARY, theme.QUEUE, theme.RULE,
-              theme.PROMPT, theme.CONTINUATION, theme.DETAIL, theme.SELECTED]
+              theme.PROMPT, theme.CONTINUATION, theme.DETAIL, theme.SELECTED,
+              theme.COMPACTED]
 
 
 @pytest.mark.parametrize("glyph", ALL_GLYPHS)

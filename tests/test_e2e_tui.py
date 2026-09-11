@@ -423,7 +423,12 @@ def test_resume_carries_the_conversation_into_a_new_process(session, tmp_path):
             s2.drain(0.15)
             if "/help 看命令" in s2.screen_text():
                 break
-        assert "已恢复会话".encode() in s2.raw, "恢复提示要说出来"
+        screen = s2.screen_text()
+        # feature 48：查屏幕不查裸字节——此前提示走 print，被备用屏一进就盖掉，
+        # `s2.raw` 里有而屏幕上没有，正是用户「看起来没恢复」的那个洞
+        assert "已恢复会话" in screen, f"恢复提示要在屏幕上：\n{screen}"
+        assert "记住我叫小明" in screen and "记住了小明" in screen, \
+            f"旧对话要回放上屏（照 CC）：\n{screen}"
         s2.send("我叫什么\r", until="你叫小明")
         sent = json.dumps(provider2.requests[0]["messages"], ensure_ascii=False)
         assert "记住我叫小明" in sent and "记住了小明" in sent,             "第一段对话必须在第二个进程发出的请求里"

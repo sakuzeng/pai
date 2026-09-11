@@ -1,6 +1,20 @@
 # 当前状态快照
 
-最后更新：2026-08-27（feature 47 交付——工具选择的可重复测量，修 feature 46
+最后更新：2026-09-11（feature 48 交付——`--resume` 之后旧对话上屏，修用户报的
+「我使用resume并不能恢复对话状态」。排查结论：模型侧一直是通的，屏幕侧从没画过——
+`_run_tui` 的 `Transcript()` 从空建起，恢复提示走 print 在进备用屏（自带 `2J`）之前打，
+用户看到的是一张与全新会话一模一样的空屏。用户拍板「按 CC 的来」，四问全按 CC 2.1.88
+反编译源码定：①恢复的消息与活轮次走同一个渲染器（CC 把 initialMessages 直接当 messages
+状态喂同一个 `<Messages>`）——pai 新增 `modes/resume.py::history_items`（消息 → 回放项，
+纯函数）+ `TuiApp.replay`（复用活轮次的用户行 / 答案 / 工具折叠行，不过 dock，^O 能展开）；
+②框架注入（指令、规则/召回 system-reminder）不画（CC 的 isMeta），压缩位置一行标记不回放
+摘要正文，`!命令` 画成一条折叠工具行；③system prompt 与项目指令按当前环境重装配
+（CC 转录里根本不存 system prompt）——此前提示语说重装配而代码没做，13 天没人发现；
+④纯 REPL 路径只打提示不回放（CC print 模式无渲染）。真实轨迹夹具就是用户那次
+「看起来没恢复」的原始会话（37 条，一次 run 被预算掐断、零最终回答）。
+两处注入反证各红。档案 [features/48](features/48-20260910-resume-transcript-replay/README.md)。
+1704 passed）。
+2026-08-27：feature 47 交付——工具选择的可重复测量，修 feature 46
 留下的「端到端效果没有可信测量方法」（用户问「怎样修复呢」）。
 方法：不跑整条轨迹，固定上下文只看第一个 `tool_call`；18 条案例集
 （14 条专用工具该赢 + 4 条 bash 才是对的，防止指标奖励「一律不选 bash」）
@@ -287,6 +301,7 @@ MCP client（手写 stdio JSON-RPC、`mcp__<server>__<tool>` 桥接、settings �
 | `viz/` | 可用 | `pai-viz` 本地网页：运行时流转可视化（feature 17）——结构图（工具自省上图、阶段状态解析本表、每处标代码位置可点击跳编辑器）+ 回合时间线（读会话 JSONL 与并排的 `.events.jsonl`，分组配对成回合，2s 游标轮询实时点亮）。页面纯观察，无对话输入 |
 | `core/trace.py` | 可用 | 观测流落盘：`EventTrace` 当 `on_event` 用，事件（类型数以 `core/events.py` 的 `AgentEvent` Union 为准，勿在文档里抄数）追加进 `<会话同名>.events.jsonl`（`MessageDelta` 刻意不落）；写失败吞掉且只告警一次——观测流挂了不连累正事。`compose()` 扇出渲染器与落盘器 |
 | `cli.py` / `config.py` | 可用 | cli 只做参数解析与分发；OpenAI 兼容协议打 DeepSeek；`context_window()` 读 `PAI_CONTEXT_WINDOW`，默认 1_000_000（v4-flash）；`keep_recent_tokens()` 读 `PAI_KEEP_RECENT_TOKENS`，默认取 `CompactionSettings` 的 20000（这个口子是为了让压缩在真实使用里跑得到，不是调优旋钮）；两者非法值都在门口 `sys.exit` |
+| `modes/resume.py` | 可用 | resume 回放的分类（feature 48，照 CC `shouldShowUserMessage`）：恢复的 messages → 回放项（`UserLine` / `AssistantMessage` / `ToolEnd` 按 tool_call_id 配对 / `ShellLine` / `CompactedMark`），指令头、`<system-reminder>`、摘要头、`!` 回显四种 pai 自造的注入形状在这里认；住 modes 层是因为 tui 不该 import loop/commands（AST 守卫） |
 | `modes/interactive.py` | 可用 | REPL：跨轮持有 messages/锚点簿/熔断状态；历史（按 cwd 分文件、连续重复只记一条）、`\` 续行、`!` shell 模式、`/help /status /compact /clear /exit`、两级 Ctrl+C；API 出错不炸会话 |
 | `core/heartbeat.py` | 可用 | 干活期间的心跳（feature 39）：长时间阻塞的工具每轮给界面一个喘气机会。进程级单例 + `current()`/`set_current()`，形状与理由照 `core/interrupt.py`（`@tool` 从签名生成 schema，运行期上下文只能旁路进）。`shell._wait` 每 `POLL_SECONDS` 一跳；TUI 装上去读键盘，退出时卸载。回调抛异常一律吞——心跳是界面便利不是正确性。两条阻塞路径都接上了：`shell._wait` 与 `mcp._wait_for`（后者顺带接了中断） |
 | `core/events.py` | 可用 | frozen dataclass 扁平联合 + `render_text` 默认渲染器（D#39）。成员数不在文档里抄——已漂过三次（12→14→17），以本文件的 `AgentEvent` Union 为准。`on_event` 现在收事件对象，渲染下放 modes 层；`MessageDelta`（流式增量）与 `Interrupted(where="stream")` 于阶段 5 补上 |
@@ -317,6 +332,7 @@ MCP client（手写 stdio JSON-RPC、`mcp__<server>__<tool>` 桥接、settings �
 | `tui/arbiter.py` | 可用 | 输入归属仲裁：输入框非空即压住对话框，停手 1500ms 放行（常量抄自 CC，来源写在旁边），`is_suppressing()` 可被问出来（不许静默） |
 | `tui/dialog.py` | 可用 | 权限 ask 与 AskUserQuestion 共用；`handoff()` 把 `!`/`/` 交回主循环执行（08 铁证的修法）；Esc 取消 |
 | `tui/dock.py` | 可用 | 活动区（按动作聚合计数）/ 队列区 / 状态行（转圈 + 已用时 + token + 模式 + 待决数）；`AgentEnd` 吐一行摘要给 commit |
+| `tui/history.py` | 可用 | 回放项的类型 + 活轮次与回放共用的两个条目工厂（`user_entry` 从 `_submitted` 抽出、`compacted_entry`）；渲染本体在 `TuiApp.replay`（feature 48） |
 | `tui/transcript.py` | 可用 | alt 屏下 pai 自己持有的会话文档：存条目不存行（按 `(内容, 宽度)` 缓存），于是 resize 后历史能按新宽度重排 |
 | `tui/scroll.py` | 可用 | 滚动状态机（纯状态零 IO）：follow-end、手动上滚就关掉跟随、视口变化保位、翻页留 4 行重叠 |
 | `tui/altscreen.py` | 可用 | 备用屏渲染器：整屏帧 + 行 diff + 绝对定位；绝不发 `2J`、绝不重发 `?1049h`（实测两条硬约束）；`SIGWINCH` 重入保护 |

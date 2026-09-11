@@ -1343,6 +1343,9 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
       当前目录不同——工作目录边界与项目指令都会不一样」。目录没变一个字不提
       （反向守卫钉住）。真正「恢复设置」仍未做：那要把模式/模型写进 header，
       是格式的事，等真实需要。
+      2026-09-11（feature 48，照 CC）：其中「system prompt 按当前环境重新装配」这半句
+      此前只是提示语、代码没做（`run_agent` 只在 messages 为空时造 system）——现在真做了，
+      项目指令也重读磁盘；权限模式 / 模型仍取当前环境、不恢复，与 CC 一致。
 - [x] ~~`resolve_resume_target` 同秒 mtime tie 时 latest 未定义：排序键补
       st_mtime_ns 或文件名即可，一行的事（出处：24 复盘质疑四）。~~
       已修 2026-08-25（feature 34，`fix/34-todo-backlog-batch`）：排序键改 `(st_mtime_ns, f.name)`，
@@ -2272,3 +2275,19 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
 - [ ] 新测量的第一条断言应该是「它自己稳不稳」（47 复盘「下次怎么做更好」）：
       本轮的重复性检查是顺手加的，结果是四条里唯一真正救了这一轮的——
       没有它我会拿着 15 vs 14 得出「引导略有效」，而那个差值完全在噪声里。
+
+### feature 48（resume 回放）遗留 —— 2026-09-11
+
+- [ ] `!命令` 活轮次与回放形态不一致：活轮次 `_dispatch_command` 把全量输出 `commit` 进
+      transcript，回放按 CC 非 verbose 折叠成一行可展开。两条路该是同一个函数——把活轮次也改成
+      折叠（照 CC 的 BashToolResultMessage），本轮没动是怕扩 diff（出处：48 复盘质疑一）。
+- [ ] resume 尾部哨兵：CC 在转录以 user 消息结尾时补一条合成 assistant（`NO_RESPONSE_REQUESTED`），
+      轮次中途被打断则补 isMeta 的「Continue from where you left off.」；pai 的 `trim_unfinished`
+      只删半截工具回合、不补哨兵。OpenAI 兼容协议连续两条 user 合法，目前不是 bug；
+      用户那份真实会话正好就以 user 结尾（第二问 steering 注入后被预算掐断）（出处：48 README 保留差异三）。
+- [ ] 压缩摘要正文在 pai 里无处可看：回放只画一行标记（照 CC 主屏），而 CC 还有 transcript 模式
+      （ctrl+o）能看摘要正文与压缩前历史，pai 没有对应物（出处：48 拍板问 2）。
+- [ ] 回放与活轮次之间没有分隔：恢复提示在历史末尾算一道边界，但历史开头没有「以下是上次的」
+      标记；CC 也没有，先记着看真用时是否困扰（出处：48 复盘质疑四）。
+- [ ] `tests/fixtures/resume_session.jsonl` 131KB，是仓库里最大的测试文件；再添同类夹具时考虑
+      截短工具结果正文并在 fixtures/README 注明（出处：48 devlog）。
