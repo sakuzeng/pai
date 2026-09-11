@@ -86,7 +86,8 @@ from pai.core.tools import Tool, ask, get_tools
 from pai.core.tools import skill as skill_tool
 from pai.modes.assembly import assemble
 from pai.modes.echo import make_stream_echo
-from pai.modes.resume import history_items
+from pai.modes.resume import (history_items, load_conversation, refresh_assembly,
+                              resume_note as _resume_note)
 from pai.modes.statusline import StatusLinePrinter
 from pai.tui.app import (
     COMMAND, CYCLE_MODE, EOF, EXPAND, INTERRUPT, REDRAW, SUBMIT, TuiApp,
@@ -315,25 +316,6 @@ def await_dialog_answer(driver, app, dialog, on_action) -> str:
     return NO_ANSWER if answer is None else answer
 
 
-def _refresh_assembly(messages: List[dict], ledger: List[Optional[str]],
-                      system_prompt: str) -> tuple:
-    """resume 后把装配层的产物换成当前环境的（feature 48，照 CC：转录里不存 system prompt）。
-
-    system 换成现算的那份（ledger 记 None = 新条目、新 id）；指令消息全部丢掉，
-    下一轮 `_inject_instructions` 见不到旧的就会重读磁盘。对话消息一条不动。
-    """
-    msgs, led = list(messages), list(ledger)
-    fresh = {"role": "system", "content": system_prompt}
-    if msgs and msgs[0].get("role") == "system":
-        msgs[0], led[0] = fresh, None
-    else:
-        msgs.insert(0, fresh)
-        led.insert(0, None)
-    while drop_instructions(msgs, led):
-        pass
-    return msgs, led
-
-
 def run_interactive(
     *,
     client=None,
@@ -351,6 +333,7 @@ def run_interactive(
     rules: Optional[RuleSet] = None,
     mode: Optional[str] = None,
     resume: Optional[str] = None,
+    fork_session: bool = False,
 ) -> None:
     on_event = on_event if on_event is not None else make_event_handler()
     client = client or make_client()
@@ -361,36 +344,26 @@ def run_interactive(
     # ask_user_question 不在默认工具集里（once 没真人可问），交互模式显式加回来
     tools = tools if tools is not None else get_tools(
         list(get_tools()) + ["ask_user_question"])
-    # resume（feature 24）：先解析并重建旧会话，再开新会话文件（parentSession
-    # 指旧会话）。旧文件只读不改；错误（找不到/旧格式/更新版本）原样上抛，
-    # cli 负责把它变成人话——静默兜底成「新会话」比报错更糟。
+    # resume（feature 24 → 48 → 49）：解析并重建旧会话。默认照 CC `switchSession`：
+    # 沿用它的 id、往同一个文件追加，一条新消息都没有就什么都不写；`--fork-session`
+    # （CC 同名 flag）才走 24 的新文件 + parentSession + 按原 id 重录。
+    # 错误（找不到/旧格式/更新版本）原样上抛，cli 负责变人话——静默兜底成「新会话」比报错更糟。
     resumed_messages: List[dict] = []
     resumed_ledger: List[Optional[str]] = []
-    parent_id: Optional[str] = None
+    resume_target: Optional[Path] = None
+    resume_header: dict = {}
     resume_note: Optional[str] = None
     if resume is not None:
-        from pai.core.session import (build_messages, load_session,
-                                      resolve_resume_target, trim_unfinished)
-        target = resolve_resume_target(resume or None)
-        header, entries = load_session(target)
-        r_msgs, r_led = build_messages(entries)
-        resumed_messages, resumed_ledger = trim_unfinished(r_msgs, r_led)
-        parent_id = str(header.get("id") or "")
-        # 恢复的**只有对话**：权限模式 / 模型 / system prompt / 工作目录边界
-        # 全部取当前环境（24 遗留）。dsh 明确警告「恢复到不同构图的组合是错误」，
-        # pai 此前连警告都没有——最容易咬人的是权限模式（上次在 bypass 里跑的活，
-        # 这次未必），以及换了目录：边界与项目指令都跟着 cwd 走。
-        notes = [f"↩️ 已恢复会话 {parent_id[:8]}"
-                 f"（{len(resumed_messages)} 条消息，来自 {target.name}）",
-                 "   恢复的只有对话，设置不跟着回来：权限模式、模型、"
-                 "system prompt 都按当前环境重新装配。"]
-        recorded_cwd = str(header.get("cwd") or "")
-        # 目录没变就不提——每次都喊等于没喊（同「无失败一个字不提」那条反向守卫）
-        if recorded_cwd and recorded_cwd != str(Path.cwd().absolute()):
-            notes.append(f"   注意：该会话录制于 {recorded_cwd}，"
-                         "当前目录不同——工作目录边界与项目指令都会不一样。")
-        resume_note = "\n".join(notes)
-    session = None if no_session else SessionLog(parent_session=parent_id or None)
+        from pai.core.session import resolve_resume_target
+        resume_target = resolve_resume_target(resume or None)
+        resume_header, resumed_messages, resumed_ledger = load_conversation(resume_target)
+        resume_note = _resume_note(resume_header, resume_target, len(resumed_messages))
+    if no_session:
+        session = None
+    elif resume_target is not None and not fork_session:
+        session = SessionLog.open_existing(resume_target)
+    else:
+        session = SessionLog(parent_session=str(resume_header.get("id") or "") or None)
     # 观测流落盘（feature 17）。**只在这里包一次**:session 整个 REPL 生命周期只建一次,
     # 下游三处 run_agent 调用共用同一个 on_event；`/clear` 只截断 messages 不换会话,
     # 所以不存在「换了会话事件还写旧文件」的问题(动工前专门核对过,plan 里认账的
@@ -451,20 +424,24 @@ def run_interactive(
     mcp_sessions = asm.mcp_sessions
 
     if resumed_messages:
-        # feature 48（照 CC）：CC 的转录里不存 system prompt，每次 query 现算
-        # （REPL.tsx：getSystemPrompt + getUserContext）。pai 的 system 消息落在 JSONL 里，
-        # 所以换成当前装配结果、丢掉旧指令消息让 _inject_instructions 重读磁盘——
-        # 恢复提示里那句「system prompt 按当前环境重新装配」从此是真话（此前不是）
-        resumed_messages, resumed_ledger = _refresh_assembly(
+        # feature 48/49（照 CC）：CC 的转录里不存 system prompt，每次 query 现算
+        # （REPL.tsx：getSystemPrompt + getUserContext）。pai 的 system 落在 JSONL 里，
+        # 所以换成当前装配结果——只在内存（ledger None、不落盘）；指令消息与磁盘那条
+        # 一样就沿用原条目，不一样才丢掉让 _inject_instructions 重来
+        resumed_messages, resumed_ledger = refresh_assembly(
             resumed_messages, resumed_ledger,
             build_system_prompt(tools, skills_catalog=skills_catalog,
-                                project_root=os.getcwd()))
+                                project_root=os.getcwd()),
+            instructions() if instructions is not None else None)
     for m, mid in zip(resumed_messages, resumed_ledger):
-        # 按原 id 重录进新文件（自包含，单文件永远够用）；配平掉的半截回合
-        # 不重录。CC 反教材：resume 路径造新身份 → 转录每次恢复指数增长。
-        # 换掉的 system 是新内容，ledger 里是 None → 录成新 id：只多一条，不是指数
         messages.append(m)
-        ledger.append(session.append(m, record_id=mid) if session is not None else None)
+        if session is not None and fork_session:
+            # fork：按原 id 重录进新文件（CC 反教材：造新身份 → 指数增长）；
+            # 换掉的 system 是新内容，ledger 里是 None → 录成新 id
+            ledger.append(session.append(m, record_id=mid))
+        else:
+            # 接管同一文件：条目本来就在盘上，台账直接用原 id；新 system 只在内存
+            ledger.append(mid)
 
     common = dict(
         client=client, model=model, tools=tools, messages=messages, ledger=ledger,
@@ -534,7 +511,8 @@ def run_interactive(
                                    compaction=compaction, context_window=context_window,
                                    rules=rules, hooks=hooks, mode_state=mode_state,
                                    on_event=on_event, session=session, ledger=ledger,
-                                   rule_state=rule_state):
+                                   rule_state=rule_state, skills_catalog=skills_catalog,
+                                   instructions=instructions, asker=asker_ref.get()):
                     break
                 continue
 
@@ -698,6 +676,13 @@ def _run_tui(*, out, client, model, tools, messages, ledger, anchors, state, ste
 
     refresh_context()
 
+    def on_switched() -> None:
+        """`/resume` 切换成功后的界面动作（feature 49，照 CC：同一个渲染器画新的 messages）。
+        清屏重画在这里，恢复提示由命令层 `out`（=commit）打在最后。"""
+        app.clear_transcript()
+        app.replay(history_items(messages))
+        refresh_context()
+
     def commit(text: str) -> None:
         app.commit(str(text))          # 拆换行与折行都在 app.commit 里做
 
@@ -723,7 +708,8 @@ def _run_tui(*, out, client, model, tools, messages, ledger, anchors, state, ste
 
         def on_action(kind, payload):
             if kind == COMMAND:
-                quit_ = _dispatch_command(payload, commit=commit, out=commit,
+                quit_ = _dispatch_command(payload, commit=commit, out=commit, asker=ask_human, instructions=instructions,
+                                          on_switched=on_switched,
                                           messages=messages, ledger=ledger,
                                           anchors=anchors, state=state, tools=tools,
                                           client=client, model=model, compaction=compaction,
@@ -870,7 +856,8 @@ def _run_tui(*, out, client, model, tools, messages, ledger, anchors, state, ste
                     # `_append_history` 排在 `/` 分支之后、`!` 分支之前，语义即此
                     if payload.startswith("!"):
                         _append_history(history, payload)
-                    if _dispatch_command(payload, commit=commit, out=commit,
+                    if _dispatch_command(payload, commit=commit, out=commit, asker=ask_human, instructions=instructions,
+                                          on_switched=on_switched,
                                          messages=messages, ledger=ledger, anchors=anchors,
                                          state=state, tools=tools, client=client,
                                          model=model, compaction=compaction,
@@ -902,7 +889,8 @@ def _run_tui(*, out, client, model, tools, messages, ledger, anchors, state, ste
                     def queued_command(line: str) -> bool:
                         """返回真 = 该退出（`/exit`）；`_process_queue_after_turn` 据此停手。"""
                         if _dispatch_command(
-                                line, commit=commit, out=commit, messages=messages,
+                                line, commit=commit, out=commit, asker=ask_human, instructions=instructions,
+                                          on_switched=on_switched, messages=messages,
                                 ledger=ledger,
                                 anchors=anchors, state=state, tools=tools, client=client,
                                 model=model, compaction=compaction,

@@ -96,6 +96,38 @@ class SessionLog:
             self._last_id = entry_id
         return entry_id
 
+    def switch_to(self, path: Union[str, Path]) -> None:
+        """就地接管一个既有会话文件（feature 49，照 CC `switchSession`）。
+
+        沿用它的 id 与 cwd，之后的 append 追加在它末尾；header 已在，不再写。
+        `_last_id` 取物理尾部最后一条（含 usage / compaction 这类旁账）——半截回合留在
+        盘上，内存里由 `trim_unfinished` 配平（dsh：「内存配平中断轮次，物理尾部保持撕裂原样」）。
+        就地改而不是造新对象：装配期的闭包（trace、_record 的调用点）持有的是这个对象。
+        v0 / 更新版本按 `load_session` 的既有语义报错，此时什么都不改。
+        """
+        header, entries = load_session(path)
+        with self._lock:
+            self.path = Path(path)
+            self.session_id = str(header.get("id") or self.session_id)
+            self.cwd = str(header.get("cwd") or self.cwd)
+            self.parent_session = header.get("parentSession")
+            self._last_id = entries[-1]["id"] if entries else None
+            self._header_written = True
+
+    @classmethod
+    def open_existing(cls, path: Union[str, Path]) -> "SessionLog":
+        """接管既有文件的构造（`--resume` 的默认路径）：不新建目录、不造新 id。"""
+        log = cls.__new__(cls)
+        log.session_id = ""
+        log.path = Path(path)
+        log.cwd = str(Path.cwd().absolute())
+        log.parent_session = None
+        log._lock = threading.Lock()
+        log._last_id = None
+        log._header_written = False
+        log.switch_to(path)
+        return log
+
 
 def load_session(path: Union[str, Path]) -> tuple:
     """读一个 v1 会话文件，返回 (header, entries)。
@@ -260,11 +292,30 @@ def trim_unfinished(messages: list, ledger: list) -> tuple:
     return out_msg, out_led
 
 
+def session_cwd(path: Union[str, Path]) -> Optional[str]:
+    """只读首行取 header 的 cwd；不是 v1 文件就 None（挑候选时跳过，不炸）。"""
+    try:
+        with open(path, encoding="utf-8") as f:
+            header = json.loads(f.readline() or "{}")
+    except (OSError, json.JSONDecodeError):
+        return None
+    if header.get("type") != "session":
+        return None
+    return str(header.get("cwd") or "") or None
+
+
 def resolve_resume_target(target: Optional[str],
-                          directory: Optional[Union[str, Path]] = None) -> Path:
-    """`--resume` 的目标解析：None/空串 = 本项目最近一次；否则先当路径、
+                          directory: Optional[Union[str, Path]] = None,
+                          cwd: Optional[Union[str, Path]] = None) -> Path:
+    """`--resume` 的目标解析：None/空串 = **当前目录**最近一次；否则先当路径、
     再当会话 id 前缀（比对 header 里的完整 id 与文件名里的短 id）。
-    找不到就 FileNotFoundError 说清找过哪里——静默兜底成「新会话」比报错更糟。"""
+    找不到就 FileNotFoundError 说清找过哪里——静默兜底成「新会话」比报错更糟。
+
+    「当前目录」按 header 里录制时的 cwd 比对（feature 49，照 CC：项目目录按启动 cwd 归档，
+    `--continue` 与 /resume 选择器只看当前目录；跨目录只能给明确的 id）。sessions 目录按
+    git 根归档，同一仓库子目录里跑过的会话也在这里——用户 2026-09-11 截图里
+    `pai_playground/skills-smoke` 的会话被无参 resume 挑中，就是这条路。
+    """
     d = Path(directory) if directory is not None else sessions_dir()
     if target:
         p = Path(target)
@@ -280,7 +331,13 @@ def resolve_resume_target(target: Optional[str],
     if not target:
         if not candidates:
             raise FileNotFoundError(f"{d} 下没有任何会话可恢复")
-        return candidates[0]
+        here = str(Path(cwd).absolute()) if cwd is not None else str(Path.cwd().absolute())
+        for f in candidates:
+            if session_cwd(f) == here:
+                return f
+        raise FileNotFoundError(
+            f"{d} 下的 {len(candidates)} 个会话都不是在当前目录 {here} 录制的；"
+            "要恢复别处的会话，请给会话 id 前缀或文件路径")
     for f in candidates:
         if target in f.name:
             return f

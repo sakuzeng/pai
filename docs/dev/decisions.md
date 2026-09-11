@@ -1263,3 +1263,43 @@ CC 的 transcript 模式（pai 没有对应物，摘要正文于是无处可看�
 `events.ToolEnd` 注释）；`!命令` 回放折叠而活轮次全量上屏，两条路形态不一致（TODO）。
 验收是 e2e 从查裸字节改成查 `screen_text()`，两处注入反证（拿掉 replay / 拿掉重装配）各红。
 
+## 80. resume 默认接管原文件追加，`/resume` 就地切换（2026-09-11，feature 49 拍板「照 CC 的吧」）
+
+feature 24 拍的是「新文件 + header.parentSession 指旧会话 + 按原 id 重录」，理由是自包含
+（单文件永远够用）且守住 CC 反教材「resume 不造新身份」。用户点名要追加同一文件，
+且要在会话内 `/resume`——后者让 24 的取舍露出真代价：进程内每切一次就复制一份全量历史，
+滚雪球比 CLI resume 快得多。
+
+CC 2.1.88（反编译，按符号名）：`switchSession(sid, projectDir)` 就地改 `STATE.sessionId`，
+`adoptResumedSessionFile` 把落盘指针指回原转录；`useLogMessages(messages, ignore)` 在
+「恢复后一条新消息都没有」时什么都不写；只有 `--fork-session` 才造新 id、由 `recordTranscript`
+把源消息复制进新文件。`/resume` 命令无参弹 `LogSelector`、带参先当 UUID 匹配再当标题匹配，
+选中后 REPL 换 `messages` 状态并 `switchSession`——线性切换，不需要会话树。
+
+pai 的做法：默认路径照 CC——`SessionLog.open_existing(path)` / `switch_to(path)` 就地接管
+（沿用 id 与 cwd，不再写 header，`_last_id` 取物理尾部最后一条：dsh「内存配平中断轮次，
+物理尾部保持撕裂原样」），ledger 直接用盘上的原 id，一条新消息都没有就一个字节不写。
+24 的路径原样搬到 `--fork-session`（CC 同名 flag）后面：既有的「重录保留原 id」测试改指向它，
+不删。`/resume` 与启动 `--resume` 共用 `load_conversation` / `refresh_assembly`；切换是就地变更
+（`messages[:]`、`ledger[:]`、`anchors.reset()`、`SessionLog.switch_to`、`EventTrace.path`
+改按 session 当前路径算）——与 CC 的 `switchSession` 同构，也与仓库既有的 mutable-holder
+套路（asker_ref / event_sink / mode_state）同构；封 `Conversation` 对象的债（24 复盘质疑一）
+触发点已到，另立档案。
+
+两处与「不落盘的 system prompt」有关的取舍：重装配出的 system 只在内存（ledger None），
+文件里的 system 永远是首次录制版——CC 转录根本不存 system prompt，pai 格式 v1 存了，
+不落盘是能做到的最接近形态，根治要等格式 v2；指令消息与磁盘那条内容相同就沿用原条目，
+不同才追加——否则每次 resume 都多一份几 KB 的指令。
+
+新事件 `ConversationResumed` 进 `CONTEXT_REWRITING`：events.py 那条注释写的「将来 resume
+重建这类第三种改写方式出现时，往这里加一行——忘了加就是静默漏」，这次兑现；纵切测试
+（切换前召回过的记忆切换后能再选中）在拿掉发出那一行时确实红了。
+
+交付后用户截图补漏：无参 `--resume` 与选择框只认「录制 cwd = 当前目录」的会话（CC：项目目录按
+启动 cwd 归档，`--continue` 与选择器只看当前目录，跨目录只能给明确的 id）。pai 的 sessions
+目录按 git 根归档，同一仓库子目录（`pai_playground/skills-smoke`）里跑过的会话与根目录同一个
+文件夹，不按 header.cwd 过滤就会混进来。显式 id / 路径仍可跨目录，恢复提示照旧说明目录不同。
+
+刻意没抄：选择框的 git 分支 / 自定义标题 / 跨项目开关 / 搜索；lite log 两级加载；
+尾部哨兵（48 已登记）。
+

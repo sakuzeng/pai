@@ -435,6 +435,49 @@ def test_resume_carries_the_conversation_into_a_new_process(session, tmp_path):
     finally:
         s2.close()
         provider2.stop()
+    # feature 49（照 CC）：第二个进程追加进同一个文件，不新建
+    from pai.core.paths import sessions_dir
+    files = [p for p in sessions_dir(cwd=work).glob("*.jsonl") if not p.name.endswith(".events.jsonl")]
+    assert len(files) == 1, [f.name for f in files]
+    text = files[0].read_text(encoding="utf-8")
+    assert text.count("记住我叫小明") == 1 and "我叫什么" in text
+
+
+def test_slash_resume_switches_the_screen_to_the_other_conversation(session, tmp_path):
+    """会话内 `/resume`（feature 49，照 CC 的 /resume 命令）：无参弹选择框，选中后屏幕换成
+    目标会话的对话、原对话不在屏上，后续消息追加进目标会话的文件。"""
+    from pai.core.paths import sessions_dir
+
+    work = tmp_path / "slash-resume"
+    work.mkdir()
+    s1, _ = session([turn("好的，记住了小明。")], cwd=str(work))
+    s1.send("记住我叫小明\r", until="记住了小明")
+    s1.send("\x04")
+    s1.drain(1.0)
+    (tmp_path / "s2").mkdir()
+    provider2 = FakeProvider([turn("你好呀"), turn("你叫小明。")]).start()
+    s2 = Session(provider2, tmp_path / "s2", cwd=str(work))
+    try:
+        end = time.time() + 8.0
+        while time.time() < end:
+            s2.drain(0.15)
+            if "从零实现的编码 agent" in s2.screen_text():
+                break
+        s2.send("你好\r", until="你好呀")
+        s2.send("/resume\r", until="恢复哪个会话")
+        s2.send("1\r", until="已恢复会话")          # 选择框：序号 + 回车
+        screen = s2.screen_text()
+        assert "记住我叫小明" in screen, f"目标会话要上屏：\n{screen}"
+        assert "你好呀" not in screen, f"切换前的对话不该还在屏上：\n{screen}"
+        s2.send("我叫什么\r", until="你叫小明")
+    finally:
+        s2.close()
+        provider2.stop()
+    files = sorted((p for p in sessions_dir(cwd=work).glob("*.jsonl")
+                    if not p.name.endswith(".events.jsonl")), key=lambda f: f.stat().st_mtime)
+    assert len(files) == 2, "s2 自己那段一个文件，被恢复的那个被接管"
+    target = [f for f in files if "记住我叫小明" in f.read_text(encoding="utf-8")]
+    assert len(target) == 1 and "我叫什么" in target[0].read_text(encoding="utf-8")
 
 
 def test_a_project_skill_loads_and_reaches_the_model(session, tmp_path):

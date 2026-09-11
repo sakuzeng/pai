@@ -580,21 +580,14 @@ def test_resume_continues_the_previous_conversation(tmp_path, monkeypatch):
     files = sorted((p for p in sessions_dir().glob("*.jsonl")
                     if not p.name.endswith(".events.jsonl")),
                    key=lambda f: f.stat().st_mtime)
-    assert len(files) == 2
-    h1, e1 = load_session(files[0])
-    h2, e2 = load_session(files[1])
-    assert h2["parentSession"] == h1["id"]
-    # feature 48（照 CC）：system 按当前环境重装配、指令消息重读磁盘——这两类是新内容、
-    # 新 id；对话本身（user/assistant/tool）必须保留原 id
-    from pai.core.loop import INSTRUCTION_HEADER
-
-    def conversation_ids(entries):
-        return {e["id"] for e in entries if e["type"] == "message"
-                and e["message"].get("role") != "system"
-                and not str(e["message"].get("content") or "").startswith(INSTRUCTION_HEADER)}
-    assert conversation_ids(e1) <= conversation_ids(e2), "重录必须保留对话的原 id"
-    systems2 = [e for e in e2 if e["type"] == "message" and e["message"].get("role") == "system"]
-    assert len(systems2) == 1, "新文件里恰有一条 system（当前装配的那份）"
+    # feature 49（照 CC switchSession）：沿用原会话、追加同一文件，不再新建；
+    # 新文件 + parentSession 的旧行为搬到 `--fork-session` 后面（tests/test_resume_switch.py）
+    assert len(files) == 1, "照 CC：追加同一文件，不新建"
+    h, e = load_session(files[0])
+    assert "parentSession" not in h
+    contents = [x["message"].get("content") for x in e if x["type"] == "message"]
+    assert contents.count("记住我叫小明") == 1, "原消息不重录"
+    assert contents[-2:] == ["我叫什么", "小明"], "新对话追加在末尾"
 
 
 def test_resume_trims_a_torn_tail_before_continuing(tmp_path, monkeypatch):

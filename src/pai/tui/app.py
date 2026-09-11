@@ -479,6 +479,17 @@ class TuiApp:
         body = _display_result(event).split("\n")
         self.commit([theme.paint(head, theme.CYAN, color=self.color)] + body)
 
+    def clear_transcript(self) -> None:
+        """整屏换掉（`/resume`，feature 49）：条目、折叠表、展开游标、半截增量、选区一起清，
+        滚动回到跟随末尾。dock 不动——它是本进程的活动计数。"""
+        self.transcript.clear()
+        self._collapsed.clear()
+        self._expanded = 0
+        self._streaming = ""
+        self.selection.clear()
+        self.scroll.following_end = True
+        self.scroll.scroll_top = 0
+
     def _remember_collapsed(self, event) -> None:
         if _hidden_rows(event):
             self._collapsed.append(event)
