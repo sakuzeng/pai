@@ -49,6 +49,7 @@ PROMPT = "›"        # 输入提示（沿用 05 交付的形状）
 CONTINUATION = "…"  # 续行提示
 DETAIL = "└"        # 活动区的明细行
 SELECTED = "❯"      # 对话框里选中的那一项
+COMPACTED = "✻"     # 早前对话在此被压缩（resume 回放的标记行；CC 的 CompactBoundaryMessage 也用它）
 
 
 def use_color(is_tty: bool) -> bool:

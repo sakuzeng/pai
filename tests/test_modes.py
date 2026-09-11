@@ -584,9 +584,17 @@ def test_resume_continues_the_previous_conversation(tmp_path, monkeypatch):
     h1, e1 = load_session(files[0])
     h2, e2 = load_session(files[1])
     assert h2["parentSession"] == h1["id"]
-    ids1 = {e["id"] for e in e1 if e["type"] == "message"}
-    ids2 = {e["id"] for e in e2 if e["type"] == "message"}
-    assert ids1 <= ids2, "重录必须保留原 id"
+    # feature 48（照 CC）：system 按当前环境重装配、指令消息重读磁盘——这两类是新内容、
+    # 新 id；对话本身（user/assistant/tool）必须保留原 id
+    from pai.core.loop import INSTRUCTION_HEADER
+
+    def conversation_ids(entries):
+        return {e["id"] for e in entries if e["type"] == "message"
+                and e["message"].get("role") != "system"
+                and not str(e["message"].get("content") or "").startswith(INSTRUCTION_HEADER)}
+    assert conversation_ids(e1) <= conversation_ids(e2), "重录必须保留对话的原 id"
+    systems2 = [e for e in e2 if e["type"] == "message" and e["message"].get("role") == "system"]
+    assert len(systems2) == 1, "新文件里恰有一条 system（当前装配的那份）"
 
 
 def test_resume_trims_a_torn_tail_before_continuing(tmp_path, monkeypatch):

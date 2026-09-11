@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import os
 
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Tuple
 
 from pai.core.events import Compacted, ConversationCleared
 from pai.core.compaction import (
@@ -318,6 +318,27 @@ def _system_prompt() -> str:
     return SYSTEM_PROMPT
 
 
+# `!命令` 进上下文的回显格式。resume 回放（modes/resume.py）要把它拆回命令与输出，
+# 所以正反两个函数放在一起——格式改了两边同时改
+SHELL_ECHO_PREFIX = "我执行了命令 `"
+SHELL_ECHO_SEP = "`，输出：\n"
+
+
+def shell_echo(command: str, output: str) -> str:
+    return f"{SHELL_ECHO_PREFIX}{command}{SHELL_ECHO_SEP}{output}"
+
+
+def split_shell_echo(text: str) -> Optional[Tuple[str, str]]:
+    """`shell_echo` 的逆：不是回显就返回 None。"""
+    if not text.startswith(SHELL_ECHO_PREFIX):
+        return None
+    body = text[len(SHELL_ECHO_PREFIX):]
+    if SHELL_ECHO_SEP not in body:
+        return None
+    command, output = body.split(SHELL_ECHO_SEP, 1)
+    return command, output
+
+
 def _run_shell(command: str, *, messages: List[dict], session, out,
                system_prompt: Optional[str] = None,
                ledger: Optional[List[Optional[str]]] = None) -> None:
@@ -334,7 +355,7 @@ def _run_shell(command: str, *, messages: List[dict], session, out,
     # 给终端看的那一份要消毒（外来字节会打乱 dock 的相对定位、`\t` 全链算 1 列）；
     # **下面进 messages 的仍是原文**——命令真打印了什么，模型就该看见什么。
     out(sanitize_terminal_text(output))
-    entry = {"role": "user", "content": f"我执行了命令 `{command}`，输出：\n{output}"}
+    entry = {"role": "user", "content": shell_echo(command, output)}
     # 入账走 loop._record（feature 24 关掉 23 的遗留：REPL 侧不再有自己的成对
     # append）；ledger 不传时用哑表——对齐语义由调用方负责
     from pai.core.loop import _record

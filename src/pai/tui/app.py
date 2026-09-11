@@ -36,6 +36,8 @@ from pai.tui.selection import Selection
 from pai.tui.transcript import (Transcript, TranscriptEntry, dynamic_entry,
                                 expandable_entry, text_entry)
 from pai.tui.editor import LineEditor
+from pai.tui.history import (CompactedMark, ShellLine, UserLine, compacted_entry,
+                             user_entry)
 from pai.tui.mouse import MouseEvent, merge as _merge_mouse
 
 # feed() 吐出来的动作。用 (kind, payload) 而不是各种回调——
@@ -448,9 +450,7 @@ class TuiApp:
         # 一眼扫下来要先找到「我问了什么」。所以它加粗、走亮色，且**前面留一个空行**
         # 把轮次分开——没有留白，一屏文字会糊成一片。
         # **按宽度动态渲染**：色带要铺满整行，存成行的话窗口一变宽就露出半截底色
-        self.commit(dynamic_entry(lambda w: [""] + [
-            theme.band(row, w, theme.USER_BG, color=self.color)
-            for row in theme.wrap(f"{theme.PROMPT} {text}", w)]))
+        self.commit(user_entry(text, color=self.color))
         if text.startswith(("/", "!")) and not self.busy:
             return [(COMMAND, text)]
         return [(SUBMIT, text)]
@@ -478,6 +478,41 @@ class TuiApp:
         head = f"{theme.DETAIL} {event.name} 的完整输出："
         body = _display_result(event).split("\n")
         self.commit([theme.paint(head, theme.CYAN, color=self.color)] + body)
+
+    def _remember_collapsed(self, event) -> None:
+        if _hidden_rows(event):
+            self._collapsed.append(event)
+            del self._collapsed[:-MAX_COLLAPSED]
+            self._expanded = 0          # 有新东西了，展开游标回到最新
+
+    def replay(self, items) -> None:
+        """把恢复的对话铺进 transcript（feature 48，`--resume`）。
+
+        照 CC 2.1.88：恢复的消息与活轮次走同一个渲染器（`REPL.tsx` 把 initialMessages
+        直接当 messages 状态喂给同一个 `<Messages>`），所以这里逐项复用 `_submitted` /
+        `_flush_answer` / `on_event(ToolEnd)` 用的那几个函数，不另画一套。
+        **不过 dock**：活动区计数的是本进程干的活，上一个进程的不算。
+        工具输出照样登记进 `_collapsed`，^O 能展开到它们——否则折叠行上写的
+        「(^O 展开)」是假话。`!命令` 画成一条工具行（名字就是 `! 命令`），
+        输出折叠——CC 非 verbose 时的 BashToolResultMessage 同款。
+        """
+        for item in items:
+            if isinstance(item, UserLine):
+                self.commit(user_entry(item.text, color=self.color))
+            elif isinstance(item, AssistantMessage):
+                if (item.content or "").strip():
+                    self.commit(self._answer_entry(item.content or ""))
+            elif isinstance(item, ToolEnd):
+                self._remember_collapsed(item)
+                self.commit(_tool_entry(item, color=self.color))
+            elif isinstance(item, ShellLine):
+                event = ToolEnd(tool_call_id="!", name=f"! {item.command}", args={},
+                                result=item.output)
+                self._remember_collapsed(event)
+                self.commit(_tool_entry(event, color=self.color))
+            elif isinstance(item, CompactedMark):
+                self.commit(compacted_entry(color=self.color))
+        self.refresh()
 
     def cancel_dialog(self, dialog: Dialog) -> None:
         """撤掉一个还没答的框（中断 / EOF 退出等待时走这里）。
@@ -520,10 +555,7 @@ class TuiApp:
                 self.commit(summary)
             return
         if isinstance(event, ToolEnd):
-            if _hidden_rows(event):
-                self._collapsed.append(event)
-                del self._collapsed[:-MAX_COLLAPSED]
-                self._expanded = 0          # 有新东西了，展开游标回到最新
+            self._remember_collapsed(event)
             self.commit(_tool_entry(event, color=self.color))
             return
         text = render_text(event)

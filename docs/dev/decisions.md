@@ -1227,3 +1227,39 @@ EXEC 的兜底待遇与 READ 完全相同（界内 allow / 界外 ask），所�
 危险写检查仍只看 WRITE。第二条的可观察点找了两次才找对——界内界外都分不出
 第 5 步有没有放宽，只有 `default_decision="deny"` 时才分得出，
 过程记在档案 42 的 devlog。
+
+## 79. resume 回放复用活轮次渲染器，system prompt 按当前环境重装配（2026-09-11，feature 48 拍板「按 CC 的来」）
+
+起因是用户报「我使用resume并不能恢复对话状态」。排查下来 feature 24 的 resume 在模型侧
+一直是通的（e2e 也只断言了 provider 收到历史），屏幕侧从没画过：`_run_tui` 的 `Transcript()`
+从空建起，恢复提示走 print、在进备用屏（`ENTER_ALT_SCREEN` 自带 `2J`）之前打出即被盖掉。
+
+CC 2.1.88（反编译，按符号名）：`ResumeConversation.tsx` 把 `loadConversationForResume()` 的
+结果当 `initialMessages` 喂给 `<REPL>`，`REPL.tsx` 用它初始化 `messages` 状态，活轮次与恢复的
+消息走同一个 `<Messages>`——CC 没有「回放」这条独立路径，恢复就是把数组交给同一个渲染器。
+不画的东西由 `shouldShowUserMessage`（isMeta 的 user 消息）与 `Messages.tsx` 的过滤决定；
+压缩边界一行 `CompactBoundaryMessage`，摘要正文只在 transcript 模式。system prompt 不在转录里，
+每次 query 现算（`getSystemPrompt` + `getUserContext` + `getSystemContext`）。
+pi 的 session-manager 同样把 `buildContext` 的产物交给同一条渲染路径（feature 24 笔记里对照过）。
+
+pai 的做法：照 CC 的形状，但落点受三处 pai 自己的架构约束。
+一、pai 的 transcript 是 append-only 的条目表，不是从 messages 派生的视图，所以「同一个渲染器」
+在 pai 里要写成一个显式的 `TuiApp.replay(items)`——它逐项复用 `_submitted` / `_flush_answer` /
+`on_event(ToolEnd)` 用的那几个函数（用户行从 `_submitted` 抽成 `tui/history.user_entry` 两处共用），
+不过 dock（活动区计数的是本进程干的活），工具输出照样登记进 `_collapsed`。
+二、pai 的消息没有 isMeta 字段，注入消息靠各自的固定头识别（指令头、`<system-reminder>`、
+摘要头、`!` 回显），这四个头都是 loop/commands/session 造的，所以分类函数
+`history_items` 住 modes 层而不是 tui 层——tui → modes 的反向依赖被 AST 守卫禁止。
+三、pai 的 system 消息落在 JSONL 里（CC 不落），所以「按当前环境重装配」要在 resume 后
+显式把 `messages[0]` 换成 `build_system_prompt(...)`、丢掉旧指令消息让 `_inject_instructions`
+重读磁盘；换掉的那条按新 id 重录（内容变了就是新条目），对话消息仍按原 id——24 那条
+「resume 不造新身份」防的是 CC 反教材里的指数增长，一条 system 不是指数。
+
+刻意没抄的：CC 的尾部哨兵（转录以 user 结尾补合成 assistant；中途打断补「Continue from
+where you left off.」）、CC 沿用原 session id 往同一文件追加（pai 保持 24 的新文件 + parentSession）、
+CC 的 transcript 模式（pai 没有对应物，摘要正文于是无处可看）。三条都登记 TODO。
+
+代价与边界：回放的 `ToolEnd.is_error` 一律 False（tool 消息里分不出 loop 造的错，同
+`events.ToolEnd` 注释）；`!命令` 回放折叠而活轮次全量上屏，两条路形态不一致（TODO）。
+验收是 e2e 从查裸字节改成查 `screen_text()`，两处注入反证（拿掉 replay / 拿掉重装配）各红。
+

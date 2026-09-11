@@ -135,10 +135,15 @@ def load_session(path: Union[str, Path]) -> tuple:
     return header, entries
 
 
+# 摘要消息的头。resume 回放（modes/resume.py）靠它认出「这里被压缩过」，
+# 与 _summary_message 同源——分成两处写迟早漂
+SUMMARY_HEADER = "[早前对话的摘要，供延续任务用]"
+
+
 def _summary_message(summary: str) -> dict:
     """摘要消息的包装，与 compaction.compact() 的重建逐字一致——
     两处各写一遍迟早漂，这里是唯一出处（compact 也调它）。"""
-    return {"role": "user", "content": f"[早前对话的摘要，供延续任务用]\n{summary}"}
+    return {"role": "user", "content": f"{SUMMARY_HEADER}\n{summary}"}
 
 
 def build_messages(entries: list) -> tuple:

@@ -6,6 +6,7 @@
 | 文件 | 出处 | 用在哪 |
 |---|---|---|
 | `real_turn.jsonl` | `pai_playground/sessions/20260803-000946.jsonl`（真跑，2026-08-03），已剥掉 `SessionLog` 加的 `ts` 字段 | `tests/test_tui_dock.py` 的真实轨迹驱动测试 |
+| `resume_session.jsonl` | `~/.pai/projects/<本仓库>/sessions/20260910-133120-becd50cd.jsonl`（真跑，2026-09-10，就是用户报「resume 看起来没恢复」那次被恢复的原始会话），已剥掉 `ts` | `tests/test_resume_replay.py`（feature 48）：消息 → 回放项、备用屏回放。价值在三处编不出来的形状：10 个并发工具批、一条路径作用域规则注入（`<system-reminder>`）、整段是一次 run——第二问是 steering 注入、run 被用量预算掐断，于是零最终回答且以 user 消息结尾 |
 | `real_session.jsonl` | `~/.pai/projects/<本仓库>/sessions/20260811-024816-110ae765.jsonl`（真跑，2026-08-11），**原样保留 `ts`** | `tests/test_viz_flow.py`（feature 17）的 turn 分组与配对 |
 
 `real_session.jsonl` 是唯一一份**带 `ts`** 的夹具，与上面那条「抄进来要剥 ts」的规约不冲突：

@@ -86,6 +86,7 @@ from pai.core.tools import Tool, ask, get_tools
 from pai.core.tools import skill as skill_tool
 from pai.modes.assembly import assemble
 from pai.modes.echo import make_stream_echo
+from pai.modes.resume import history_items
 from pai.modes.statusline import StatusLinePrinter
 from pai.tui.app import (
     COMMAND, CYCLE_MODE, EOF, EXPAND, INTERRUPT, REDRAW, SUBMIT, TuiApp,
@@ -314,6 +315,25 @@ def await_dialog_answer(driver, app, dialog, on_action) -> str:
     return NO_ANSWER if answer is None else answer
 
 
+def _refresh_assembly(messages: List[dict], ledger: List[Optional[str]],
+                      system_prompt: str) -> tuple:
+    """resume 后把装配层的产物换成当前环境的（feature 48，照 CC：转录里不存 system prompt）。
+
+    system 换成现算的那份（ledger 记 None = 新条目、新 id）；指令消息全部丢掉，
+    下一轮 `_inject_instructions` 见不到旧的就会重读磁盘。对话消息一条不动。
+    """
+    msgs, led = list(messages), list(ledger)
+    fresh = {"role": "system", "content": system_prompt}
+    if msgs and msgs[0].get("role") == "system":
+        msgs[0], led[0] = fresh, None
+    else:
+        msgs.insert(0, fresh)
+        led.insert(0, None)
+    while drop_instructions(msgs, led):
+        pass
+    return msgs, led
+
+
 def run_interactive(
     *,
     client=None,
@@ -387,13 +407,8 @@ def run_interactive(
 
     messages: List[dict] = []
     ledger: List[Optional[str]] = []       # 与 messages 平行的 entry id 台账（feature 24）
-    for m, mid in zip(resumed_messages, resumed_ledger):
-        # 按原 id 重录进新文件（自包含，单文件永远够用）；配平掉的半截回合
-        # 不重录。CC 反教材：resume 路径造新身份 → 转录每次恢复指数增长
-        messages.append(m)
-        ledger.append(session.append(m, record_id=mid) if session is not None else None)
-    if resume_note is not None:
-        out(resume_note)
+    # 恢复的消息要等装配之后才入 messages（见下方 _refresh_assembly）：system prompt
+    # 按当前工具集现算，而工具集是装配的产物。恢复提示也挪到 TUI / REPL 分叉之后打
     # 锚点簿与熔断状态**必须从零**（CC 同款告警）：旧锚指向的消息位置在重建后
     # 已不成立，带着旧锚 resume 首步就可能误判超线触发压缩死循环
     anchors = AnchorBook()
@@ -435,6 +450,22 @@ def run_interactive(
     skills_catalog, instructions = asm.skills_catalog, asm.instructions
     mcp_sessions = asm.mcp_sessions
 
+    if resumed_messages:
+        # feature 48（照 CC）：CC 的转录里不存 system prompt，每次 query 现算
+        # （REPL.tsx：getSystemPrompt + getUserContext）。pai 的 system 消息落在 JSONL 里，
+        # 所以换成当前装配结果、丢掉旧指令消息让 _inject_instructions 重读磁盘——
+        # 恢复提示里那句「system prompt 按当前环境重新装配」从此是真话（此前不是）
+        resumed_messages, resumed_ledger = _refresh_assembly(
+            resumed_messages, resumed_ledger,
+            build_system_prompt(tools, skills_catalog=skills_catalog,
+                                project_root=os.getcwd()))
+    for m, mid in zip(resumed_messages, resumed_ledger):
+        # 按原 id 重录进新文件（自包含，单文件永远够用）；配平掉的半截回合
+        # 不重录。CC 反教材：resume 路径造新身份 → 转录每次恢复指数增长。
+        # 换掉的 system 是新内容，ledger 里是 None → 录成新 id：只多一条，不是指数
+        messages.append(m)
+        ledger.append(session.append(m, record_id=mid) if session is not None else None)
+
     common = dict(
         client=client, model=model, tools=tools, messages=messages, ledger=ledger,
         anchors=anchors,
@@ -449,12 +480,14 @@ def run_interactive(
     )
     try:
         if _use_tui(reader):
-            _run_tui(out=out, **common)
+            _run_tui(out=out, resumed=resumed_messages, resume_note=resume_note, **common)
             return
 
         if _is_real_terminal_input(reader):
             _read_history_into_readline(history)
 
+        if resume_note is not None:
+            out(resume_note)
         out("pai 交互模式。/help 看命令，Ctrl+D 退出。")
         pending_exit = False
         while True:
@@ -609,7 +642,8 @@ def _run_tui(*, out, client, model, tools, messages, ledger, anchors, state, ste
              gate, recall, rules, hooks, mode_state, history, asker_state, asker_ref,
              trace=None, skills_catalog=None, instructions=None,
              event_sink=None, state_listener=None,
-             on_paths_touched=None, rule_state=None) -> None:
+             on_paths_touched=None, rule_state=None,
+             resumed=None, resume_note=None) -> None:
     """scrollback 在上、dock 在下。
 
     与纯 REPL 的**唯一**语义差别在输入层：谁拥有键盘由 `InputArbiter` 算出来，
@@ -789,6 +823,13 @@ def _run_tui(*, out, client, model, tools, messages, ledger, anchors, state, ste
         app.commit([theme.paint(
             "/help 看命令 · shift+tab 切权限模式 · ^O 展开工具输出 · Ctrl+D 退出",
             theme.GREY, color=color)])
+        # --resume（feature 48，照 CC）：恢复的对话与活轮次走同一个渲染器，跟在 logo 与
+        # 提示行后面铺开；恢复提示走 commit 进 transcript——此前走 print，进备用屏那一下
+        # （ENTER_ALT_SCREEN 自带 2J）就被盖掉，用户看到的是一张与全新会话一样的空屏
+        if resumed:
+            app.replay(history_items(resumed))
+        if resume_note is not None:
+            commit(resume_note)
         app.refresh()
         pending_exit = False
         while True:
