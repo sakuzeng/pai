@@ -96,6 +96,38 @@ class SessionLog:
             self._last_id = entry_id
         return entry_id
 
+    def switch_to(self, path: Union[str, Path]) -> None:
+        """就地接管一个既有会话文件（feature 49，照 CC `switchSession`）。
+
+        沿用它的 id 与 cwd，之后的 append 追加在它末尾；header 已在，不再写。
+        `_last_id` 取物理尾部最后一条（含 usage / compaction 这类旁账）——半截回合留在
+        盘上，内存里由 `trim_unfinished` 配平（dsh：「内存配平中断轮次，物理尾部保持撕裂原样」）。
+        就地改而不是造新对象：装配期的闭包（trace、_record 的调用点）持有的是这个对象。
+        v0 / 更新版本按 `load_session` 的既有语义报错，此时什么都不改。
+        """
+        header, entries = load_session(path)
+        with self._lock:
+            self.path = Path(path)
+            self.session_id = str(header.get("id") or self.session_id)
+            self.cwd = str(header.get("cwd") or self.cwd)
+            self.parent_session = header.get("parentSession")
+            self._last_id = entries[-1]["id"] if entries else None
+            self._header_written = True
+
+    @classmethod
+    def open_existing(cls, path: Union[str, Path]) -> "SessionLog":
+        """接管既有文件的构造（`--resume` 的默认路径）：不新建目录、不造新 id。"""
+        log = cls.__new__(cls)
+        log.session_id = ""
+        log.path = Path(path)
+        log.cwd = str(Path.cwd().absolute())
+        log.parent_session = None
+        log._lock = threading.Lock()
+        log._last_id = None
+        log._header_written = False
+        log.switch_to(path)
+        return log
+
 
 def load_session(path: Union[str, Path]) -> tuple:
     """读一个 v1 会话文件，返回 (header, entries)。

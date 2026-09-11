@@ -53,6 +53,7 @@ HELP = """可用命令：
   /compact  手动压缩当前对话
   /skill    列出可用 skills；`/skill <名> [参数]` 加载并执行
   /clear    清空对话（保留 system）
+  /resume   切到另一个会话接着聊：不带参数弹选择框，或 `/resume <id前缀|路径>`
   /exit     退出（等同 Ctrl+D）
 其他输入直接发给模型；`!命令` 直接跑 shell 且不打模型；行尾 `\\` 续行。"""
 
@@ -98,8 +99,14 @@ def _handle_command(line: str, *, out, messages, anchors, state, tools, client, 
                     compaction, context_window, rules=None, hooks=(),
                     mode_state=None, on_event=None, session=None,
                     ledger: Optional[List[Optional[str]]] = None,
-                    rule_state=None) -> bool:
-    """返回 True 表示要退出 REPL。"""
+                    rule_state=None, skills_catalog=None, instructions=None,
+                    asker=None, on_switched=None) -> bool:
+    """返回 True 表示要退出 REPL。
+
+    `asker` / `on_switched` 只给 `/resume` 用（feature 49）：前者是真人选择通道
+    （REPL 的读行版或 TUI 的对话框版，调用方按当下取），后者是切换成功后的界面回调
+    （TUI 清屏重画；REPL 不需要）——本模块照旧不认识 app。
+    """
     command = line.split()[0]
     if command in ("/exit", "/quit"):
         return True
@@ -119,6 +126,21 @@ def _handle_command(line: str, *, out, messages, anchors, state, tools, client, 
         if on_event is not None:
             on_event(ConversationCleared(kept=len(messages)))
         out("🧹 已清空对话（保留 system）")
+    elif command == "/resume":
+        # 延迟 import：resume 模块反过来用本模块的 split_shell_echo
+        from pai.modes.resume import resume_command
+        parts = line.split(maxsplit=1)
+        note = resume_command(
+            parts[1].strip() if len(parts) > 1 else "", out=out, asker=asker, session=session,
+            messages=messages, ledger=ledger if ledger is not None else [], anchors=anchors,
+            state=state, on_event=on_event,
+            system_prompt=build_system_prompt(tools, skills_catalog=skills_catalog,
+                                              project_root=os.getcwd()),
+            instructions_text=instructions() if instructions is not None else None)
+        if note is not None:
+            if on_switched is not None:
+                on_switched()
+            out(note)
     elif command == "/status":
         latest = anchors.latest()
         schemas = [t.schema() for t in tools.values()]
@@ -400,4 +422,7 @@ def _dispatch_command(line: str, *, commit, app, session, flag, on_event, **kw) 
                            hooks=kw["hooks"], mode_state=kw["mode_state"],
                            on_event=on_event, session=session,
                            ledger=kw.get("ledger"),
-                           rule_state=kw.get("rule_state"))
+                           rule_state=kw.get("rule_state"),
+                           skills_catalog=kw.get("skills_catalog"),
+                           instructions=kw.get("instructions"),
+                           asker=kw.get("asker"), on_switched=kw.get("on_switched"))

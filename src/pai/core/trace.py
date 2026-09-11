@@ -40,9 +40,15 @@ class EventTrace:
 
     def __init__(self, session: Union["SessionLogLike", Path, str]) -> None:  # noqa: F821
         # SessionLog 或裸路径都收：装配处手里是 SessionLog，测试里给路径更省事
-        raw = getattr(session, "path", session)
-        self.path = _events_path(Path(raw))
+        self._source = session
         self._warned = False
+
+    @property
+    def path(self) -> Path:
+        """按 session **当前**路径算（feature 49）：`/resume` 会就地切文件，
+        观测流必须跟着走——viz 按同名配对，写错文件等于那段历史在页面上消失。"""
+        raw = getattr(self._source, "path", self._source)
+        return _events_path(Path(raw))
 
     def __call__(self, event: AgentEvent) -> None:
         if isinstance(event, MessageDelta):

@@ -1,6 +1,19 @@
 # 当前状态快照
 
-最后更新：2026-09-11（feature 48 交付——`--resume` 之后旧对话上屏，修用户报的
+最后更新：2026-09-11（feature 49 交付——resume 追加同一文件 + 会话内 `/resume`，用户原话
+「我想追加同一文件呢。并且在命令/resume 下能够恢复对话呢」，拍板「照cc的吧，先合48」。
+照 CC 2.1.88：①`--resume` 默认沿用被恢复会话的 id、往同一个文件追加（`SessionLog.open_existing`），
+一条新消息都没有就一个字节不写；24 的「新文件 + parentSession + 按原 id 重录」搬到 `--fork-session`
+（CC 同名 flag）后面；重装配的 system 只在内存不落盘（CC 转录不存 system prompt），指令消息内容
+没变就沿用原条目。②`/resume` 命令：无参经 asker 弹最近 8 个会话（时间 · 条数 · 首句），带参
+id 前缀 / 路径直达；切换 = 就地换 messages/ledger、锚点与熔断归零、`SessionLog.switch_to`、
+`EventTrace` 跟着 session 当前路径写、发新事件 `ConversationResumed`（进 `CONTEXT_REWRITING`，
+召回去重表随之作废——events.py 那条「将来 resume 重建往这里加一行」的注释兑现）、TUI 清屏用 48 的
+回放画目标会话。三处注入反证各红（不清屏 / 不发事件 / 重写 header）。
+顺带推翻 TODO 里「没有 /resume，要做得先有会话树」：CC 的 /resume 是线性切换，不需要树。
+档案 [features/49](features/49-20260911-resume-same-file-and-slash-resume/README.md)。
+1720 passed）。
+同日早些：feature 48 交付——`--resume` 之后旧对话上屏，修用户报的
 「我使用resume并不能恢复对话状态」。排查结论：模型侧一直是通的，屏幕侧从没画过——
 `_run_tui` 的 `Transcript()` 从空建起，恢复提示走 print 在进备用屏（自带 `2J`）之前打，
 用户看到的是一张与全新会话一模一样的空屏。用户拍板「按 CC 的来」，四问全按 CC 2.1.88
@@ -299,9 +312,9 @@ MCP client（手写 stdio JSON-RPC、`mcp__<server>__<tool>` 桥接、settings �
 | `modes/commands.py` | 可用 | `/命令` 与 `!shell` 模式（feature 40 从 interactive 抽出）：两条主循环共用的那一半。只放「一条命令怎么执行、打什么字」，不放循环本身；跨轮状态一律由调用方传入，不认识 driver 与 app |
 | `modes/assembly.py` | 可用 | 共用装配序列（feature 31）：rules/hooks → skills 信任 → MCP 信任与并表 → boundary → gate → memory → recall 一份实现，once/interactive 只注入差异点（asker / 权限模式 / 事件通道）；不 import loop 内部，MCP 关闭归各模式单出口 finally |
 | `viz/` | 可用 | `pai-viz` 本地网页：运行时流转可视化（feature 17）——结构图（工具自省上图、阶段状态解析本表、每处标代码位置可点击跳编辑器）+ 回合时间线（读会话 JSONL 与并排的 `.events.jsonl`，分组配对成回合，2s 游标轮询实时点亮）。页面纯观察，无对话输入 |
-| `core/trace.py` | 可用 | 观测流落盘：`EventTrace` 当 `on_event` 用，事件（类型数以 `core/events.py` 的 `AgentEvent` Union 为准，勿在文档里抄数）追加进 `<会话同名>.events.jsonl`（`MessageDelta` 刻意不落）；写失败吞掉且只告警一次——观测流挂了不连累正事。`compose()` 扇出渲染器与落盘器 |
+| `core/trace.py` | 可用 | `path` 按 session 当前路径算（feature 49：`/resume` 切文件，观测流跟着走）；观测流落盘：`EventTrace` 当 `on_event` 用，事件（类型数以 `core/events.py` 的 `AgentEvent` Union 为准，勿在文档里抄数）追加进 `<会话同名>.events.jsonl`（`MessageDelta` 刻意不落）；写失败吞掉且只告警一次——观测流挂了不连累正事。`compose()` 扇出渲染器与落盘器 |
 | `cli.py` / `config.py` | 可用 | cli 只做参数解析与分发；OpenAI 兼容协议打 DeepSeek；`context_window()` 读 `PAI_CONTEXT_WINDOW`，默认 1_000_000（v4-flash）；`keep_recent_tokens()` 读 `PAI_KEEP_RECENT_TOKENS`，默认取 `CompactionSettings` 的 20000（这个口子是为了让压缩在真实使用里跑得到，不是调优旋钮）；两者非法值都在门口 `sys.exit` |
-| `modes/resume.py` | 可用 | resume 回放的分类（feature 48，照 CC `shouldShowUserMessage`）：恢复的 messages → 回放项（`UserLine` / `AssistantMessage` / `ToolEnd` 按 tool_call_id 配对 / `ShellLine` / `CompactedMark`），指令头、`<system-reminder>`、摘要头、`!` 回显四种 pai 自造的注入形状在这里认；住 modes 层是因为 tui 不该 import loop/commands（AST 守卫） |
+| `modes/resume.py` | 可用 | 会话切换（feature 49，照 CC `switchSession` + `/resume`）：`load_conversation` / `refresh_assembly`（system 只在内存、指令没变不重录）/ `switch_conversation`（就地换 messages/ledger、归零锚点熔断、`SessionLog.switch_to`、发 `ConversationResumed`）/ `recent_sessions` + `resume_command`（选择框与直达）；以及 resume 回放的分类（feature 48，照 CC `shouldShowUserMessage`）：恢复的 messages → 回放项（`UserLine` / `AssistantMessage` / `ToolEnd` 按 tool_call_id 配对 / `ShellLine` / `CompactedMark`），指令头、`<system-reminder>`、摘要头、`!` 回显四种 pai 自造的注入形状在这里认；住 modes 层是因为 tui 不该 import loop/commands（AST 守卫） |
 | `modes/interactive.py` | 可用 | REPL：跨轮持有 messages/锚点簿/熔断状态；历史（按 cwd 分文件、连续重复只记一条）、`\` 续行、`!` shell 模式、`/help /status /compact /clear /exit`、两级 Ctrl+C；API 出错不炸会话 |
 | `core/heartbeat.py` | 可用 | 干活期间的心跳（feature 39）：长时间阻塞的工具每轮给界面一个喘气机会。进程级单例 + `current()`/`set_current()`，形状与理由照 `core/interrupt.py`（`@tool` 从签名生成 schema，运行期上下文只能旁路进）。`shell._wait` 每 `POLL_SECONDS` 一跳；TUI 装上去读键盘，退出时卸载。回调抛异常一律吞——心跳是界面便利不是正确性。两条阻塞路径都接上了：`shell._wait` 与 `mcp._wait_for`（后者顺带接了中断） |
 | `core/events.py` | 可用 | frozen dataclass 扁平联合 + `render_text` 默认渲染器（D#39）。成员数不在文档里抄——已漂过三次（12→14→17），以本文件的 `AgentEvent` Union 为准。`on_event` 现在收事件对象，渲染下放 modes 层；`MessageDelta`（流式增量）与 `Interrupted(where="stream")` 于阶段 5 补上 |
@@ -312,7 +325,7 @@ MCP client（手写 stdio JSON-RPC、`mcp__<server>__<tool>` 桥接、settings �
 | `tui/width.py` | 可用 | 终端列宽原语：`display_width`（东亚宽字符 2 列、CSI/OSC/APC 0 列、Mn/Me/Cf 0 列）/ `_truncate` / `_ESCAPES`。十个 tui 模块的地基；一条 AST 守卫钉住 `pai/tui/*` 不反向依赖 `pai.modes`（唯一豁免 `_preview`） |
 | `core/tools/ask.py` | 可用 | AskUserQuestion，asker 装配期注入；默认工具集不含它（once 无真人可问） |
 | `core/paths.py` | 可用 | pai 用户级路径唯一事实源：`~/.pai/projects/<可读 slug>/{memory,sessions}/`，slug 用全路径连字符（D#44，对齐 CC） |
-| `core/session.py` | 可用 | 格式 v1（feature 24，三家收敛形）：首行 header（version/id/cwd/parentSession）、统一信封 `{type,id,parentId,ts}`、消息嵌套 `message`、压缩即条目带 `firstKeptEntryId`；`load_session`（版本拒绝语义分方向、词汇表外类型拒收）、`build_messages`（压缩重建 + 指令归位）、`replay_messages`（压缩会话不再拒收）、`trim_unfinished` 配平、`resolve_resume_target`；`append` 加锁返 id、支持 `record_id`（resume 不造新身份）。旧 v0 文件按拍板不读（如实报错，不动不删） |
+| `core/session.py` | 可用 | `open_existing` / `switch_to` 接管既有文件（feature 49，照 CC：resume 默认追加同一文件，`_last_id` 取物理尾部）；格式 v1（feature 24，三家收敛形）：首行 header（version/id/cwd/parentSession）、统一信封 `{type,id,parentId,ts}`、消息嵌套 `message`、压缩即条目带 `firstKeptEntryId`；`load_session`（版本拒绝语义分方向、词汇表外类型拒收）、`build_messages`（压缩重建 + 指令归位）、`replay_messages`（压缩会话不再拒收）、`trim_unfinished` 配平、`resolve_resume_target`；`append` 加锁返 id、支持 `record_id`（resume 不造新身份）。旧 v0 文件按拍板不读（如实报错，不动不删） |
 | `core/memory.py` | 可用 | 分层指令发现（用户级→根→cwd，同目录内 AGENTS.md → PAI.md → PAI.local.md；读 AGENTS.md 是 2026-08-26 的 D#43 复议结论，CLAUDE.md 仍不读）、`@path` 导入（相对基准/4 跳/环检测/代码块内不算）、记忆扫描（每文件前 30 行取 frontmatter、mtime 新→旧、截 200）、索引投影（`render_index`，200 行 + 25KB 双上限，截断留提示）、相对时间与陈旧警告（`memory_age` / `freshness_note`） |
 | `core/rules.py` | 可用 | 路径作用域规则（feature 36）：`.pai/rules/*.md` 与 `~/.pai/rules/*.md` 递归发现 → `paths:` 认行内逗号与 YAML 列表两种写法 → 自写 glob→正则（`**` 跨目录、`*`/`?` 不跨 `/`）→ 碰到匹配路径才注入（单篇 4000 字符、每步 ≤3 条、超了要说）。去重表 `RuleState.injected` 与召回的 `surfaced` 同族，压缩/`/clear` 后由装配层的事件监听器一并清（判据 `events.CONTEXT_REWRITING`）。已知豁口：bash 里的 `cat` 不算「碰到」（同 D#52） |
 | `core/recall.py` | 可用 | 按查询召回：manifest → 侧查询（`max_tokens=4096`——推理模型的 reasoning 计进该上限，实测 256 会静默截断）→ 防御式 JSON 解析（分得清「没说话」与「明确不选」）→ 白名单（容忍 `[type]` 装饰、取最长匹配）→ ≤5 篇 → `<system-reminder>` 注入块；空目录短路、`surfaced` 去重（上下文被压缩/`/clear` 改写即清，10 遗留 6）、单篇 4000 字符上限（超了截断并说出来）、连续 3 次失败停用并发 `RecallFailed` |

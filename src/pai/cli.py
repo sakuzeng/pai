@@ -32,6 +32,11 @@ def main() -> None:
              "也可给会话 id 前缀或会话文件路径",
     )
     parser.add_argument(
+        "--fork-session", action="store_true",
+        help="与 --resume 合用：恢复到一个新会话文件（新 id，header 的 parentSession 指旧会话），"
+             "不往原文件追加（默认追加，照 CC 同名 flag 的分工）",
+    )
+    parser.add_argument(
         "--permission-mode", choices=MODES, default=None,
         help=f"权限模式（默认读 settings.json 的 defaultMode）：{'/'.join(MODES)}",
     )
@@ -51,6 +56,8 @@ def main() -> None:
     mode = BYPASS if args.dangerously_skip_permissions else args.permission_mode
     if args.resume is not None and args.task is not None:
         parser.error("--resume 是恢复会话接着聊（交互模式），不能与任务参数同时给")
+    if args.fork_session and args.resume is None:
+        parser.error("--fork-session 只能与 --resume 合用")
 
     try:
         if args.task is None:
@@ -61,6 +68,7 @@ def main() -> None:
                     no_session=args.no_session,
                     mode=mode,
                     resume=args.resume,
+                    fork_session=args.fork_session,
                 )
             except (FileNotFoundError, SessionFormatError) as e:
                 # resume 的两类可预期错误变人话：找不到会话 / 旧格式（拍板问 2 = B）

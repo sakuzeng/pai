@@ -1354,10 +1354,15 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
       测试把 glob 顺序钉成最坏情况正反各跑一次，断言答案不随列出顺序变。
 - [ ] 观测流 `.events.jsonl` 仍是旧平铺格式：一对文件两种形状，viz 靠读边
       归一化弥合；events 侧换不换信封等 evals 立项时定（出处：24 README 遗留）。
-- [ ] resume 重录全量历史进新文件：自包含的代价是每 resume 复制一份历史，
-      反复 resume 长会话会滚雪球，「文件数 × 全量」的账没算过（24 复盘质疑三）。
+- [x] ~~resume 重录全量历史进新文件：自包含的代价是每 resume 复制一份历史，
+      反复 resume 长会话会滚雪球，「文件数 × 全量」的账没算过（24 复盘质疑三）。~~
+      已解 2026-09-11（[features/49](features/49-20260911-resume-same-file-and-slash-resume/README.md)，
+      照 CC）：`--resume` 默认接管原文件追加，一份历史只存一次；重录路径保留在 `--fork-session` 后面。
 - [ ] 跨轮平行状态已三件（messages/anchors/ledger），到第四件该封 Session
       会话对象（pi SessionManager 的角色）（出处：24 复盘质疑一）。
+      2026-09-11 追记：feature 49 的 `/resume` 一次就地换六件（messages / ledger / anchors / state /
+      session / transcript），触发点已到；拍板问 3 选了就地变更（CC 的 switchSession 也是就地改），
+      封对象另立档案——债更明确了，不是消了。
 - [ ] 树操作（回退/分支重开）只有 parentId 字段没有功能——pi 证明是纯读取侧
       算法，需求出现再开（出处：24 README 遗留）。
 
@@ -1504,8 +1509,11 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
       当时是被 bash 的 `timeout` 参数当场引爆的：模型把它排在前面，状态行就显示
       光秃秃的「300」。剩下的「多参数工具只显示一个字段」是刻意取舍（一行状态行
       放不下第二个），代码注释里写着，不再当待办。
-- [ ] REPL 无会话恢复（05 spec 非目标）：`messages` 只活在进程内，
-      落盘仍是 append-only JSONL，没有 `/resume`。要做得先有会话树。
+- [x] ~~REPL 无会话恢复（05 spec 非目标）：`messages` 只活在进程内，
+      落盘仍是 append-only JSONL，没有 `/resume`。要做得先有会话树。~~
+      已交付 2026-09-11（[features/49](features/49-20260911-resume-same-file-and-slash-resume/README.md)）：
+      `/resume` 无参选择框 / 带参直达。「要做得先有会话树」在 CC 源码里不成立——CC 的 /resume
+      是线性切换（换 messages 状态 + switchSession），不需要树；树是回退/分支重开的事（24 遗留另一条）。
 - [x] ~~`_install_sigint` 在非主线程装不上（05 task 7）~~ 2026-08-11 由 feature 12 关闭：
       结论是不把 REPL 挪到子线程（主线程持有 stdin/信号/loop，并发工具留线程池）。
       `TerminalSession.start()` 在非主线程时明确告警而不是静默退化，测试钉死。
@@ -2291,3 +2299,18 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
       标记；CC 也没有，先记着看真用时是否困扰（出处：48 复盘质疑四）。
 - [ ] `tests/fixtures/resume_session.jsonl` 131KB，是仓库里最大的测试文件；再添同类夹具时考虑
       截短工具结果正文并在 fixtures/README 注明（出处：48 devlog）。
+
+### feature 49（resume 同一文件 + /resume）遗留 —— 2026-09-11
+
+- [ ] 对话框提示语「数字直选」与行为不符：实现是「输入序号后回车」（e2e 就是这么写红的一次）。
+      要么让数字键即选（CC 的选择器是即选），要么改提示语（出处：49 复盘弯路）。
+- [ ] 重装配的 system 不落盘 → 会话文件里的 system 永远是首次录制的版本，`replay_messages`
+      （evals 回放）拿到的是旧 system。如实记录；照 CC 的根治法是 system 根本不进转录，
+      那是格式 v2 的事（出处：49 复盘质疑一）。
+- [ ] 指令消息「变了才追加」：长期反复 resume 的文件里会积累多条指令消息，`build_messages`
+      只取最新一条（功能正确），体积账没算（出处：49 复盘质疑二）。
+- [ ] `recent_sessions` 为了取首句与条数把每个候选文件整个解析一遍（8 × 可达百 KB）。
+      CC 有 lite log（只读 header + 首句）与 `loadFullLog` 两级；pai 若会话变多该只读前几行
+      （出处：49 复盘质疑三）。
+- [ ] `--fork-session` 只有 REPL 路径的单测，TUI 路径没有 e2e；选择框只列本项目、无搜索与
+      跨项目开关（CC 的 `showAllProjects` / `agenticSessionSearch`），需求出现再做（出处：49 README 非目标）。

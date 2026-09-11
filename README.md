@@ -26,13 +26,17 @@ pai "在当前目录创建 hello.txt 写入 hello world 并读出来确认"   # 
 
 ```
 pai [任务] [--max-steps N] [--max-tokens N] [--no-session]
-    [--resume [ID或路径]] [--permission-mode MODE] [--dangerously-skip-permissions]
+    [--resume [ID或路径]] [--fork-session] [--permission-mode MODE]
+    [--dangerously-skip-permissions]
 ```
 
 - `--max-tokens`：本次任务的累计 token 预算，超过即停（默认 200000，0 = 不限）——
   平台侧没有消费限额，这是唯一的自动烧钱熔断。
 - `--resume`：恢复会话接着聊（交互模式）。不带参数 = 本项目最近一次；
-  也可给会话 id 前缀或会话文件路径。
+  也可给会话 id 前缀或会话文件路径。旧对话会回放上屏，之后的消息追加进同一个会话文件
+  （照 CC）。
+- `--fork-session`：与 `--resume` 合用，改为写一个新文件（header 的 `parentSession`
+  指旧会话，历史按原 id 重录），原文件不动。
 - `--permission-mode`：`default` / `acceptEdits` / `dontAsk` / `bypassPermissions`
   （默认读 settings.json 的 `defaultMode`；见下方「权限与安全」）。
 - `--dangerously-skip-permissions`：等价 `bypassPermissions`。deny 规则、
@@ -62,6 +66,7 @@ PAI_CONTEXT_WINDOW=1000000              # 可选：上下文窗口（压缩触�
 /compact      手动压缩当前对话
 /skill        列出可用 skills；`/skill <名> [参数]` 加载并执行
 /clear        清空对话（保留 system）
+/resume       切到另一个会话接着聊：不带参数弹选择框，或 /resume <id前缀|路径>
 /exit         退出（等同 Ctrl+D）
 !命令          直接跑 shell，不打模型
 行尾 \        续行

@@ -124,6 +124,19 @@ class ConversationCleared:
 
 
 @dataclass(frozen=True)
+class ConversationResumed:
+    """`/resume`：整段上下文换成另一个会话的历史（feature 49，照 CC 的 /resume）。
+
+    与 `ConversationCleared` 同族——它之后「某条消息还在上下文里」这句话全变假，
+    所以进 `CONTEXT_REWRITING`；区别是换来的不是空，是别处的历史。
+    启动时的 `--resume` 不发它：那时还没有任何跨轮状态可作废。
+    """
+
+    session_id: str    # 换进来的那个会话的 id
+    kept: int          # 换进来的消息数
+
+
+@dataclass(frozen=True)
 class RecallInjected:
     """本轮召回选中并注入了哪几篇。feature 17 补上——此前**只有失败发事件**，
     成功是哑的：观测流里说得出「召回过」，说不出「召回了什么」。
@@ -187,6 +200,7 @@ AgentEvent = Union[
     RecallFailed,
     RecallInjected,
     ConversationCleared,
+    ConversationResumed,
     SteeringInjected,
     MemoryWritten,
     Interrupted,
@@ -207,7 +221,7 @@ AgentEvent = Union[
 # 会不会变成假的。压缩（换掉）与清空（丢弃）都会；暂缓压缩、熔断、注入召回都不会。
 # 将来 microcompact、resume 重建这类第三种改写方式出现时，往这里加一行——
 # 忘了加就是静默漏（召回衰减这类 bug 不会报错），所以判据写在这儿而不是各处。
-CONTEXT_REWRITING = (Compacted, ConversationCleared)
+CONTEXT_REWRITING = (Compacted, ConversationCleared, ConversationResumed)
 
 
 def _clip(text: str, limit: int = 40) -> str:

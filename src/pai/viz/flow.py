@@ -140,7 +140,7 @@ def load_flow(session_path: Path) -> dict:
                     span["end"] = ts
                     span["is_error"] = bool(record.get("is_error"))
                 continue
-            if name == "ConversationCleared":
+            if name in ("ConversationCleared", "ConversationResumed"):
                 # 标在**下一个** turn 头上：前端要用它画分隔线，埋进上一个 turn
                 # 的步骤里就画不到两段之间
                 next_starts_conversation = True
