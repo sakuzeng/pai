@@ -24,7 +24,8 @@ from pai.core.events import AssistantMessage, ConversationResumed, ToolEnd
 from pai.core.loop import INSTRUCTION_HEADER, _instruction_message, drop_instructions
 from pai.core.paths import sessions_dir
 from pai.core.session import (SUMMARY_HEADER, SessionFormatError, build_messages,
-                              load_session, resolve_resume_target, trim_unfinished)
+                              load_session, resolve_resume_target, session_cwd,
+                              trim_unfinished)
 from pai.core.tools import memory_tool
 from pai.modes.commands import split_shell_echo
 from pai.tui.history import CompactedMark, HistoryItem, ShellLine, UserLine
@@ -142,16 +143,23 @@ def resume_note(header: dict, target: Union[str, Path], count: int) -> str:
 
 
 def recent_sessions(exclude: Optional[Union[str, Path]] = None, limit: int = 8,
-                    directory: Optional[Union[str, Path]] = None) -> List[Tuple[Path, str]]:
-    """选择框的候选：本项目最近的会话（不含当前文件），每条一行「MM-DD HH:MM · N 条 · 首句」。
+                    directory: Optional[Union[str, Path]] = None,
+                    cwd: Optional[Union[str, Path]] = None) -> List[Tuple[Path, str]]:
+    """选择框的候选：**当前目录**录制的最近会话（不含当前文件），每条一行
+    「MM-DD HH:MM · N 条 · 首句」。只认 header.cwd = 当前目录（照 CC：选择器只看当前目录，
+    跨目录只能给 id）——同一 git 仓库子目录里跑过的会话与这里同一个 sessions 目录，
+    不过滤就会像用户 2026-09-11 截图那样把 pai_playground 的会话列进来。
     CC 的 LogSelector 还带 git 分支、自定义标题、全项目开关——pai 都没有，先只给最少能认出来的三样。"""
     d = Path(directory) if directory is not None else sessions_dir()
     files = sorted((f for f in d.glob("*.jsonl") if not f.name.endswith(".events.jsonl")),
                    key=lambda f: (f.stat().st_mtime_ns, f.name), reverse=True)
     current = Path(exclude).resolve() if exclude is not None else None
+    here = str(Path(cwd).absolute()) if cwd is not None else str(Path.cwd().absolute())
     out: List[Tuple[Path, str]] = []
     for f in files:
         if current is not None and f.resolve() == current:
+            continue
+        if session_cwd(f) != here:
             continue
         try:
             header, msgs, _ = load_conversation(f)
@@ -209,7 +217,7 @@ def resume_command(arg: str, *, out: Callable[[str], None], asker, session, **sw
     else:
         candidates = recent_sessions(exclude=current)
         if not candidates:
-            out("没有可恢复的会话（本项目的 sessions 目录里没有别的会话文件）")
+            out("当前目录下没有可恢复的会话（别的目录录制的不列；要恢复它们请 `/resume <id前缀|路径>`）")
             return None
         if asker is None:
             out("没有真人可选；用 `/resume <id前缀|路径>` 直接指定")

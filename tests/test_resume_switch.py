@@ -286,3 +286,71 @@ def test_slash_resume_with_nothing_to_resume_says_so(tmp_path, monkeypatch):
     printed = []
     _run(["/resume", "/exit"], [], out=printed.append, history_path=tmp_path / "h")
     assert any("没有" in line for line in printed), printed
+
+
+# ---- 只认当前目录录制的会话（用户 2026-09-11 截图：pai_playground 子目录的会话被列进来了）----
+# CC：项目目录按启动 cwd 归档，/resume 选择框与 --continue 只看当前目录；跨目录只能给明确的 id。
+
+def _record_elsewhere(directory, other_cwd, *msgs):
+    """在 `directory` 里录一份 header.cwd = other_cwd 的会话——像是在别的目录启动过 pai。
+    同一个 git 仓库的子目录正是这种情况：slug 按 git 根算，文件落在同一个 sessions 目录。"""
+    import os
+    other_cwd.mkdir(parents=True, exist_ok=True)
+    before = os.getcwd()
+    os.chdir(other_cwd)
+    try:
+        log = SessionLog(directory)
+        for m in msgs:
+            log.append(m)
+    finally:
+        os.chdir(before)
+    return log.path
+
+
+def _two_places(tmp_path):
+    here = _record({"role": "system", "content": "s"}, {"role": "user", "content": "这里的会话"},
+                   {"role": "assistant", "content": "答"})
+    elsewhere = _record_elsewhere(sessions_dir(), tmp_path / "other",
+                                  {"role": "system", "content": "s"},
+                                  {"role": "user", "content": "别处的会话"},
+                                  {"role": "assistant", "content": "答"})
+    return here, elsewhere
+
+
+def test_picker_only_lists_sessions_recorded_in_the_current_directory(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    from pai.modes.resume import recent_sessions
+    here, elsewhere = _two_places(tmp_path)          # elsewhere 更新，不过滤的话它排第一
+    labels = [label for _, label in recent_sessions()]
+    assert any("这里的会话" in l for l in labels) and not any("别处的会话" in l for l in labels), labels
+
+    printed = []
+    _run(["/resume", "", "/exit"], [], out=printed.append, history_path=tmp_path / "h")
+    text = "\n".join(printed)
+    assert "这里的会话" in text and "别处的会话" not in text, text
+
+
+def test_resume_latest_skips_sessions_recorded_elsewhere(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    from pai.core.session import resolve_resume_target
+    here, elsewhere = _two_places(tmp_path)
+    assert resolve_resume_target(None) == here, "无参 = 当前目录最近一次，不是目录里最近一次"
+
+    only_elsewhere = tmp_path / "only"
+    only_elsewhere.mkdir()
+    _record_elsewhere(only_elsewhere, tmp_path / "other2", {"role": "user", "content": "x"})
+    with pytest.raises(FileNotFoundError) as e:
+        resolve_resume_target(None, directory=only_elsewhere)
+    assert "当前目录" in str(e.value) and "id" in str(e.value), str(e.value)
+
+
+def test_explicit_id_still_reaches_a_session_recorded_elsewhere(tmp_path, monkeypatch):
+    """跨目录只能明确指定（CC 的 --resume <uuid> 同款）；恢复提示会说明录制目录不同（feature 35）。"""
+    monkeypatch.chdir(tmp_path)
+    from pai.core.session import resolve_resume_target
+    _, elsewhere = _two_places(tmp_path)
+    sid = load_session(elsewhere)[0]["id"]
+    assert resolve_resume_target(sid[:8]) == elsewhere
+    printed = []
+    _run([f"/resume {sid[:8]}", "/exit"], [], out=printed.append, history_path=tmp_path / "h")
+    assert any("录制于" in line for line in printed), printed

@@ -266,10 +266,15 @@ def test_resolve_resume_target_breaks_mtime_ties_deterministically(tmp_path,
 
     from pai.core.session import resolve_resume_target
 
+    import json as _json
+
     old_p = tmp_path / "20260825-120000-aaaaaaaa.jsonl"
     new_p = tmp_path / "20260825-120001-bbbbbbbb.jsonl"
     for f in (old_p, new_p):
-        f.write_text('{"type": "message"}\n', encoding="utf-8")
+        # feature 49 起无参 resume 只认当前目录录制的会话，所以要有合法 header 且 cwd 对得上
+        header = {"type": "session", "version": 1, "id": f.stem[-8:] * 4, "timestamp": "t",
+                  "cwd": str(Path.cwd().absolute())}
+        f.write_text(_json.dumps(header) + '\n{"type": "message"}\n', encoding="utf-8")
         os.utime(f, ns=(1_700_000_000_000_000_000, 1_700_000_000_000_000_000))
 
     real_glob = Path.glob

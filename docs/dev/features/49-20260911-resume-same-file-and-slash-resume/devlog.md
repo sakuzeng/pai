@@ -61,3 +61,26 @@ tests/test_e2e_tui.py -k resume:  2 passed, 18 deselected in 13.97s
 ```
 
 已知缺陷 / 遗留：见 README「遗留问题」，每条已登记 TODO。
+
+## 交付后补漏：只认当前目录录制的会话（2026-09-11）
+
+用户真跑截图：无参 `--resume` 挑中了 `20260822-235906-8cf20ae1`，录制于 `pai_playground/skills-smoke`
+——同一 git 仓库的子目录，slug 按 git 根算，文件与根目录同一个 sessions 文件夹。用户原话
+「现在resume应该只会显示当前项目下的历史，别的目录下的应该不显示的」。照 CC（项目目录按启动 cwd
+归档，`--continue` 与 LogSelector 只看当前目录；跨目录只能给明确 id）：
+
+- `session.session_cwd(path)` 只读首行取 header.cwd；`resolve_resume_target(None)` 取
+  **当前目录**最近一次，都不是就报「N 个会话都录制于别处，请给 id 或路径」；
+  `recent_sessions` 同样过滤；显式 id / 路径不变（恢复提示照旧说目录不同）。
+- 同秒 tie 那条旧测试写的是没 header 的假文件，现在无参路径要看 header，改成写合法 v1 header。
+
+红（3 条新测试，第三条「显式 id 仍可跨目录」本来就绿）：
+
+```
+E       AssertionError: ['09-11 13:09 · 3 条 · 别处的会话', '09-11 13:09 · 3 条 · 这里的会话']
+E       AssertionError: 无参 = 当前目录最近一次，不是目录里最近一次
+2 failed, 1 passed
+```
+
+绿：相关 6 个测试文件 `161 passed, 1 skipped in 1.11s`；e2e `-k resume` `2 passed in 14.58s`；
+全量数字见 README。

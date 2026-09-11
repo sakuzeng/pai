@@ -124,6 +124,17 @@ pi SessionManager 的角色）：24 复盘质疑一登记的债「到第四件�
 - 候选 B·先封 Conversation 对象。
 选择：A。CC 的 `switchSession` 也是就地改 `STATE.sessionId`、REPL 里 `setMessages` 换状态，
 不为此造新对象；B 的债仍在 TODO（24 复盘质疑一）。
+问 5（交付后补漏，2026-09-11 用户截图）：用户原话「现在resume应该只会显示当前项目下的历史，
+别的目录下的应该不显示的」——截图里无参 `--resume` 挑中了 `20260822-235906-8cf20ae1`，
+它录制于 `pai_playground/skills-smoke`（同一 git 仓库的子目录，slug 按 git 根算，文件与根目录
+同一个 sessions 文件夹）。
+- 候选 A·按 header.cwd 过滤：无参 `--resume` 与 `/resume` 选择框只认录制 cwd = 当前目录；
+  显式 id / 路径仍可跨目录（CC：项目目录按启动 cwd 归档，`--continue` 与 LogSelector 只看
+  当前目录，跨目录 `checkCrossProjectResume` 拒绝并给 cd 命令；CLI 明确 id 可跨）。
+- 候选 B·按 git 根过滤：现状，子目录会话照列——正是用户不要的。
+选择：A（用户原话即拍板；同一轮交付的补漏，留在本档案）。代价：在 `src/` 里启动看不到
+根目录录制的会话，与 CC 一致，README 写明。
+
 问 4（流程）：先合 48 还是从 48 分支切？
 选择：先合 48。已执行：`feat/48` 以 `--no-ff` 合回 `main`（merge cfed4e0），推送 main 与 48 分支，
 再从 main 切出本分支。
@@ -139,9 +150,13 @@ pi SessionManager 的角色）：24 复盘质疑一登记的债「到第四件�
   `switch_conversation` / `resume_command`）、`/resume` 命令、`TuiApp.clear_transcript`、`--fork-session`。
 - 测试：`tests/test_resume_switch.py` 15 条 + e2e 1 条新增、1 条加固；三处注入反证各红。
 - 数字：相关单测 `182 passed`，e2e `2 passed in 13.97s`，全量 `1720 passed`
-  （STATUS 更新前一跑 `1 failed, 1719 passed, 8 deselected in 190.00s`，红的是测试数校验）。
+  （STATUS 更新前一跑 `1 failed, 1719 passed, 8 deselected in 190.00s`，红的是测试数校验）；
+  补漏后全量 `1723 passed`（更新 STATUS 前一跑 `1 failed, 1722 passed, 8 deselected in 195.13s`）。
 
 顺带推翻一条旧登记：TODO 里「没有 /resume，要做得先有会话树」——CC 的 /resume 是线性切换，不需要树。
+
+补漏（同日，用户截图）：无参 `--resume` 与选择框只认录制 cwd = 当前目录（`session_cwd` 只读首行），
+显式 id / 路径仍可跨目录；+3 测试，数字见 devlog。
 
 详细日志见 [devlog.md](devlog.md)，复盘见 [复盘.md](复盘.md)，取舍升格为 [D#80](../../decisions.md)。
 

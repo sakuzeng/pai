@@ -5,14 +5,14 @@
 照 CC 2.1.88：①`--resume` 默认沿用被恢复会话的 id、往同一个文件追加（`SessionLog.open_existing`），
 一条新消息都没有就一个字节不写；24 的「新文件 + parentSession + 按原 id 重录」搬到 `--fork-session`
 （CC 同名 flag）后面；重装配的 system 只在内存不落盘（CC 转录不存 system prompt），指令消息内容
-没变就沿用原条目。②`/resume` 命令：无参经 asker 弹最近 8 个会话（时间 · 条数 · 首句），带参
+没变就沿用原条目。②`/resume` 命令：无参经 asker 弹当前目录最近 8 个会话（时间 · 条数 · 首句；只认录制 cwd 相同的——用户截图抓到 pai_playground 子目录的会话混进来，补漏），带参
 id 前缀 / 路径直达；切换 = 就地换 messages/ledger、锚点与熔断归零、`SessionLog.switch_to`、
 `EventTrace` 跟着 session 当前路径写、发新事件 `ConversationResumed`（进 `CONTEXT_REWRITING`，
 召回去重表随之作废——events.py 那条「将来 resume 重建往这里加一行」的注释兑现）、TUI 清屏用 48 的
 回放画目标会话。三处注入反证各红（不清屏 / 不发事件 / 重写 header）。
 顺带推翻 TODO 里「没有 /resume，要做得先有会话树」：CC 的 /resume 是线性切换，不需要树。
 档案 [features/49](features/49-20260911-resume-same-file-and-slash-resume/README.md)。
-1720 passed）。
+1723 passed）。
 同日早些：feature 48 交付——`--resume` 之后旧对话上屏，修用户报的
 「我使用resume并不能恢复对话状态」。排查结论：模型侧一直是通的，屏幕侧从没画过——
 `_run_tui` 的 `Transcript()` 从空建起，恢复提示走 print 在进备用屏（自带 `2J`）之前打，
