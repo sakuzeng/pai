@@ -2,7 +2,7 @@
 
 需求原话是「改了什么你看不见」——`edit_file` / `write_file` 只回一句
 「完成 1 处替换」。落点选在**工具返回值**而不是事件（拍板问 2·A）：
-TUI 那边 `app._tool_entry` 本来就会把多行结果做成可展开条目（`^O`），
+TUI 那边 `app._tool_entry` 本来就会把多行结果做成可展开条目（`ctrl+o`），
 `app._display_result` 也已经分好了「模型拿原文 / 终端拿 sanitize 过的那份」，
 所以给返回值加 diff 等于同时喂饱了模型和终端，零 UI 改动。
 

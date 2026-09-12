@@ -471,7 +471,7 @@ class TuiApp:
         self.refresh()
 
     def expand_last(self) -> None:
-        """^O。备用屏下：切换最近一个可展开条目（工具组或改文件行）的展开态——
+        """ctrl+o。备用屏下：切换最近一个可展开条目（工具组或改文件行）的展开态——
         照 CC 的 ctrl+o（feature 50），跑着的组也能切开看已经回来的输出。
 
         main-screen 下仍是老做法：把最近一条被折叠的工具输出**整段**再打进 scrollback，
@@ -556,8 +556,8 @@ class TuiApp:
         直接当 messages 状态喂给同一个 `<Messages>`），所以这里逐项复用 `_submitted` /
         `_flush_answer` / `on_event(ToolEnd)` 用的那几个函数，不另画一套。
         **不过 dock**：活动区计数的是本进程干的活，上一个进程的不算。
-        工具输出照样登记进 `_collapsed`，^O 能展开到它们——否则折叠行上写的
-        「(^O 展开)」是假话。`!命令` 画成一条工具行（名字就是 `! 命令`），
+        工具输出照样登记进 `_collapsed`，ctrl+o 能展开到它们——否则折叠行上写的
+        「(ctrl+o 展开)」是假话。`!命令` 画成一条工具行（名字就是 `! 命令`），
         输出折叠——CC 非 verbose 时的 BashToolResultMessage 同款。
         """
         for item in items:
@@ -723,7 +723,7 @@ def _tool_entry(event, *, color: bool = False, expanded: bool = False) -> Transc
             return _tool_lines(event, width, color=color)
         # **命令要留在第一行**：展开是「把输出挂到命令下面」，不是「把命令换掉」。
         # 换掉之后用户看不出这段输出是哪条命令跑出来的（真跑打回来的）。
-        head = _tool_lines(event, width, color=color, suffix=" (^O 收起)")[0]
+        head = _tool_lines(event, width, color=color, suffix=f" ({theme.KEY_EXPAND} 收起)")[0]
         body: List[str] = []
         room = max(8, width - len(_OUTPUT_INDENT))
         for line in _display_result(event).split("\n"):
@@ -768,8 +768,9 @@ def _tool_lines(event, width: int, *, color: bool = False,
         # 形状照 CC（`FileWriteTool/UI.tsx` + `CtrlOToExpand.tsx`）：
         # `… +12 lines (ctrl+o to expand)`——**「+N 行」+ 括号里的快捷键**。
         # 不提「点击」：CC 的折叠块也能点，提示语里同样只写快捷键。
-        # （我原先自己编的 `^O/点击展开`，那个斜杠让人以为是快捷键的一部分。）
-        line += f" … +{hidden} 行 (^O 展开)"
+        # （我原先自己编的 `^O/点击展开`，那个斜杠让人以为是快捷键的一部分；
+        # `^O` 这种脱字符记法 CC 与 pi 都不用，2026-09-13 改成键位表写法 `ctrl+o`。）
+        line += f" … +{hidden} 行 ({theme.KEY_EXPAND} 展开)"
     code = theme.RED if event.is_error else theme.GREY
     return [theme.paint(_truncate(line, width), code, color=color)]
 

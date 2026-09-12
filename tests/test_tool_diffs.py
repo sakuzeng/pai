@@ -1,7 +1,7 @@
 """编辑结果里的 diff（feature 43 Task 3）。
 
 需求原话是「改了什么你看不见」。落点是工具返回值——TUI 那边
-`app._tool_entry` 本来就会把多行结果做成可展开条目（^O），
+`app._tool_entry` 本来就会把多行结果做成可展开条目（ctrl+o），
 `app._display_result` 也已经分好了「模型拿原文 / 终端拿 sanitize 过的那份」，
 所以给返回值加 diff 等于同时喂饱了模型和终端（拍板问 2·A）。
 

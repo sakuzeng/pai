@@ -3,7 +3,7 @@
 - 连续的读 / 搜 / 看目录 / 跑命令 / 跑测试 / 看 git / 记笔记合成一组；模型的非空文本
   与写 / 改文件断组（CC `isTextBreaker` / `isNonCollapsibleToolUse`）。
 - 跑着时一行现在时「正在读 2 个文件…」+ 一行 `⎿` 当前工具提示；跑完过去时
-  「读了 2 个文件 (^O 展开)」，dim 灰、无常驻底色。
+  「读了 2 个文件 (ctrl+o 展开)」，dim 灰、无常驻底色。
 - 展开一级铺全部输出（CC verbose 形态），展开块加暗底（对应 CC 选中行的 messageActionsBackground）。
 - 写 / 改文件各自一行，默认展开 diff（45-B2）。只在备用屏（transcript 归 pai）下分组；
   main-screen 下 scrollback 归终端，改不了已打出去的行，照旧逐条。
@@ -91,9 +91,9 @@ def test_text_and_edits_break_groups():
     app.on_event(e)
     app.on_event(AgentEnd(reason="final", text="先看看这两个"))
     text = _text(transcript)
-    assert "读了 2 个文件 (^O 展开)" in text, text
+    assert "读了 2 个文件 (ctrl+o 展开)" in text, text
     assert "先看看这两个" in text
-    assert text.count("读了 1 个文件 (^O 展开)") == 2, text
+    assert text.count("读了 1 个文件 (ctrl+o 展开)") == 2, text
     assert "edit_file(" in text and "+new" in text, "改文件单独一行且默认展开 diff（45-B2）"
     assert "└ read_file(" not in text, "组里的工具不再逐条上屏"
     order = [text.index(s) for s in ("读了 2 个文件", "先看看这两个", "edit_file(", theme.SUMMARY)]
@@ -110,7 +110,7 @@ def test_active_group_shows_present_tense_and_the_current_tool():
                          result="x"))
     app.on_event(AgentEnd(reason="final", text=""))
     text = _text(transcript)
-    assert "读了 1 个文件 (^O 展开)" in text and "⎿" not in text, text
+    assert "读了 1 个文件 (ctrl+o 展开)" in text and "⎿" not in text, text
 
 
 def test_expanding_a_group_lists_every_call_with_its_full_output_on_a_band():
@@ -124,7 +124,7 @@ def test_expanding_a_group_lists_every_call_with_its_full_output_on_a_band():
     group = [e for e in transcript.entries if e.expandable][-1]
     group.toggle()
     text = _text(transcript)
-    assert "读了 2 个文件 (^O 收起)" in text
+    assert "读了 2 个文件 (ctrl+o 收起)" in text
     assert "a.py 第7行" in text and "b.py 第7行" in text, "一级展开就是全部输出（CC verbose）"
     assert theme.TOOL_BG in text, "展开块要有暗底（CC 选中行的 messageActionsBackground 对应物）"
     lines = _text(transcript).split("\n")
@@ -151,9 +151,9 @@ def test_ctrl_o_toggles_the_latest_group_in_alt_screen():
     app.on_event(e)
     app.on_event(AgentEnd(reason="final", text=""))
     app.expand_last()
-    assert "(^O 收起)" in _text(transcript)
+    assert "(ctrl+o 收起)" in _text(transcript)
     app.expand_last()
-    assert "(^O 展开)" in _text(transcript)
+    assert "(ctrl+o 展开)" in _text(transcript)
 
 
 def test_a_new_user_line_closes_a_dangling_group():
@@ -180,7 +180,7 @@ def test_replay_groups_the_same_way():
     app.replay(history_items(msgs))
     text = _text(transcript)
     assert "└ read_file(" not in text
-    assert "读了" in text and "个文件" in text and "(^O 展开)" in text, text
+    assert "读了" in text and "个文件" in text and "(ctrl+o 展开)" in text, text
     assert "正在" not in text, "回放的组全部定格"
     # 第二个问题之前的组与之后的组分开：用户行是断点
     assert text.index("分析一下当前项目") < text.index("读了") < text.index("现在在做什么呢")

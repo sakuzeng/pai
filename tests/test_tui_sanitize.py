@@ -114,7 +114,7 @@ def test_the_model_still_receives_the_raw_output(tmp_path):
 
 
 def test_tool_output_is_sanitised_before_it_reaches_the_transcript():
-    """接线断言：`^O` 展开工具输出走的也是消毒后的那一份。"""
+    """接线断言：`ctrl+o` 展开工具输出走的也是消毒后的那一份。"""
     from pai.core.events import ToolEnd
     from pai.tui.app import _display_result
 

@@ -52,6 +52,13 @@ PROMPT = "›"        # 输入提示（沿用 05 交付的形状）
 CONTINUATION = "…"  # 续行提示
 DETAIL = "└"        # 活动区的明细行
 SELECTED = "❯"      # 对话框里选中的那一项
+
+# --- 提示语里的键名（全小写、加号连接，CC 与 pi 同款；`^O` 那种脱字符记法两家都不用）---
+# 唯一出处：将来若做可配置键位，只改这里（CC getShortcutDisplay / pi keyText 都是从键位表取）
+KEY_EXPAND = "ctrl+o"
+KEY_QUIT = "ctrl+d"
+KEY_MODE = "shift+tab"
+KEY_CANCEL = "esc"
 COMPACTED = "✻"     # 早前对话在此被压缩（resume 回放的标记行；CC 的 CompactBoundaryMessage 也用它）
 
 

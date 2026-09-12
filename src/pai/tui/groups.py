@@ -123,12 +123,12 @@ def group_entry(group: ToolGroup, *, color: bool) -> TranscriptEntry:
         # 跑着时现在时 + 省略号（CC：`{isActiveGroup && …} <CtrlOToExpand />`——提示两态都带）
         head = f"{_GUTTER}{group.summary()}{'…' if group.active else ''}"
         if not expanded:
-            lines = [dim(f"{head} (^O 展开)", width)]
+            lines = [dim(f"{head} ({theme.KEY_EXPAND} 展开)", width)]
             if group.active and group.hint:
                 lines.append(dim(f"{_LEAD}{group.hint}", width))
             return lines
         # 展开 = CC 的 verbose：每条工具一行头 + 完整输出（还没回来的说明一下），整块铺暗底
-        out = [dim(f"{head} (^O 收起)", width)]
+        out = [dim(f"{head} ({theme.KEY_EXPAND} 收起)", width)]
         room = max(8, width - len(_INDENT))
         for call in group.calls:
             out.append(theme.band(_call_head(call, width), width, theme.TOOL_BG, color=color))

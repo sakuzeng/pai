@@ -465,7 +465,7 @@ def run_interactive(
 
         if resume_note is not None:
             out(resume_note)
-        out("pai 交互模式。/help 看命令，Ctrl+D 退出。")
+        out("pai 交互模式。/help 看命令，ctrl+d 退出。")
         pending_exit = False
         while True:
             try:
@@ -807,7 +807,7 @@ def _run_tui(*, out, client, model, tools, messages, ledger, anchors, state, ste
         while app.intro_tick():
             time.sleep(0.04)
         app.commit([theme.paint(
-            "/help 看命令 · shift+tab 切权限模式 · ^O 展开工具输出 · Ctrl+D 退出",
+            f"/help 看命令 · {theme.KEY_MODE} 切权限模式 · {theme.KEY_EXPAND} 展开工具输出 · {theme.KEY_QUIT} 退出",
             theme.GREY, color=color)])
         # --resume（feature 48，照 CC）：恢复的对话与活轮次走同一个渲染器，跟在 logo 与
         # 提示行后面铺开；恢复提示走 commit 进 transcript——此前走 print，进备用屏那一下

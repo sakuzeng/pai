@@ -392,7 +392,7 @@ def test_collapsed_line_says_how_to_expand():
     app.on_event(ToolEnd(tool_call_id="1", name="bash", args={"command": "ls"},
                          result="\n".join(f"row{i}" for i in range(20))))
     line = committed(screen)[0]
-    assert "19" in line and "^O" in line
+    assert "19" in line and "ctrl+o" in line
 
 
 def test_ctrl_o_expands_the_most_recent_collapsed_result():
