@@ -122,13 +122,16 @@ def group_entry(group: ToolGroup, *, color: bool) -> TranscriptEntry:
     def render(width: int, expanded: bool) -> List[str]:
         # 跑着时现在时 + 省略号（CC：`{isActiveGroup && …} <CtrlOToExpand />`——提示两态都带）
         head = f"{_GUTTER}{group.summary()}{'…' if group.active else ''}"
+        # 摘要行不带「(ctrl+o 展开)」（用户 2026-09-13 截图：CC 真机上的组行就是光秃秃的
+        # 「Ran 3 shell commands」——`CtrlOToExpand` 在虚拟列表里返回 null）。怎么展开由帮助行说一次，
+        # 点击与 ctrl+o 都通；展开态靠内容块的暗底分辨，不靠文案
         if not expanded:
-            lines = [dim(f"{head} ({theme.KEY_EXPAND} 展开)", width)]
+            lines = [dim(head, width)]
             if group.active and group.hint:
                 lines.append(dim(f"{_LEAD}{group.hint}", width))
             return lines
         # 展开 = CC 的 verbose：每条工具一行头 + 完整输出（还没回来的说明一下），整块铺暗底
-        out = [dim(f"{head} ({theme.KEY_EXPAND} 收起)", width)]
+        out = [dim(head, width)]
         room = max(8, width - len(_INDENT))
         for call in group.calls:
             out.append(theme.band(_call_head(call, width), width, theme.TOOL_BG, color=color))
