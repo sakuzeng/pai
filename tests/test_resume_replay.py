@@ -129,7 +129,7 @@ def test_replay_puts_the_conversation_on_the_alt_screen():
     text = _all_text(transcript)
     assert "分析一下当前项目是关于什么的呢" in text
     assert "现在在做什么呢" in text
-    assert "read_file(" in text and "(^O 展开)" in text, "工具结果折叠成一行（照 CC）"
+    assert "读了" in text and "(^O 展开)" in text, "工具调用折成组（feature 50，照 CC）"
     assert "# 项目指令与记忆" not in text and "<system-reminder>" not in text
     assert "你是一个最小化的编码 agent" not in text, "system 不上屏"
 
@@ -151,8 +151,8 @@ def test_replayed_tool_outputs_are_reachable_with_ctrl_o():
     app.replay(history_items(_real_messages()))
     before = transcript.total_lines(WIDE)
     app.expand_last()
-    assert "没有更早的工具输出可展开了" not in _all_text(transcript)
-    assert transcript.total_lines(WIDE) > before + 1, "应打出完整输出而不是一行提示"
+    assert "(^O 收起)" in _all_text(transcript)
+    assert transcript.total_lines(WIDE) > before + 1, "展开的是组里全部输出，不是一行提示"
 
 
 def test_compacted_mark_shell_and_answer_render():
@@ -162,7 +162,7 @@ def test_compacted_mark_shell_and_answer_render():
     text = _all_text(transcript)
     assert theme.ANSWER in text and "回答正文" in text, "答案戴圆点上屏（与活轮次同一个函数）"
     assert "已压缩" in text, "压缩位置要有一行标记（CC 的 CompactBoundaryMessage）"
-    assert "! ls -la" in text, "`!命令` 画成命令行（CC 的 UserBashInputMessage）"
+    assert "跑了 1 条命令" in text, "`!命令` 进组计成一条命令（CC：bash 可折叠）"
     assert "(^O 展开)" in text, "输出折叠（CC 非 verbose 时的 BashToolResultMessage）"
     assert "以前聊过" not in text
 

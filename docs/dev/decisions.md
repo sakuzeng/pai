@@ -1303,3 +1303,28 @@ pai 的做法：默认路径照 CC——`SessionLog.open_existing(path)` / `swit
 刻意没抄：选择框的 git 分支 / 自定义标题 / 跨项目开关 / 搜索；lite log 两级加载；
 尾部哨兵（48 已登记）。
 
+## 81. 工具调用折成组：状态机而不是后处理，底色给展开态（2026-09-13，feature 50 拍板「都可以照 CC 的来」）
+
+用户截图：一轮十几条 `└ read_file(...) → … +99 行 (^O 展开)` 灰线铺满屏，看不出哪里能展开、
+也不知道这一轮到底干了什么。CC 2.1.88（反编译，按符号名）：`collapseReadSearchGroups` 对渲染用
+的消息列表做后处理，连续的读/搜/看/跑折成一条 `collapsed_read_search`，模型非空文本
+（`isTextBreaker`）与 edit/write（`isNonCollapsibleToolUse`）断组；`CollapsedReadSearchContent`
+跑着画现在时 + `⎿` 当前工具，跑完画 dim 过去时 + `(ctrl+o to expand)`；verbose 一级铺全部。
+工具块无常驻底色，`backgroundColor` 只在光标选中行（`useSelectedMessageBg`）。
+
+pai 的做法照 CC 的形状，三处落点不同、各有理由：
+一、分组是状态机不是后处理。CC 每帧从 messages 重新派生 UI，后处理天然可行；pai 的 transcript
+是 commit 出来的条目表，所以 `TuiApp` 持有「当前组」，ToolStart / ToolEnd 往里加，四种断点
+（AssistantMessage 非空、写改文件、AgentEnd、用户再说话）把它定格；条目自己会变，
+`TranscriptEntry.invalidate()` 由改内容的人调（缓存 key 只含宽度与展开态）。
+二、底色给展开态。pai 没有光标选中行，点开就是它的「选中」，所以 `TOOL_BG` 铺在展开的内容块上，
+摘要行照 CC 保持 dim 无底色——折叠态与用户行、答案行的层级不变。
+三、只在备用屏分组。main-screen 下行已经交给终端 scrollback，改不了；那条路照旧逐条，
+`expand_last` 也保留老的「再打一遍」。
+
+一条契约变了：此前「单行结果不可展开，免得点了没反应」（feature 16 真跑打回来的），
+现在组总是可展开——展开显示的是「哪条命令、什么输出」，点了有反应。测试改了名字与断言。
+
+刻意没抄：CC 的全屏模式判据（pai 一律折 bash）、git 操作识别、同名工具的 `grouped_tool_use`
+二级归并、`⎿` 提示 700ms 最短停留（登记 TODO）。
+

@@ -676,3 +676,20 @@ def test_ctrl_c_can_stop_a_shell_command_in_the_tui(session, tmp_path):
     s.send("\x03", wait=0.5)
     s.send("", until="已中断", timeout=4.0)
     assert time.time() - started < 8.0, "Ctrl+C 没掐断，是等 sleep 自己跑完的"
+
+
+def test_tool_calls_collapse_into_one_summary_line_after_the_turn(session):
+    """feature 50（照 CC）：一轮里的读文件跑完后屏幕上只剩一行「读了 2 个文件 (^O 展开)」，
+    ^O 之后铺开全部输出。"""
+    s, _ = session([turn(tool_calls=[{"name": "read_file", "arguments": {"path": "README.md"}},
+                                     {"name": "read_file", "arguments": {"path": "AGENTS.md"}}]),
+                    turn("看完了。")])
+    s.send("看看这两个文件\r", until="看完了")
+    screen = s.screen_text()
+    assert "读了 2 个文件 (^O 展开)" in screen, screen
+    assert "└ read_file(" not in screen, "组里的工具不再逐条上屏"
+    # 两个文件一百多行，展开后视口跟随末尾，摘要行与文件开头都被顶出屏幕——
+    # 等的是 AGENTS.md 截断输出尾部还看得见的一句
+    s.send("\x0f", until="禁止在单测里调真实 API")
+
+

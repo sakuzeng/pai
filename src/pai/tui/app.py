@@ -15,7 +15,9 @@ from typing import Callable, List, Optional, Sequence, Tuple
 
 from pai.core.events import (
     AgentEnd,
+    AgentStart,
     ToolEnd,
+    ToolStart,
     AgentEvent,
     AssistantMessage,
     MessageDelta,
@@ -36,6 +38,7 @@ from pai.tui.selection import Selection
 from pai.tui.transcript import (Transcript, TranscriptEntry, dynamic_entry,
                                 expandable_entry, text_entry)
 from pai.tui.editor import LineEditor
+from pai.tui.groups import ToolGroup, group_entry, is_collapsible
 from pai.tui.history import (CompactedMark, ShellLine, UserLine, compacted_entry,
                              user_entry)
 from pai.tui.mouse import MouseEvent, merge as _merge_mouse
@@ -131,6 +134,10 @@ class TuiApp:
         self._drag_at: Optional[float] = None   # 最后一条拖动事件的时刻
         self._copied: str = ""                  # 上次放进剪贴板的内容（避免重复复制）
         self._expanded = 0                 # 已经展开到倒数第几条
+        # 当前的工具组（feature 50，照 CC collapseReadSearchGroups）：连续的可折叠工具
+        # 合成一条会更新的条目；答案文本 / 写改文件 / 轮末 / 用户再说话都会把它定格
+        self._group: Optional[ToolGroup] = None
+        self._group_entry: Optional[TranscriptEntry] = None
 
     # --- 屏幕 ---------------------------------------------------------
 
@@ -442,6 +449,8 @@ class TuiApp:
         self.arbiter.note_typing("")
         if not text:
             return []
+        if not self.busy:
+            self._close_group()
         # 用户说的与 pai 说的必须一眼分得开（用户 2026-08-11 指出两者长得一样）：
         # 用户行的提示符高亮、正文常色；pai 的回答戴一个青色圆点。
         # **层级：用户 > agent > 工具**。
@@ -462,12 +471,20 @@ class TuiApp:
         self.refresh()
 
     def expand_last(self) -> None:
-        """把最近一条被折叠的工具输出**整段**打进 scrollback。
+        """^O。备用屏下：切换最近一个可展开条目（工具组或改文件行）的展开态——
+        照 CC 的 ctrl+o（feature 50），跑着的组也能切开看已经回来的输出。
 
-        连按可以继续往回走——一轮里常有好几个工具，只能看最后一个的话没什么用。
-        方案 A 下做不到「原地展开」（内容已经归终端所有，够不着），
-        所以这里是「再打一遍完整的」。真正的原地展开要 alt-screen，见 features/13。
+        main-screen 下仍是老做法：把最近一条被折叠的工具输出**整段**再打进 scrollback，
+        连按往回走。那条路上内容已经归终端所有，做不到原地展开（features/13）。
         """
+        if self._grouping():
+            for entry in reversed(self.transcript.entries):
+                if entry.expandable:
+                    entry.toggle()
+                    self.refresh()
+                    return
+            self.commit(theme.paint("（没有可展开的工具输出）", theme.GREY, color=self.color))
+            return
         width = self._width()
         if self._expanded >= len(self._collapsed):
             self.commit(theme.paint("（没有更早的工具输出可展开了）", theme.GREY,
@@ -479,10 +496,46 @@ class TuiApp:
         body = _display_result(event).split("\n")
         self.commit([theme.paint(head, theme.CYAN, color=self.color)] + body)
 
+    # --- 工具组（feature 50）------------------------------------------
+
+    def _grouping(self) -> bool:
+        """只在 transcript 归 pai 所有时分组：main-screen 下行已经交给终端，改不了。"""
+        return bool(getattr(self.renderer, "keeps_transcript", False))
+
+    def _open_group(self) -> ToolGroup:
+        if self._group is None:
+            self._group = ToolGroup()
+            self._group_entry = group_entry(self._group, color=self.color)
+            self.commit(self._group_entry)
+        return self._group
+
+    def _close_group(self) -> None:
+        if self._group is not None:
+            self._group.close()
+            if self._group_entry is not None:
+                self._group_entry.invalidate()
+            self._group = None
+            self._group_entry = None
+
+    def _touch_group(self) -> None:
+        if self._group_entry is not None:
+            self._group_entry.invalidate()
+        self.refresh()
+
+    def _replay_tool(self, event: ToolEnd) -> None:
+        self._remember_collapsed(event)
+        if self._grouping() and is_collapsible(event.name):
+            self._open_group().end(event)
+        else:
+            self._close_group()
+            self.commit(_tool_entry(event, color=self.color, expanded=event.name in EDIT_TOOLS))
+
     def clear_transcript(self) -> None:
         """整屏换掉（`/resume`，feature 49）：条目、折叠表、展开游标、半截增量、选区一起清，
         滚动回到跟随末尾。dock 不动——它是本进程的活动计数。"""
         self.transcript.clear()
+        self._group = None
+        self._group_entry = None
         self._collapsed.clear()
         self._expanded = 0
         self._streaming = ""
@@ -509,20 +562,22 @@ class TuiApp:
         """
         for item in items:
             if isinstance(item, UserLine):
+                self._close_group()
                 self.commit(user_entry(item.text, color=self.color))
             elif isinstance(item, AssistantMessage):
                 if (item.content or "").strip():
+                    self._close_group()
                     self.commit(self._answer_entry(item.content or ""))
             elif isinstance(item, ToolEnd):
-                self._remember_collapsed(item)
-                self.commit(_tool_entry(item, color=self.color))
+                self._replay_tool(item)
             elif isinstance(item, ShellLine):
-                event = ToolEnd(tool_call_id="!", name=f"! {item.command}", args={},
-                                result=item.output)
-                self._remember_collapsed(event)
-                self.commit(_tool_entry(event, color=self.color))
+                # `!命令` 进组计成一条命令（CC：bash 可折叠）
+                self._replay_tool(ToolEnd(tool_call_id="!", name="bash",
+                                          args={"command": item.command}, result=item.output))
             elif isinstance(item, CompactedMark):
+                self._close_group()
                 self.commit(compacted_entry(color=self.color))
+        self._close_group()
         self.refresh()
 
     def cancel_dialog(self, dialog: Dialog) -> None:
@@ -551,12 +606,17 @@ class TuiApp:
             self._streaming += event.text
             return
         if isinstance(event, AssistantMessage):
+            if (self._streaming or event.content or "").strip():
+                self._close_group()            # CC 的 isTextBreaker：模型开口就断组
             self._flush_answer(event.content)
             self.refresh()
             return
 
         summary = self.dock.handle(event)
+        if isinstance(event, AgentStart):
+            self._close_group()
         if isinstance(event, AgentEnd):
+            self._close_group()
             # `final` 的文本就是刚才那条 assistant 消息（已上交）；
             # `budget`/`max_steps`/`interrupted` 是 loop **合成**的，从来没流过，必须打。
             self._flush_answer(None)
@@ -565,9 +625,22 @@ class TuiApp:
             if summary is not None:
                 self.commit(summary)
             return
+        if isinstance(event, ToolStart) and self._grouping():
+            if is_collapsible(event.name):
+                self._open_group().start(event)
+            else:
+                self._close_group()            # 写 / 改文件：单独一行，照 CC 断组
+            self._touch_group()
+            return
         if isinstance(event, ToolEnd):
             self._remember_collapsed(event)
-            self.commit(_tool_entry(event, color=self.color))
+            if self._grouping() and is_collapsible(event.name):
+                self._open_group().end(event)
+                self._touch_group()
+                return
+            self._close_group()
+            self.commit(_tool_entry(event, color=self.color,
+                                    expanded=event.name in EDIT_TOOLS))
             return
         text = render_text(event)
         if text is not None:
@@ -634,7 +707,12 @@ def _hidden_rows(event) -> int:
     return len([r for r in rows[1:] if r.strip()])
 
 
-def _tool_entry(event, *, color: bool = False) -> TranscriptEntry:
+# 写 / 改文件的结果默认展开（feature 50 问 1，兑现 45-B2）：diff 是用户最关心又最短的输出，
+# 而 CC 的 FileEditTool 结果本来就默认画 diff
+EDIT_TOOLS = ("write_file", "edit_file")
+
+
+def _tool_entry(event, *, color: bool = False, expanded: bool = False) -> TranscriptEntry:
     """工具结果的条目。**有被折叠的行才做成可展开的**——
     没东西可展开却能点，是给用户一个点了没反应的东西。"""
     if not _hidden_rows(event):
@@ -650,14 +728,17 @@ def _tool_entry(event, *, color: bool = False) -> TranscriptEntry:
         room = max(8, width - len(_OUTPUT_INDENT))
         for line in _display_result(event).split("\n"):
             body.extend(theme.wrap(line, room))
-        # 引出符只在第一行，其余对齐——与正文混成一片是上一版最难读的地方
+        # 引出符只在第一行，其余对齐——与正文混成一片是上一版最难读的地方。
+        # 展开块铺暗底（feature 50 问 2）：展开了什么、到哪结束一眼可见
         out = [head]
         for i, line in enumerate(body):
             lead = _OUTPUT_LEAD if i == 0 else _OUTPUT_INDENT
-            out.append(theme.paint(lead + line, theme.GREY, color=color))
+            out.append(theme.band(lead + line, width, theme.TOOL_BG, color=color))
         return out
 
-    return expandable_entry(render)
+    entry = expandable_entry(render)
+    entry.expanded = expanded
+    return entry
 
 
 _OUTPUT_LEAD = "  ⎿ "        # 输出块的引出符（照 CC 的形状；非 emoji，宽度 1）
