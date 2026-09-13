@@ -538,7 +538,9 @@ def test_slash_permissions_tells_the_whole_truth():
     两件此前不可见的事——bash 不参与目录边界（配 allow 白名单即可越界，
     本功能的主要失效模式 D#52）、危险写清单（硬编码不可配，用户此前撞上才知道）。"""
     _, printed = _run(["/permissions"], [])
-    assert "bash" in printed and "边界" in printed
+    # feature 53 把这段改成人话，判据随之从「『边界』这个词在不在」
+    # 变成「有没有说出后果」：白名单内的 bash 能读写任意路径
+    assert "bash" in printed and "任意路径" in printed
     assert ".git/hooks" in printed
     assert ".ssh" in printed
     assert "settings.json" in printed

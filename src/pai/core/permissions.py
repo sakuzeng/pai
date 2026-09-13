@@ -248,9 +248,12 @@ def _dangerous_write_check(
     path = tool.get_path(args)
     if not is_dangerous_write(path, home=home):
         return None
+    # 文案要说清三件事（feature 53，45-C1）：为什么问、允许后会怎样、怎么配才不再问。
+    # 这一类的第三件事是「关不掉」——说出来比让用户去翻文档找开关强。
     return Decision(
         kind="ask",
-        reason=f"`{path}` 是持久化位点（写进去会在 pai 退出后继续生效），必须确认",
+        reason=f"写 `{path}` 会在 pai 退出后继续影响这台机器"
+               f"（shell 配置 / git hooks / ssh / pai 自己的设置）。任何权限模式下都会问，关不掉",
     )
 
 
@@ -278,7 +281,9 @@ def _boundary_fallback(
     if tool is None or not tool.participates_in_boundary():
         return Decision(
             kind="ask",
-            reason=f"`{tool_name}` 不参与工作目录边界判定（未声明路径语义），按最保守处理",
+            reason=f"pai 看不出 `{tool_name}` 这次会碰哪些文件，所以每次都问；"
+                   f"允许之后它能读写任意路径。要免问：在 .pai/settings.json 的 "
+                   f"permissions.allow 里加一条（如 `Bash(git status *)`）",
         )
 
     path = tool.get_path(args)
@@ -287,10 +292,15 @@ def _boundary_fallback(
             return Decision(kind="allow", reason="在工作目录内")
         return Decision(
             kind="ask",
-            reason=f"`{path}` 在工作目录之外（{working_dirs.startup_cwd}）",
+            reason=f"`{path}` 不在工作目录 `{working_dirs.startup_cwd}` 里，允许之后 pai 才读得到。"
+                   f"要长期放行：settings.json 的 permissions.additionalDirectories 加上它所在的目录",
         )
     # 写：界内界外都问。照 CC——写没有「目录放行」那一步。
-    return Decision(kind="ask", reason=f"写入 `{path}` 需要确认")
+    return Decision(
+        kind="ask",
+        reason=f"写 `{path}` 会改掉磁盘上的内容，所以默认每次都问。"
+               f"要少问：shift+tab 切到 acceptEdits，工作目录内的写就不再问",
+    )
 
 
 def decide(

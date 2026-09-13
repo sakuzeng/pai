@@ -363,12 +363,12 @@ def test_accept_edits_does_not_silently_write_skills(tmp_path):
                {"path": str(user_root / "evil" / "SKILL.md"), "content": "x"},
                RuleSet(), tools=all_tools(), working_dirs=dirs,
                home=str(home), mode=ACCEPT_EDITS)
-    assert d.kind == "ask" and "持久化位点" in d.reason
+    assert d.kind == "ask" and "关不掉" in d.reason
     d2 = decide("write_file",
                 {"path": str(proj / ".pai" / "skills" / "evil.md"), "content": "x"},
                 RuleSet(), tools=all_tools(), working_dirs=dirs,
                 home=str(home), mode=ACCEPT_EDITS)
-    assert d2.kind == "ask" and "持久化位点" in d2.reason
+    assert d2.kind == "ask" and "关不掉" in d2.reason
 
 
 def _trust_env(tmp_path):

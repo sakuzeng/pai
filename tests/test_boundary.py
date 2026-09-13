@@ -367,14 +367,14 @@ def test_dangerous_write_check_still_only_looks_at_writes(tmp_path, monkeypatch)
     d_write = permissions.decide("_write_probe", {"path": target},
                                  RuleSet.from_lists(), tools={"_write_probe": writer},
                                  cwd=str(tmp_path), home=str(home))
-    assert d_write.kind == "ask" and "持久化位点" in d_write.reason
+    assert d_write.kind == "ask" and "关不掉" in d_write.reason
 
     tools = {"_exec_probe": _exec_tool()}
     d_exec = permissions.decide("_exec_probe", {"path": target},
                                 RuleSet.from_lists(), tools=tools,
                                 cwd=str(tmp_path), home=str(home))
     # 界外，所以仍是 ask——但理由必须是边界，不是「持久化位点」
-    assert "持久化位点" not in d_exec.reason, d_exec.reason
+    assert "退出后" not in d_exec.reason, d_exec.reason      # 不能是危险写那句（feature 53 改了文案）
 
 
 def test_path_access_for_accepts_exec_and_still_rejects_garbage():
