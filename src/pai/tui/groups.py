@@ -8,8 +8,9 @@ list / bash / MCP 读搜 / 记忆读写）合成一个 `collapsed_read_search` �
 commands (ctrl+o to expand)」；ctrl+o 的 verbose 下组内每条工具各自一行 + 完整结果。
 
 pai 的对应：`ToolGroup` 收 ToolStart / ToolEnd 事件、给出摘要；`group_entry` 把它做成可展开的
-transcript 条目。摘要词表按动作（读 / 搜 / 看 / 跑 / 记），与 dock 的 `_ACTIONS` 同源思路——
-用户看到的是「做了什么」不是「调了哪个函数」。展开块加暗底（`theme.TOOL_BG`）：CC 的暗底是
+transcript 条目。摘要词表按动作（read / search / list / run），**文案用英文**——用户 2026-09-13
+指定「只需要有英文的 Ran N shell commands」，与 CC 真机一致；界面其余部分仍是中文，
+这是刻意的不一致（dock 活动区仍中文，登记 TODO）。展开块加暗底（`theme.TOOL_BG`）：CC 的暗底是
 光标选中行（`useSelectedMessageBg`），pai 没有光标行，点开就是它的「选中」。
 """
 
@@ -25,17 +26,19 @@ from pai.tui.sanitize import sanitize_terminal_text
 from pai.tui.transcript import TranscriptEntry, expandable_entry
 from pai.tui.width import _truncate
 
-# 工具名 → (动词, 量词)。**顺序就是摘要里的顺序**（照 CC：search、read、list、bash、… 固定序，
-# 不按出现顺序——同一轮怎么交错，读出来都是同一句话的形状）。加工具时加一行。
-ACTIONS: Dict[str, Tuple[str, str]] = {
-    "search_files": ("搜", "次"),
-    "read_file": ("读", "个文件"),
-    "list_dir": ("看", "个目录"),
-    "bash": ("跑", "条命令"),
-    "run_tests": ("跑", "次测试"),
-    "git_read": ("看", "次 git"),
-    "remember": ("记", "条笔记"),
-    "skill": ("用", "个 skill"),
+# 工具名 → (现在时, 过去时, 单数, 复数)。**顺序就是摘要里的顺序**（照 CC：search、read、
+# list、bash、… 固定序，不按出现顺序——同一轮怎么交错，读出来都是同一句话的形状）。
+# 文案用英文（用户 2026-09-13 指定「只需要有英文的 Ran N shell commands」，与 CC 真机一致）：
+# 动词存小写，拼接时**只有第一段首字母大写**（CC `pushPart` 同款）。加工具时加一行。
+ACTIONS: Dict[str, Tuple[str, str, str, str]] = {
+    "search_files": ("searching for", "searched", "pattern", "patterns"),
+    "read_file": ("reading", "read", "file", "files"),
+    "list_dir": ("listing", "listed", "directory", "directories"),
+    "bash": ("running", "ran", "shell command", "shell commands"),
+    "run_tests": ("running", "ran", "test run", "test runs"),
+    "git_read": ("querying", "queried", "git command", "git commands"),
+    "remember": ("saving", "saved", "memory", "memories"),
+    "skill": ("using", "used", "skill", "skills"),
 }
 
 # 断组的工具（CC `isNonCollapsibleToolUse`：edit / write）：改了什么是用户要看的节点，
@@ -84,17 +87,25 @@ class ToolGroup:
         self.hint = ""
 
     def summary(self) -> str:
+        """「Read 3 files, ran 4 shell commands」/ 活跃时「Reading 3 files」。
+
+        拼接规则照 CC `CollapsedReadSearchContent` 的 `pushPart`：逗号分隔、
+        只有第一段的动词首字母大写（后面的都小写，读起来是一句话不是一串标题）。
+        """
         counts: Dict[str, int] = {}
         for call in self.calls:
             counts[call.name] = counts.get(call.name, 0) + 1
         ordered = [n for n in ACTIONS if n in counts] + [n for n in counts if n not in ACTIONS]
         parts = []
         for name in ordered:
-            verb, unit = ACTIONS.get(name, ("调", f"次 {name}"))
-            parts.append(f"{verb} {counts[name]} {unit}" if self.active
-                         else f"{verb}了 {counts[name]} {unit}")
-        text = "，".join(parts)
-        return f"正在{text}" if self.active else text
+            present, past, one, many = ACTIONS.get(
+                name, ("calling", "called", f"{name} call", f"{name} calls"))
+            n = counts[name]
+            verb = present if self.active else past
+            if not parts:
+                verb = verb[0].upper() + verb[1:]
+            parts.append(f"{verb} {n} {one if n == 1 else many}")
+        return ", ".join(parts)
 
 
 _GUTTER = "  "          # 摘要行的 2 列 gutter（CC 跑完后转圈的位置留空）

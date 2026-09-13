@@ -2,13 +2,15 @@
 
 最后更新：2026-09-13（feature 50 交付——工具调用折成组，用户截图「一轮十几条灰色工具行铺满屏，
 展开收起不明显」，拍板「都可以照cc的来」。照 CC 2.1.88 `collapseReadSearchGroups`：连续的读/搜/看/跑
-合成一条会更新的 transcript 条目，跑着时「正在读 3 个文件… (^O 展开)」+ `⎿` 当前工具提示，
-跑完「读了 3 个文件，跑了 4 条命令 (^O 展开)」dim 灰；模型开口 / 写改文件 / 轮末 / 用户再说话断组；
+合成一条会更新的 transcript 条目，跑着时「Reading 3 files…」+ `⎿` 当前工具提示，
+跑完「Read 3 files, ran 4 shell commands」dim 灰（文案按用户指定用英文、不带快捷键提示——
+CC 真机的组行就是光秃秃的「Ran 3 shell commands」）；展开时视口跟到最底下、收起回到原处；模型开口 / 写改文件 / 轮末 / 用户再说话断组；
 写改文件单独一行且默认展开 diff（顺带兑现 45-B2）；展开一级铺全部输出、整块暗底 `TOOL_BG`
 （CC 的暗底是光标选中行，pai 点开即选中）；^O 切最近一个可展开条目；48 的回放走同一条状态机。
-只在备用屏分组，main-screen 照旧逐条。新增 `tui/groups.py`，两处注入反证各红（不断组 / 轮末不定格）。
+只在备用屏分组，main-screen 照旧逐条。新增 `tui/groups.py`，四处注入反证各红（不断组 / 轮末不定格 /
+展开不跟到底 / 收起不回原位）。
 档案 [features/50](features/50-20260912-tool-group-collapse/README.md)。
-1734 passed）。
+1738 passed）。
 2026-09-11：feature 49 交付——resume 追加同一文件 + 会话内 `/resume`，用户原话
 「我想追加同一文件呢。并且在命令/resume 下能够恢复对话呢」，拍板「照cc的吧，先合48」。
 照 CC 2.1.88：①`--resume` 默认沿用被恢复会话的 id、往同一个文件追加（`SessionLog.open_existing`），

@@ -138,6 +138,9 @@ class TuiApp:
         # 合成一条会更新的条目；答案文本 / 写改文件 / 轮末 / 用户再说话都会把它定格
         self._group: Optional[ToolGroup] = None
         self._group_entry: Optional[TranscriptEntry] = None
+        # 展开前的视口位置（feature 50 补）：展开把内容顶下去，视口要跟到最底下才看得见
+        # 展开的东西；收起时回到原来那一屏，否则用户丢失了「我刚才在看哪」
+        self._scroll_before_expand: Optional[Tuple[int, bool]] = None
 
     # --- 屏幕 ---------------------------------------------------------
 
@@ -415,7 +418,7 @@ class TuiApp:
     def _click(self, row: int) -> None:
         entry = self.transcript.owner_at(self._width(), row)
         if entry is not None:
-            entry.toggle()
+            self.toggle_entry(entry)
 
     def _copy_selection(self) -> None:
         self._copy_text(self.selection.text(self.transcript, self._width()))
@@ -480,8 +483,7 @@ class TuiApp:
         if self._grouping():
             for entry in reversed(self.transcript.entries):
                 if entry.expandable:
-                    entry.toggle()
-                    self.refresh()
+                    self.toggle_entry(entry)
                     return
             self.commit(theme.paint("（没有可展开的工具输出）", theme.GREY, color=self.color))
             return
@@ -495,6 +497,26 @@ class TuiApp:
         head = f"{theme.DETAIL} {event.name} 的完整输出："
         body = _display_result(event).split("\n")
         self.commit([theme.paint(head, theme.CYAN, color=self.color)] + body)
+
+    def toggle_entry(self, entry: TranscriptEntry) -> None:
+        """展开/收起一个条目，并管好视口（点击与 ctrl+o 共用）。
+
+        展开：先记住当前位置，再跟到最底下——展开的内容全在下面，留在原处等于
+        「点了之后屏幕没动」（e2e 撞出来的：摘要行反而被顶出视口）。
+        收起：回到展开前那一屏。内容变短后 `ScrollState.update` 会把位置钳进范围内。
+        """
+        if not entry.expandable:
+            return
+        entry.toggle()
+        if entry.expanded:
+            self._scroll_before_expand = (self.scroll.scroll_top, self.scroll.following_end)
+            self.scroll.to_end()
+        elif self._scroll_before_expand is not None:
+            top, following = self._scroll_before_expand
+            self._scroll_before_expand = None
+            self.scroll.scroll_top = top
+            self.scroll.following_end = following
+        self.refresh()
 
     # --- 工具组（feature 50）------------------------------------------
 
@@ -536,6 +558,7 @@ class TuiApp:
         self.transcript.clear()
         self._group = None
         self._group_entry = None
+        self._scroll_before_expand = None
         self._collapsed.clear()
         self._expanded = 0
         self._streaming = ""

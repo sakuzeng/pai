@@ -129,7 +129,7 @@ def test_replay_puts_the_conversation_on_the_alt_screen():
     text = _all_text(transcript)
     assert "分析一下当前项目是关于什么的呢" in text
     assert "现在在做什么呢" in text
-    assert "读了" in text and "ctrl+o" not in text, "工具调用折成组，摘要行不带快捷键提示（feature 50，照 CC）"
+    assert "Read " in text and "ctrl+o" not in text, "工具调用折成组，摘要行不带快捷键提示（feature 50，照 CC）"
     assert "# 项目指令与记忆" not in text and "<system-reminder>" not in text
     assert "你是一个最小化的编码 agent" not in text, "system 不上屏"
 
@@ -162,7 +162,7 @@ def test_compacted_mark_shell_and_answer_render():
     text = _all_text(transcript)
     assert theme.ANSWER in text and "回答正文" in text, "答案戴圆点上屏（与活轮次同一个函数）"
     assert "已压缩" in text, "压缩位置要有一行标记（CC 的 CompactBoundaryMessage）"
-    assert "跑了 1 条命令" in text, "`!命令` 进组计成一条命令（CC：bash 可折叠）"
+    assert "Ran 1 shell command" in text, "`!命令` 进组计成一条命令（CC：bash 可折叠）"
     assert "total 8" not in text, "输出折叠（CC 非 verbose 时的 BashToolResultMessage）"
     assert "以前聊过" not in text
 

@@ -110,8 +110,13 @@ CC 2.1.88 的做法（反编译，按符号名；走读笔记见「用到的知�
 - 新增 `src/pai/tui/groups.py`；`TranscriptEntry.invalidate`；`theme.TOOL_BG`；`TuiApp` 的组状态机。
 - 测试：`tests/test_tui_groups.py` 10 条 + e2e 1 条；四条真跑点击测试改到组的契约（其中一条契约反转，
   理由写在测试里）。两处注入反证各红。
-- 数字：相关 `208 passed`，e2e `3 passed in 17.94s`，全量 `1734 passed`
-  （更新 STATUS 前一跑 `1 failed, 1733 passed, 8 deselected in 195.76s`，红的是测试数校验）。
+- 数字：相关 `208 passed`，e2e `3 passed in 17.94s`，本体交付时全量 `1734 passed`；
+  三连补丁之后全量 `1738 passed`（更新 STATUS 前一跑 `1 failed, 1738 passed, 8 deselected in 203.30s`，
+  红的是测试数校验）。
+
+交付后按用户三次真跑反馈改了三处（都在本档案内，属「完成这次交付」）：键位写法统一成
+`ctrl+o`（CC / pi 同款，去掉只有 pai 在用的 `^O`）→ 摘要行连快捷键提示一起去掉（CC 真机的组行
+就是光秃秃的「Ran 3 shell commands」）→ 文案改英文 + 展开时视口跟到最底下、收起回到原处。
 
 详细日志见 [devlog.md](devlog.md)，复盘见 [复盘.md](复盘.md)，取舍升格为 [D#81](../../decisions.md)，
 走读笔记 [K tui/cc-tool-group-collapse.md](../../../../knowledge/tui/cc-tool-group-collapse.md)。
@@ -120,8 +125,9 @@ CC 2.1.88 的做法（反编译，按符号名；走读笔记见「用到的知�
 
 <!-- 每条必须同步一行登记 ../../TODO.md 并注明出处，否则等于没记 -->
 
+- 组摘要是英文而 dock / 帮助行 / 对话框仍是中文，同一屏两种语言。
+
 - 活轮次的 `!命令` 仍全量上屏，回放侧已进组（接 48 遗留）。
-- 展开长组后摘要行被顶出视口，不知道怎么收。
 - `⎿` 提示没有 CC 的 700ms 最短停留。
 - CC 摘要能认 git commit / push / PR，pai 没做。
 - dock 活动区明细与组的 `⎿` 提示信息重叠。

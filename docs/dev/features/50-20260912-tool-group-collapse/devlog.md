@@ -55,3 +55,28 @@ e2e -k "collapse or resume": 3 passed, 18 deselected in 17.94s
 ```
 
 已知缺陷 / 遗留：见 README「遗留问题」，每条已登记 TODO。
+
+## 交付后补丁三连（2026-09-13，用户真跑反馈）
+
+1. 「`^O` 有点突兀，别的工具是怎样做的」→ 查三家：CC `(ctrl+o to expand)`（`getShortcutDisplay`
+   从键位表取）、pi `(12 more lines, ctrl+o to expand)`（`keyHint` 同样从键位表取）、dsh 无 TUI。
+   `^O` 这种 stty 脱字符记法只有 pai 在用，且 pai 自己四种写法并存。改：`theme.KEY_*` 成键名
+   唯一出处，全部改小写加号写法。
+2. 「能不能不要 ctrl+o 这种提示」+ 截图（CC 真机组行是光秃秃的「Ran 3 shell commands」）→
+   组摘要行与单条工具行都不再带括号快捷键；折叠仍说「… +N 行」；怎么展开由帮助行说一次。
+   源码印证：`CtrlOToExpand` 在 `InVirtualListContext` 里返回 null。
+3. 「只需要有英文的 Ran num shell commands」+「点击展开之后移动到整个的最底下，收起之后恢复
+   到原来的位置」→ `ACTIONS` 改成 (现在时, 过去时, 单数, 复数) 四元组、拼接照 CC `pushPart`
+   （逗号分隔、只有第一段首字母大写、单复数跟数字）；新增 `TuiApp.toggle_entry`：展开记住
+   当前视口并 `scroll.to_end()`，收起恢复，点击与 ctrl+o 共用。
+
+新增 5 条测试（英文文案 2 条 + 视口 3 条），既有断言批量改英文。注入反证两处各红：
+
+```
+拿掉 scroll.to_end()：      1 failed, 3 passed（展开后没跟到底）
+拿掉收起时的位置恢复：       1 failed, 1 passed（回不到原处）
+```
+
+绿：`tests/test_tui_groups.py 15 passed`，全量见 README。
+核销 TODO 一条（展开长组后摘要行被顶出视口——那正是本次第 3 条修的）；
+新登记一条：组摘要英文而 dock / 帮助行 / 对话框仍中文，同一屏两种语言。

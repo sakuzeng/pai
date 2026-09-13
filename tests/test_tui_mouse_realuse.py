@@ -249,7 +249,7 @@ def test_expanding_keeps_the_command_visible():
     _feed(app, _press(0, 3) + _release(0, 3))
     lines = app.transcript.slice(60, 0, 20)
     # feature 50：第一行是组摘要（与折叠态同一套措辞），命令头紧跟其后，输出挂在命令下面
-    assert "条命令" in lines[0]                  # 组还在跑（没 AgentEnd），是「正在跑 1 条命令…」
+    assert "shell command" in lines[0]          # 组还在跑（没 AgentEnd），是现在时
     assert "ls -la" in lines[1]
 
 
@@ -293,9 +293,9 @@ def test_the_collapsed_hint_follows_ccs_shape():
 
     CC 的原文（`CtrlOToExpand.tsx`）：括号里只写快捷键，不提「点击」（虽然折叠块也能点）。
     feature 50 之后工具进组，折叠态是 CC `CollapsedReadSearchContent` 的形状：
-    「跑了 1 条命令」——「+N 行」那半句属于单条工具结果，组里不再有；快捷键提示也不带。
+    「Ran 1 shell command」——「+N 行」那半句属于单条工具结果，组里不再有；快捷键提示也不带。
     """
     app, _ = _app(cols=80)
     app.on_event(_tool_event(result="\n".join(f"row{i}" for i in range(13))))
     line = app.transcript.slice(80, 0, 1)[0]
-    assert "ctrl+o" not in line and "点击" not in line and "条命令" in line, line
+    assert "ctrl+o" not in line and "点击" not in line and "shell command" in line, line
