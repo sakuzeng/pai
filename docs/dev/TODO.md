@@ -2198,10 +2198,11 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
       （`rul`/`es.py`、`MAX_OUTPUT_CHA`/`RS`、`read_fi`/`le`）。
       **这条已被推迟一轮**——44 复盘里我自己承认「用 ASCII 标点避头去补自己
       折行算法造成的问题」。真跑把它从「欠账」升级成实测确认的高频可见缺陷。
-- [ ] 编辑的 diff 在默认视图里看不见（45-B2）：feature 43 让 `edit_file` /
+- [x] ~~编辑的 diff 在默认视图里看不见（45-B2）：feature 43 让 `edit_file` /
       `write_file` 回一段 diff，但 TUI 工具结果行默认折叠，要按 `^O` 才展开。
       「改了什么看得见」这个需求在默认视图下没有兑现。
-      修法方向：编辑类工具的结果默认展开（它们行数少且是用户最关心的）。
+      修法方向：编辑类工具的结果默认展开（它们行数少且是用户最关心的）。~~
+      已交付 2026-09-13（[features/50](features/50-20260912-tool-group-collapse/README.md) 问 1）：写/改文件的结果单独一行且默认展开 diff（CC 的 FileEditTool 结果本来就默认画 diff）。
 - [ ] 权限弹窗文案是内部术语（45-C1）：「`bash` 不参与工作目录边界判定
       （未声明路径语义），按最保守处理」——对用户说 D#52 的实现细节，
       既没说清风险，也没给出路。诚实边界（45 复盘质疑一）：我自动应答了每一个
@@ -2289,6 +2290,7 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
 - [ ] `!命令` 活轮次与回放形态不一致：活轮次 `_dispatch_command` 把全量输出 `commit` 进
       transcript，回放按 CC 非 verbose 折叠成一行可展开。两条路该是同一个函数——把活轮次也改成
       折叠（照 CC 的 BashToolResultMessage），本轮没动是怕扩 diff（出处：48 复盘质疑一）。
+      2026-09-13 追记（feature 50）：回放侧现在把 `!命令` 计进工具组（「跑了 N 条命令」），活轮次的 `_run_shell` 仍把全量输出 `commit` 成文本——差距还在，修法不变：活轮次也走组。
 - [ ] resume 尾部哨兵：CC 在转录以 user 消息结尾时补一条合成 assistant（`NO_RESPONSE_REQUESTED`），
       轮次中途被打断则补 isMeta 的「Continue from where you left off.」；pai 的 `trim_unfinished`
       只删半截工具回合、不补哨兵。OpenAI 兼容协议连续两条 user 合法，目前不是 bug；
@@ -2314,3 +2316,22 @@ pai 现状：`shell.py` 的 `TIMEOUT_SECONDS = 60` 硬编码、模型不能传�
       （出处：49 复盘质疑三）。
 - [ ] `--fork-session` 只有 REPL 路径的单测，TUI 路径没有 e2e；选择框只列本项目、无搜索与
       跨项目开关（CC 的 `showAllProjects` / `agenticSessionSearch`），需求出现再做（出处：49 README 非目标）。
+
+### feature 50（工具组）遗留 —— 2026-09-13
+
+- [ ] 活轮次的 `!命令` 仍全量上屏（接 48 那条）：`_run_shell(out=commit)` 直接把输出 commit 成文本，
+      没走工具组；回放侧已经走了。两条路该同一个函数（出处：50 复盘质疑一）。
+- [x] ~~展开长组后摘要行被顶出视口：两个 4000 字符的文件铺开一百多行，视口跟随末尾，
+      「(^O 收起)」那行在屏幕外，用户不知道怎么收。CC 的 ctrl+o 是全局 transcript 模式没有这个问题。
+      方向：展开时把视口定到摘要行，或在 dock 状态行提示「^O 收起」（出处：50 e2e 撞出来的）。~~
+      已修 2026-09-13（用户指出）：`TuiApp.toggle_entry` 展开时记住当前视口并跟到最底下，收起回到原处；点击与 ctrl+o 共用这条路。
+- [ ] `⎿` 提示没有 CC 的 700ms 最短停留（`MIN_HINT_DISPLAY_MS`）：快工具一帧闪过。
+      dock 心跳已经按帧重画，加个「最早换提示的时刻」即可（出处：50 README 非目标）。
+- [ ] CC 摘要能认出 git commit / push / PR 放在最前面（`scanBashResultForGitOps`）；
+      pai 的 `git_read` 只读，写 git 走 bash，暂无需求（出处：K cc-tool-group-collapse 第四节）。
+- [ ] 组摘要是英文（`Ran 3 shell commands`，用户 2026-09-13 指定）而 dock 活动区、帮助行、
+      对话框仍是中文——同一屏两种语言。要么 dock 也改英文，要么给一个语言开关
+      （出处：50 交付后补丁）。
+- [ ] dock 活动区的每工具明细行与组的 `⎿` 提示信息重叠（跑着的工具与最近的工具）；
+      本轮刻意不动 dock，真用后看要不要收掉一处（出处：50 README 确认问 4）。
+

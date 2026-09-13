@@ -54,7 +54,7 @@ HELP = """可用命令：
   /skill    列出可用 skills；`/skill <名> [参数]` 加载并执行
   /clear    清空对话（保留 system）
   /resume   切到另一个会话接着聊：不带参数弹选择框，或 `/resume <id前缀|路径>`
-  /exit     退出（等同 Ctrl+D）
+  /exit     退出（等同 ctrl+d）
 其他输入直接发给模型；`!命令` 直接跑 shell 且不打模型；行尾 `\\` 续行。"""
 
 

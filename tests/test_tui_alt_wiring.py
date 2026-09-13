@@ -68,6 +68,8 @@ def test_tool_lines_re_render_at_the_new_width():
     app.on_event(ToolEnd(tool_call_id="1", name="bash",
                          args={"command": "echo " + "x" * 200},
                          result="ok", is_error=False))
+    # feature 50 起工具进组；展开后命令行才按宽度截断
+    [e for e in transcript.entries if e.expandable][-1].toggle()
     narrow = transcript.slice(20, 0, 5)
     wide = transcript.slice(90, 0, 5)
     assert narrow != wide

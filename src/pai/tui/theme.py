@@ -36,6 +36,9 @@ GREEN = "\x1b[32m"
 # 靠的是一块横贯整宽的底色，不是字重（用户 2026-08-11 两次指出后照 CC 改）。
 # 236 是很暗的灰：在深色主题上刚好浮出来，不会把正文压住。
 USER_BG = "\x1b[48;5;236m"
+# 展开的工具输出块（feature 50）：比用户行再暗一档。CC 的暗底是光标选中行
+# （messageActionsBackground），pai 没有光标行，点开就是它的「选中」。
+TOOL_BG = "\x1b[48;5;235m"
 
 # 256 色的青蓝渐变，logo 流光用。从暗到亮，最后一档是高光。
 RAMP = tuple(f"\x1b[38;5;{n}m" for n in (23, 30, 37, 44, 51, 87, 123, 159, 195))
@@ -49,6 +52,13 @@ PROMPT = "›"        # 输入提示（沿用 05 交付的形状）
 CONTINUATION = "…"  # 续行提示
 DETAIL = "└"        # 活动区的明细行
 SELECTED = "❯"      # 对话框里选中的那一项
+
+# --- 提示语里的键名（全小写、加号连接，CC 与 pi 同款；`^O` 那种脱字符记法两家都不用）---
+# 唯一出处：将来若做可配置键位，只改这里（CC getShortcutDisplay / pi keyText 都是从键位表取）
+KEY_EXPAND = "ctrl+o"
+KEY_QUIT = "ctrl+d"
+KEY_MODE = "shift+tab"
+KEY_CANCEL = "esc"
 COMPACTED = "✻"     # 早前对话在此被压缩（resume 回放的标记行；CC 的 CompactBoundaryMessage 也用它）
 
 

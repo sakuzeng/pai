@@ -170,26 +170,34 @@ def test_clicking_a_real_tool_result_expands_it():
     assert app.transcript.total_lines(60) > before
 
 
-def test_the_collapsed_hint_only_advertises_the_shortcut():
+def test_the_collapsed_line_carries_no_hint_text():
     """**这条断言被后来「照 CC」的决定改过**（原来断言的是提示语里有「点击」）。
 
     CC 的折叠块**也能点**，但它的提示语里只写快捷键
     （`… +12 lines (ctrl+o to expand)`）。跟它保持一致：
     能点是能力，提示语里不再多说一句——一行里塞两个入口反而让人读不懂
-    （用户看到我编的 `^O/点击展开` 时的第一反应就是「这里是什么」）。
+    （用户看到我编的 `ctrl+o/点击展开` 时的第一反应就是「这里是什么」）。
     """
     app, _ = _app()
     app.on_event(_tool_event())
     line = app.transcript.slice(60, 0, 1)[0]
-    assert "^O" in line and "点击" not in line
+    # 2026-09-13 再改一次：用户截图里 CC 真机的组行是光秃秃的「Ran 3 shell commands」，
+    # 快捷键提示也去掉——能点、能 ctrl+o，帮助行说过一次就够
+    assert "ctrl+o" not in line and "点击" not in line
 
 
-def test_a_single_line_tool_result_is_not_expandable():
-    """没有被折叠的行就没什么可展开的——不该给用户一个点了没反应的东西。"""
+def test_a_single_line_tool_result_still_expands_to_the_command_and_its_output():
+    """feature 50 改了这条的契约：工具进组之后，组**总是**可展开——展开显示的是
+    「哪条命令、什么输出」（CC verbose 形态），不再是「有没有被折叠的行」。
+    此前这条断言的是「单行结果不可展开，免得点了没反应」；现在点了有反应。"""
     app, _ = _app()
     app.on_event(_tool_event(result="ok"))
+    app.refresh()
     entry = app.transcript.owner_at(60, 0)
-    assert entry is not None and not entry.expandable
+    assert entry is not None and entry.expandable
+    _feed(app, _press(0, 3) + _release(0, 3))
+    text = "\n".join(app.transcript.slice(60, 0, 20))
+    assert "ls -la" in text and "⎿ ok" in text
 
 
 # --- 5. 松手之后高亮还跟着鼠标走（第二轮真跑打回来的）-------------------
@@ -240,8 +248,9 @@ def test_expanding_keeps_the_command_visible():
     app.refresh()
     _feed(app, _press(0, 3) + _release(0, 3))
     lines = app.transcript.slice(60, 0, 20)
-    assert "ls -la" in lines[0]                  # 命令还在第一行
-    assert "(^O 收起)" in lines[0]                # 与折叠态同一套措辞（照 CC）
+    # feature 50：第一行是组摘要（与折叠态同一套措辞），命令头紧跟其后，输出挂在命令下面
+    assert "shell command" in lines[0]          # 组还在跑（没 AgentEnd），是现在时
+    assert "ls -la" in lines[1]
 
 
 def test_expanded_output_is_indented_under_the_command():
@@ -250,7 +259,7 @@ def test_expanded_output_is_indented_under_the_command():
     app.on_event(_tool_event(result="total 8\naaa"))
     app.refresh()
     _feed(app, _press(0, 3) + _release(0, 3))
-    body = app.transcript.slice(60, 0, 20)[1:]
+    body = app.transcript.slice(60, 0, 20)[2:]          # feature 50：[摘要, 命令头, 输出…]
     assert body[0].lstrip().startswith("⎿")
     assert body[0].startswith("  ")
     assert all(line.startswith("  ") for line in body if line.strip())
@@ -280,15 +289,13 @@ def test_pasted_multiline_input_has_no_continuation_marker():
 
 
 def test_the_collapsed_hint_follows_ccs_shape():
-    """用户：「这里是什么呢，能参照下 cc 的实现吗」——指的是我自己编的 `^O/点击展开`。
+    """用户：「这里是什么呢，能参照下 cc 的实现吗」——指的是我自己编的 `ctrl+o/点击展开`。
 
-    CC 的原文（`FileWriteTool/UI.tsx` + `CtrlOToExpand.tsx`）：
-    `… +12 lines (ctrl+o to expand)`——**「+N 行」+ 括号里的快捷键**，
-    不提「点击」（虽然 CC 的折叠块也能点）。
+    CC 的原文（`CtrlOToExpand.tsx`）：括号里只写快捷键，不提「点击」（虽然折叠块也能点）。
+    feature 50 之后工具进组，折叠态是 CC `CollapsedReadSearchContent` 的形状：
+    「Ran 1 shell command」——「+N 行」那半句属于单条工具结果，组里不再有；快捷键提示也不带。
     """
     app, _ = _app(cols=80)
     app.on_event(_tool_event(result="\n".join(f"row{i}" for i in range(13))))
     line = app.transcript.slice(80, 0, 1)[0]
-    assert "+12 行" in line
-    assert "(^O 展开)" in line
-    assert "/" not in line.split("+12 行")[1]      # 那个让人误读的斜杠没了
+    assert "ctrl+o" not in line and "点击" not in line and "shell command" in line, line

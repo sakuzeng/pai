@@ -384,15 +384,15 @@ def test_user_line_and_agent_line_are_visually_distinct():
 
 # --- 甲：被折叠的工具结果要能展开（用户拍板「丙」：先做键盘展开）------------
 
-def test_collapsed_line_says_how_to_expand():
-    """折叠而不告诉用户怎么看全，等于把内容藏了。"""
+def test_collapsed_line_says_how_much_is_hidden():
+    """折叠了要说折了多少（`… +19 行`）；快捷键提示不带（2026-09-13 用户截图，CC 真机同款）。"""
     from pai.core.events import ToolEnd
 
     app, screen = make()
     app.on_event(ToolEnd(tool_call_id="1", name="bash", args={"command": "ls"},
                          result="\n".join(f"row{i}" for i in range(20))))
     line = committed(screen)[0]
-    assert "19" in line and "^O" in line
+    assert "+19 行" in line and "ctrl+o" not in line     # 折了多少要说，快捷键不提
 
 
 def test_ctrl_o_expands_the_most_recent_collapsed_result():

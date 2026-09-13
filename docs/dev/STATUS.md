@@ -1,6 +1,17 @@
 # 当前状态快照
 
-最后更新：2026-09-11（feature 49 交付——resume 追加同一文件 + 会话内 `/resume`，用户原话
+最后更新：2026-09-13（feature 50 交付——工具调用折成组，用户截图「一轮十几条灰色工具行铺满屏，
+展开收起不明显」，拍板「都可以照cc的来」。照 CC 2.1.88 `collapseReadSearchGroups`：连续的读/搜/看/跑
+合成一条会更新的 transcript 条目，跑着时「Reading 3 files…」+ `⎿` 当前工具提示，
+跑完「Read 3 files, ran 4 shell commands」dim 灰（文案按用户指定用英文、不带快捷键提示——
+CC 真机的组行就是光秃秃的「Ran 3 shell commands」）；展开时视口跟到最底下、收起回到原处；模型开口 / 写改文件 / 轮末 / 用户再说话断组；
+写改文件单独一行且默认展开 diff（顺带兑现 45-B2）；展开一级铺全部输出、整块暗底 `TOOL_BG`
+（CC 的暗底是光标选中行，pai 点开即选中）；^O 切最近一个可展开条目；48 的回放走同一条状态机。
+只在备用屏分组，main-screen 照旧逐条。新增 `tui/groups.py`，四处注入反证各红（不断组 / 轮末不定格 /
+展开不跟到底 / 收起不回原位）。
+档案 [features/50](features/50-20260912-tool-group-collapse/README.md)。
+1738 passed）。
+2026-09-11：feature 49 交付——resume 追加同一文件 + 会话内 `/resume`，用户原话
 「我想追加同一文件呢。并且在命令/resume 下能够恢复对话呢」，拍板「照cc的吧，先合48」。
 照 CC 2.1.88：①`--resume` 默认沿用被恢复会话的 id、往同一个文件追加（`SessionLog.open_existing`），
 一条新消息都没有就一个字节不写；24 的「新文件 + parentSession + 按原 id 重录」搬到 `--fork-session`
@@ -346,6 +357,7 @@ MCP client（手写 stdio JSON-RPC、`mcp__<server>__<tool>` 桥接、settings �
 | `tui/dialog.py` | 可用 | 权限 ask 与 AskUserQuestion 共用；`handoff()` 把 `!`/`/` 交回主循环执行（08 铁证的修法）；Esc 取消 |
 | `tui/dock.py` | 可用 | 活动区（按动作聚合计数）/ 队列区 / 状态行（转圈 + 已用时 + token + 模式 + 待决数）；`AgentEnd` 吐一行摘要给 commit |
 | `tui/history.py` | 可用 | 回放项的类型 + 活轮次与回放共用的两个条目工厂（`user_entry` 从 `_submitted` 抽出、`compacted_entry`）；渲染本体在 `TuiApp.replay`（feature 48） |
+| `tui/groups.py` | 可用 | 工具组（feature 50，照 CC `collapseReadSearchGroups`）：`ToolGroup` 收 ToolStart/ToolEnd、按动作词表出摘要（现在时/过去时）、`group_entry` 做成可展开条目（活跃时带 `⎿` 提示，展开铺全部输出 + `TOOL_BG` 暗底）；断组与定格的状态机在 `TuiApp`（AssistantMessage 非空 / 写改文件 / AgentEnd / 用户再说话） |
 | `tui/transcript.py` | 可用 | alt 屏下 pai 自己持有的会话文档：存条目不存行（按 `(内容, 宽度)` 缓存），于是 resize 后历史能按新宽度重排 |
 | `tui/scroll.py` | 可用 | 滚动状态机（纯状态零 IO）：follow-end、手动上滚就关掉跟随、视口变化保位、翻页留 4 行重叠 |
 | `tui/altscreen.py` | 可用 | 备用屏渲染器：整屏帧 + 行 diff + 绝对定位；绝不发 `2J`、绝不重发 `?1049h`（实测两条硬约束）；`SIGWINCH` 重入保护 |

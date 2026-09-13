@@ -42,6 +42,11 @@ class TranscriptEntry:
         if self.expandable:
             self.expanded = not self.expanded
 
+    def invalidate(self) -> None:
+        """内容自己变了（活轮次里的工具组在更新，feature 50）：缓存 key 只含宽度与
+        展开态，看不见这种变化，得由改内容的人来作废。"""
+        self._key = None
+
     def render(self, width: int) -> List[str]:
         key = (width, self.expanded)
         if self._key != key:

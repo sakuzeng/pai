@@ -133,7 +133,7 @@ class Dialog(Component):
             text = _truncate(f" {cursor} {i + 1}. {option}", width)
             lines.append(theme.paint(text, accent if chosen else theme.GREY,
                                      color=self.color))
-        hint = "↑↓ 选择 · 回车确认 · 数字直选 · Esc 取消"
+        hint = f"↑↓ 选择 · 回车确认 · 数字直选 · {theme.KEY_CANCEL} 取消"
         tail = f"   {self.typed}" if self.typed else f"   {hint}"
         lines.append(theme.paint(_truncate(tail, width), theme.DIM, color=self.color))
         return lines
