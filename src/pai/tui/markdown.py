@@ -189,6 +189,14 @@ def _spans(text: str, color: bool) -> List[Tuple[str, str]]:
     return out
 
 
+def _is_word_char(ch: str) -> bool:
+    """算不算「一个英文词的内部」。ASCII 字母数字加下划线——`.` `/` `-` 刻意不算
+    （feature 52 问 2）：`src/pai/tui/markdown.py` 整条不可断的话，窄屏下会整行挪走、
+    留大片空白；在 `/` 处断开仍读得出来，而在 `mark|down` 中间断开读不出来。
+    """
+    return ch.isascii() and (ch.isalnum() or ch == "_")
+
+
 def _wrap_spans(spans: List[Tuple[str, str]], width: int, color: bool,
                 first_prefix: str = "", rest_prefix: str = "",
                 prefix_code: str = "") -> List[str]:
@@ -207,9 +215,28 @@ def _wrap_spans(spans: List[Tuple[str, str]], width: int, color: bool,
         for ch in text:
             w = display_width(ch)
             if used + w > room and lines[-1]:
-                carry = []
-                if ch in NO_LINE_START and len(lines[-1]) >= 2:
-                    carry = [lines[-1].pop()]        # 避头：把上一个字挤下来陪它
+                # 换行时决定「本行留几个字」。两条规则**依次**作用，顺序不能反
+                # （feature 52 撞出来的：先避头再补词，否则避头自己会劈开词）：
+                keep = len(lines[-1])
+                if ch in NO_LINE_START and keep >= 2:
+                    keep -= 1                        # 避头：把上一个字挤下来陪它
+                if _is_word_char(ch) or (keep < len(lines[-1])
+                                         and _is_word_char(lines[-1][keep][0])):
+                    # 断点落在 ASCII 词中间（45-B1）：整词挪到下一行。逐字符攒对中日韩
+                    # 是对的（本来就逐字折），对英文就是把 `read_file` 劈成 `read_fi`+`le`。
+                    # 第二个条件是 44 那条 ASCII 标点避头的反噬：`rules.py` 断在 `.` 上，
+                    # 避头把 `s` 挤下来陪句点，于是劈开的是 `rules`——所以避头挪走的那个字
+                    # 是词字符时，同样要把整个词带上。
+                    back = keep
+                    while back > 0 and _is_word_char(lines[-1][back - 1][0]):
+                        back -= 1
+                    if back > 0:
+                        keep = back      # back == 0 = 词本身占满一行，只能硬断，否则永远放不下
+                carry = lines[-1][keep:]
+                del lines[-1][keep:]
+                # 行尾空格是噪音：屏幕上看不见，选区复制却会把它带出来
+                while lines[-1] and lines[-1][-1][0] == " ":
+                    lines[-1].pop()
                 lines.append(carry)
                 room = rest_room
                 used = sum(display_width(c) for c, _ in carry)
