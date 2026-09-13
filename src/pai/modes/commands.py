@@ -236,9 +236,10 @@ def _show_boundary_caveats(out: Callable[[str], None]) -> None:
     """
     from pai.core.boundary import dangerous_writes_description
 
-    out("⚠️ bash 不参与工作目录边界（D#52）：给 bash 配 allow 白名单 = 白名单内")
-    out("   的命令可以越界读写任何路径。要限制范围就别给 bash 配宽 allow。")
-    out("🛡 危险写清单（写入永远确认，acceptEdits/bypass 都翻不过）：")
+    out("⚠️ pai 看不出一条 bash 命令会碰哪些文件，所以默认每次都问（D#52）。")
+    out("   一旦给 bash 配了 allow 白名单，白名单内的命令就能读写任意路径——")
+    out("   `Bash(cat *)` 放行之后，`cat ../../etc/passwd` 也照跑。别配得太宽。")
+    out("🛡 下面这些文件写进去会在 pai 退出后继续影响这台机器，任何权限模式下都会问，关不掉：")
     for item in dangerous_writes_description():
         out(f"   - {item}")
 

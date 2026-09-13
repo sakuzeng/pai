@@ -19,11 +19,13 @@ def main() -> None:
     parser.add_argument("task", nargs="?", default=None,
                         help="用自然语言描述任务；不给就进交互模式（REPL）")
     parser.add_argument("--max-steps", type=int, default=20)
-    # 默认给一道烧钱熔断。20 万 token 在 v4-flash 上最坏约 0.4 元（全部未命中缓存的输入价）；
+    # 默认给一道烧钱熔断。50 万 token 在 v4-flash 上最坏约 1 元（全部未命中缓存的输入价）；
     # 平台侧没有消费限额可用，这是唯一的自动防线。0 表示不限。
+    # 20 万是 feature 53 之前的默认值，实测撑不过一个中等任务：11 步的真实任务烧到 131820，
+    # 用户 2026-09-10 那次 217839 撞顶（45-C3）。
     parser.add_argument(
-        "--max-tokens", type=int, default=200_000,
-        help="本次任务的累计 token 预算，超过即停（默认 200000，0 = 不限）",
+        "--max-tokens", type=int, default=500_000,
+        help="本次任务的累计 token 预算，超过即停（默认 500000，0 = 不限）",
     )
     parser.add_argument("--no-session", action="store_true", help="不落盘会话 JSONL")
     parser.add_argument(

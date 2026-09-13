@@ -82,6 +82,23 @@ def _short_path(path: str) -> str:
     return "~" + path[len(home):] if path.startswith(home) else path
 
 
+def _ellipsize_path(path: str, width: int) -> str:
+    """中间省略，**保住最后一段**（feature 53，45-B3）。
+
+    用户最需要知道的是「我在哪个项目」，那是最后一段；开头的 `~` 或根说明「在哪台机器的哪片」。
+    尾部截断会把项目名切掉，正是它要避免的。
+    """
+    if width <= 0 or display_width(path) <= width:
+        return path
+    parts = [p for p in path.split("/") if p]
+    last = parts[-1] if parts else path
+    head = "~" if path.startswith("~") else ("/" if path.startswith("/") else "")
+    candidate = f"{head}{'' if head in ('', '/') else '/'}…/{last}"
+    if display_width(candidate) <= width:
+        return candidate
+    return _truncate(f"…/{last}", width)
+
+
 def _justify(left: str, right: str, width: int) -> str:
     """左右对齐成恰好 width 列。装不下时**先牺牲右边再牺牲左边**——
     「我在哪个目录、什么模式」比「模型叫什么」更要紧。"""
@@ -101,6 +118,10 @@ class Dock(Component):
         self.color = color
         self._running: Dict[str, "_Running"] = {}
         self._started_at: Optional[float] = None
+        # 等真人回答的时间不算「用时」（feature 53，45-C2）：真跑显示 `⠹ 3m59s`，
+        # 其中 3m55s 是权限弹窗在等人。`_paused_at` 是本次暂停的起点，`_waited` 是累计。
+        self._paused_at: Optional[float] = None
+        self._waited = 0.0
         self._tokens = 0
         self._mode = "default"
         self._pending = 0
@@ -118,6 +139,27 @@ class Dock(Component):
 
     def set_mode(self, mode: str) -> None:
         self._mode = mode
+
+    def pause_clock(self) -> None:
+        """开始等真人（权限弹窗 / ask_user_question）。重复调用是无操作——
+        一轮里可能连着弹两个框，第二次不能把第一次的起点冲掉。"""
+        if self._paused_at is None:
+            self._paused_at = self._now()
+
+    def resume_clock(self) -> None:
+        """真人答完了。没在暂停时调用是无操作（对话框被 Esc 撤掉那条路会走到）。"""
+        if self._paused_at is not None:
+            self._waited += self._now() - self._paused_at
+            self._paused_at = None
+
+    def _elapsed(self) -> float:
+        """开工到现在，扣掉等人的那些秒。暂停期间读数停住（此刻的等待也要扣）。"""
+        if self._started_at is None:
+            return 0.0
+        waited = self._waited
+        if self._paused_at is not None:
+            waited += self._now() - self._paused_at
+        return max(0.0, self._now() - self._started_at - waited)
 
     def set_pending(self, count: int) -> None:
         """有多少个请求因为「用户正在打字」而被压着（T3 的 is_suppressing）。"""
@@ -155,6 +197,7 @@ class Dock(Component):
         """返回非 None 表示「这一行该 commit 进 scrollback」。"""
         if isinstance(event, AgentStart):
             self._started_at = self._now()
+            self._paused_at, self._waited = None, 0.0     # 新一轮，等人计时归零
             self._tokens = 0
             self._running.clear()
         elif isinstance(event, ToolStart):
@@ -172,9 +215,10 @@ class Dock(Component):
 
         清空了事的话，一轮跑完屏幕上什么都不剩——CC 留的是 `Cooked for 6m 48s`。
         """
-        elapsed = 0.0 if self._started_at is None else self._now() - self._started_at
+        elapsed = self._elapsed()
         self._running.clear()
         self._started_at = None
+        self._paused_at, self._waited = None, 0.0
         parts = [f"{theme.SUMMARY} 用时 {_human_duration(elapsed)}"]
         if self._tokens:
             parts.append(f"{_human_tokens(self._tokens)} token")
@@ -190,7 +234,7 @@ class Dock(Component):
         for item in self._running.values():
             counts[item.action] = counts.get(item.action, 0) + 1
         parts = "，".join(f"{action} {n}" for action, n in counts.items())
-        turn = "" if self._started_at is None else f" · {_human_duration(self._now() - self._started_at)}"
+        turn = "" if self._started_at is None else f" · {_human_duration(self._elapsed())}"
         head = f"{theme.ANSWER} {parts}{turn}…"
         lines = [theme.paint(_truncate(head, width), theme.CYAN + theme.BOLD,
                              color=self.color)]
@@ -251,7 +295,7 @@ class Dock(Component):
         """
         bits: List[str] = []
         if self._started_at is not None:
-            elapsed = self._now() - self._started_at
+            elapsed = self._elapsed()
             frame = SPINNER[int(elapsed * 10) % len(SPINNER)]
             piece = f"{frame} {_human_duration(elapsed)}"
             if self._tokens:
@@ -280,8 +324,15 @@ class Dock(Component):
         形态取自 CC 与 pi 的共同点（features/12 的 evidence 两张实物）：
         用户随时想知道的四件事——**位置、模式、模型、还剩多少上下文**。
         """
-        left = " · ".join(x for x in (_short_path(self._cwd), self._mode) if x)
         right = " · ".join(x for x in (self._model, self._context_text()) if x)
+        path, mode = _short_path(self._cwd), self._mode
+        left = " · ".join(x for x in (path, mode) if x)
+        # 装不下时**先压路径再牺牲右边**（feature 53，45-B3）：此前是直接把右边整条扔掉，
+        # 于是长 cwd 一出现，模型名与上下文占比就从屏幕上消失了。
+        room = width - display_width(right) - 1 - (display_width(mode) + 3 if mode else 0)
+        if path and display_width(left) + display_width(right) + 1 > width:
+            path = _ellipsize_path(path, max(4, room))
+            left = " · ".join(x for x in (path, mode) if x)
         if not left and not right:
             return []
         return [theme.paint(_justify(left, right, width), theme.GREY, color=self.color)]

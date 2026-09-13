@@ -194,6 +194,9 @@ def run_agent(
     tools: dict[str, Tool],
     max_steps: int = 20,
     max_total_tokens: int | None = None,
+    # 有没有「下一轮」。只影响撞到预算上限时那句话该不该说「再说一句就接着做」——
+    # once 模式跑完即退，说了是空头支票（feature 53）
+    interactive: bool = True,
     session: SessionLog | None = None,
     on_event: Callable[[AgentEvent], None] = print_event,
     context_window: int | None = None,
@@ -283,9 +286,15 @@ def run_agent(
                           f"已中断：在第 {step} 步发出请求前停止，已完成的工作保留在会话里。")
 
         if max_total_tokens is not None and spent_tokens > max_total_tokens:
+            # 三件事都要说（45-C3）：停在哪、怎么接着做、怎么放宽。
+            # 「再说一句就接着做」现在就成立——`spent_tokens` 是本函数的局部变量，
+            # REPL 下一轮重新计数；此前从没人说过这件事，用户撞顶时以为活儿断了。
+            more = ("再说一句就接着做（下一轮重新计数）；"
+                    if interactive else "")
             return finish("budget", (
                 f"已达用量预算：累计 {spent_tokens} token 超过上限 {max_total_tokens}，"
                 f"在第 {step} 步发出请求前停止。任务可能未完成。"
+                f"{more}要放宽用 --max-tokens（0 = 不限）。"
             ))
 
         latest = anchors.latest()

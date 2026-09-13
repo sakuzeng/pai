@@ -706,7 +706,10 @@ def test_dangerous_write_reason_names_the_path(tmp_path):
     )
 
     assert decision.kind == "ask"
-    assert "持久化" in decision.reason or "危险" in decision.reason
+    # feature 53 把文案从「是持久化位点」改成人话，判据随之从「术语在不在」
+    # 变成「说没说清三件事」：哪个文件、为什么问、关不关得掉
+    assert ".git/hooks/pre-commit" in decision.reason.replace("`", "")
+    assert "退出后" in decision.reason and "关不掉" in decision.reason
 
 
 # ---- R4#1：规则匹配不许依赖参数键序（2026-08-18 评审）----

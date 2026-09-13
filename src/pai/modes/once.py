@@ -81,6 +81,7 @@ def run_once(
                 project_root=os.getcwd()),
             max_steps=max_steps,
             max_total_tokens=max_total_tokens,
+            interactive=False,
             session=session,
             on_event=on_event,
             instructions=asm.instructions,

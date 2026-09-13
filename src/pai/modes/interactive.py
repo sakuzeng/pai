@@ -732,8 +732,14 @@ def _run_tui(*, out, client, model, tools, messages, ledger, anchors, state, ste
             elif kind == REDRAW:
                 app.refresh()
 
-        # 撤框与「等到有结论为止」都在 await_dialog_answer 里（那里可离线测）
-        return await_dialog_answer(driver, app, dialog, on_action)
+        # 等真人回答的时间不算「用时」（feature 53，45-C2）：真跑显示 `⠹ 3m59s`，
+        # 其中 3m55s 是这个框在等人。finally 保证 Esc 撤框、异常那两条路也恢复计时。
+        app.dock.pause_clock()
+        try:
+            # 撤框与「等到有结论为止」都在 await_dialog_answer 里（那里可离线测）
+            return await_dialog_answer(driver, app, dialog, on_action)
+        finally:
+            app.dock.resume_clock()
 
     # **一处换、两处生效**：`ask_user_question` 与权限 gate 用的是同一个持有者。
     # 只换其中一个正是 2026-08-11 那次卡死的根因。
