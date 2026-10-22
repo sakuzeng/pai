@@ -137,3 +137,9 @@
 - 2026-09-13 撤销：档案 51（整个 TUI 改英文）立项当日作废——用户先在三选一里选了全改英文，判据写完、代码未动时改口「不改英文吧，还是中文」。界面保持中文，工具组摘要保留英文；范围判据与「不做 i18n」的理由留在需求池「不做」区
 - 2026-09-13 英文单词不再被折行劈开（45-B1，用户「做一个最关键的功能」从六条里选定；推迟三轮）——换行时「本行留几个字」由避头与补词两条规则依次作用，词字符 = ASCII 字母数字 + `_`，词占满一行才硬断；真正劈开 `rules.py` 的是 44 那条 ASCII 标点避头，顺序不能反。断言按宽度 24..80 区间跑，注入反证 34 failed，1899 passed → [features/52](features/52-20260913-word-wrap/README.md)
 - 2026-09-13 真用摩擦最后四条（用户「做吧」）——默认预算 20 万→50 万 + 撞顶说清三件事（once 不许诺下一轮）、等人回答不算「用时」（`Dock.pause_clock`，TUI asker try/finally）、长 cwd 中间省略保住模型与上下文、权限弹窗四类 ask 说人话（`/permissions` 同步）；两处注入反证各红，1914 passed → [features/53](features/53-20260913-four-frictions/README.md)
+- 2026-10-22 文档对齐开工——核对 README、STATUS、TODO 与当前索引；用户另行同意修正本地 hook 路径变量兜底，原门禁保留 → [features/54](features/54-20261022-current-docs-alignment/README.md)
+- 2026-10-22 文档对齐交付——README 默认预算与配置、61 行 STATUS、TODO 64 条章节归位、需求池及交付/扩展索引；原开放项保留，全量 1914 passed、8 deselected，复盘已写 → [features/54](features/54-20261022-current-docs-alignment/README.md)
+- 2026-10-22 基线审计整改开工——用户在明确整改建议后「继续」，补齐索引、按证据整理 TODO 并加强文档校验；独立交付承接 54 收尾 → [features/55](features/55-20261022-baseline-consistency/README.md)
+- 2026-10-22 基线审计整改交付——决策 81 条、档案 55 个索引对齐，TODO 核销/合并后开放 217 条，54 偏差如实补记；校验两轮先红后绿，全量 1927 passed、8 deselected，复盘已写 → [features/55](features/55-20261022-baseline-consistency/README.md)
+- 2026-10-22 固定文档基线——用户同意后将 54/55 的文档与一致性校验共同提交到 fix/55-baseline-consistency；运行时代码沿用 6f6d055，基线版本由包含 STATUS 的提交定位 → [features/55](features/55-20261022-baseline-consistency/README.md)
+- 2026-10-22 文档基线整合授权——用户明确要求合并并推送；fetch 确认 main 与 origin/main 无分歧，更新当前版本定位，按分支合并记录整合并核对远端引用 → [features/55](features/55-20261022-baseline-consistency/README.md)

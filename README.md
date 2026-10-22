@@ -1,8 +1,8 @@
 # pai
 
-从零手写的最小编码 agent harness（Python，目标运行期 3.9+）。架构参照精读
-pi（github.com/earendil-works/pi，MIT）、对 Claude Code 的实现分析、以及
-deepseek-harness（github.com/deepseek-ai/deepseek-harness，MIT）得出的设计，
+从零实现的学习型编码 agent harness（Python，目标运行期 3.9+）。架构参照
+pi 的可读源码（github.com/earendil-works/pi，MIT）、Claude Code 的反编译源码分析，
+以及 deepseek-harness 的第一方源码与架构文档（github.com/deepseek-ai/deepseek-harness，MIT），
 零代码依赖三者——所有实现都是独立写的，取舍见 docs/dev/decisions.md。
 
 功能全貌：agent loop（流式、并发工具调度、预算熔断）、上下文自动压缩、
@@ -30,8 +30,8 @@ pai [任务] [--max-steps N] [--max-tokens N] [--no-session]
     [--dangerously-skip-permissions]
 ```
 
-- `--max-tokens`：本次任务的累计 token 预算，超过即停（默认 200000，0 = 不限）——
-  平台侧没有消费限额，这是唯一的自动烧钱熔断。
+- `--max-tokens`：本轮任务的累计 token 预算（默认 500000，0 = 不限）。
+  累计超过上限后，在下一次请求前停止；交互模式再发一条消息可继续，下一轮重新计数。
 - `--resume`：恢复会话接着聊（交互模式）。不带参数 = 当前目录最近一次
   （只认录制时 cwd 与现在相同的会话，照 CC）；跨目录的要给会话 id 前缀或文件路径。旧对话会回放上屏，之后的消息追加进同一个会话文件
   （照 CC）。
@@ -40,7 +40,7 @@ pai [任务] [--max-steps N] [--max-tokens N] [--no-session]
 - `--permission-mode`：`default` / `acceptEdits` / `dontAsk` / `bypassPermissions`
   （默认读 settings.json 的 `defaultMode`；见下方「权限与安全」）。
 - `--dangerously-skip-permissions`：等价 `bypassPermissions`。deny 规则、
-  显式 ask 规则与危险写清单**仍然生效**。
+  显式 ask 规则与危险写清单仍然生效。
 
 模型与端点用环境变量换（`.env` 或 `~/.pai/.env`）：
 
@@ -76,7 +76,7 @@ PAI_CONTEXT_WINDOW=1000000              # 可选：上下文窗口（压缩触�
 第二次退出）；`shift+tab` 轮转权限模式；`ctrl+o` 展开/收起最近的工具组（一轮里连续的读、搜、看目录、跑命令折成一行 `Read 3 files, ran 2 shell commands`，写/改文件单独一行且默认展开 diff；展开时视口跟到最底下，收起回到原处）；
 `ctrl+l` 重画；滚轮滚 transcript、拖选自动进剪贴板、点击输入行定位光标
 （长行折行后点续排行也定位正确）；折行/多行输入里 `↑`/`↓` 先在显示行间移动
-光标，到顶/到底才翻历史。**干活期间打的字不会丢**：默认本轮就注入（模型立刻
+光标，到顶/到底才翻历史。干活期间打的字不会丢：默认本轮就注入（模型立刻
 看到），排队数量在状态行可见。
 
 ## 权限与安全
@@ -89,7 +89,7 @@ PAI_CONTEXT_WINDOW=1000000              # 可选：上下文窗口（压缩触�
 | `default` | 按规则与边界，需要确认就问真人（单次模式无人可问 → 拒绝） |
 | `acceptEdits` | 界内写免确认，其余同 default |
 | `dontAsk` | 一切需要确认的直接拒绝（单次模式的默认） |
-| `bypassPermissions` | 兜底放行；deny / 显式 ask / 危险写**免疫**，仍然拦 |
+| `bypassPermissions` | 兜底放行；deny / 显式 ask / 危险写免疫，仍然拦 |
 
 两句必须知道的真话（`/permissions` 里也会显示）：
 
@@ -129,7 +129,6 @@ PAI_CONTEXT_WINDOW=1000000              # 可选：上下文窗口（压缩触�
   },
   "bash": { "timeoutSeconds": 120 },                  // bash 默认超时（1..600；模型可传
                                                       // timeout 参数覆盖，上限 600 真钳制）
-  "tui": { "altScreen": true, "mouse": true },        // 整屏/鼠标开关（个别终端不兼容时关）
   "mcpServers": {                                     // 见「MCP」节
     "docs": { "command": "python3", "args": ["server.py"],
               "env": {"K": "V"}, "timeout": 60000 }
@@ -198,7 +197,8 @@ settings 的 `mcpServers` 段配置 stdio server（v1 只有 stdio 传输）：�
 
 ## 数据存哪
 
-pai 只写用户目录，不碰你的项目目录（布局对齐 Claude Code）：
+pai 自身的会话、记忆、历史与信任标记写入用户目录（布局对齐 Claude Code）；
+工具执行仍可按权限读写项目文件，显式录制路径也由调用者指定：
 
 ```
 ~/.pai/
@@ -227,8 +227,8 @@ pai 只写用户目录，不碰你的项目目录（布局对齐 Claude Code）�
 ./eval.sh --llm        # 追加真模型评测；工件落 evals/.eval/<时间戳>/runs.jsonl
 ```
 
-准确的测试数字以 docs/dev/STATUS.md 为准（那里有机器对账，README 不抄数字
-——抄了必漂）。
+准确的测试数字与验证日期见 [STATUS](docs/dev/STATUS.md)。校验覆盖唯一当前通过数、
+标准入口收集口径、决策及档案索引与状态；正文行为仍须对照代码与实际验收。README 不重复维护数字。
 
 ## 可视化（pai-viz）
 
@@ -272,7 +272,7 @@ src/pai/
     tools/              @tool 注册表；bash / read_file（可按行 offset/limit 分段）/
                         search_files（内容正则 + 文件名 glob，也可只搜一个文件）/
                         list_dir（目录结构；与开场注入的项目摘要共用一份实现）/
-                        run_tests（命令来自设置或探测，模型不能指定跑什么）/
+                        run_tests（命令来自设置或探测；模型可指定 filter/path，不能传任意命令）/
                         git_read（只读子命令，argv 不过 shell）/
                         write_file / edit_file（`near_line` 消歧；两者都回一段 diff）/
                         ask_user_question / remember / skill
@@ -300,13 +300,13 @@ knowledge/              学习沉淀（pi / CC / dsh 三家对照精读）
 - bash 不参与工作目录边界（见「权限与安全」）——这是权限功能的主要失效模式，
   刻意取舍（CC 靠分类器模型解决，pai 不做分类器）。
 - TUI 拖选在某些真机上卡顿，成因未确诊（离线复现不了）；pty e2e 偶发挂死
-  （测试基建问题，不影响使用）。
+  （测试基建问题；未据此认定运行期也存在同一故障）。
 - 压缩阈值、skills/MCP 的预算常量是从参照实现借的经验值，未经真实使用校准。
 - 会话中途增删 skill 不生效（装配期扫描一次）；MCP 仅 stdio 传输、无重连。
 
 ## 开发记录去哪看
 
-`docs/dev/STATUS.md`（现在到哪）、`decisions.md`（为什么这么选）、
-`devlog.md`（做了什么）、`features/`（一个需求一个档案：需求→拍板问答→
-红绿数字→复盘）、`TODO.md`（待办唯一入口）。每与 pi/CC/dsh 不同的取舍
-都有编号决策可查。
+[STATUS](docs/dev/STATUS.md)（现在到哪）、[decisions](docs/dev/decisions.md)（为什么这么选）、
+[devlog](docs/dev/devlog.md)（做了什么）、[features](docs/dev/features/README.md)（一个需求一个档案：
+需求→拍板问答→验证数字→复盘）、[TODO](docs/dev/TODO.md)（待办唯一入口）。
+与 pi/CC/dsh 不同的实现取舍记入编号决策。
