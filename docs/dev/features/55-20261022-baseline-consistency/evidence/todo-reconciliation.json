@@ -1,0 +1,227 @@
+{
+  "source": "20261022-audit.json",
+  "before": {
+    "open": 227,
+    "done": 192
+  },
+  "after": {
+    "open": 217,
+    "done": 199
+  },
+  "original_open_items_closed": 7,
+  "duplicates_merged": 5,
+  "new_followups": 2,
+  "entries": [
+    {
+      "audit_id": 8,
+      "action": "核销",
+      "original_line": 246,
+      "original": "- [ ] R4#15~R4#28 其余 14 条（低）：2026-08-22 R4 低批清掉 10 条——\n      #15 dialog `/exit`（`await_dialog_answer` 认 quit 返回值撤框）、\n      #17 TUI `!命令` 进历史（对齐 REPL：`!` 记 `/` 不记）、\n      #18 退出先清 dock 再 print（e2e 拿 `s.raw` 喂虚拟屏钉「shell 拿回的屏幕」）、\n      #20 resize 清选区（挪进 `app.handle_resize` 可离线测，头注已订正）、\n      #21 `Interrupted(where=\"stream\")` 文案改说真话（已计费、无 usage 不进账）、\n      #22 loop 层 recall 兜底不再静默（发 `RecallFailed(reason=\"crashed\")`）、\n      #24 空闲 Ctrl+C 真清输入（e2e 钉屏幕）、#28 `atomic_write` 承诺收窄到\n      进程死亡（掉电如实声明不保）、#23 已在 `awaiting_verify` 旁记档、\n      #26 见上一条。剩 4 条 2026-08-22 由用户一轮拍板（问答存\n      [features/21 README](features/21-20260822-input-line-overflow/README.md)\n      「确认」节与本条）后同日修完，R4#15~28 全部清零：\n      - [x] #16 数字直选 → 拍板「按框分流」：权限框保留首键直选（无自由文本\n        语义），提问框改判整串（回车才裁决，越界数字当自由文本），与 REPL 一致；\n      - [x] #19 组合字符宽度 → 拍板「最小修」：Mn/Me/Cf 计 0 列（纯标准库）。\n        诚实边界：ZWJ emoji 序列仍算错（要 UAX#29 才对），有一条测试钉住这个\n        已知错误，做完整 grapheme 分段时它该红然后改写；\n      - [x] #25 busy 期按键 → 拍板「放行安全三键」：CYCLE_MODE/EXPAND/REDRAW\n        在 busy 与对话框期都放行（抽 `cycle_mode()` 三处共用），EOF 刻意仍忽略\n        （误触即退代价太大）；e2e 钉对话框期与 busy 期各切一次模式；\n      - [x] #27 输入行超宽 → 拍板 A·折行，立档案交付，见\n        [features/21](features/21-20260822-input-line-overflow/README.md)。",
+      "replacement": "- [x] 已核销：R4#15~R4#28 其余 14 条（低）：2026-08-22 R4 低批清掉 10 条——\n      #15 dialog `/exit`（`await_dialog_answer` 认 quit 返回值撤框）、\n      #17 TUI `!命令` 进历史（对齐 REPL：`!` 记 `/` 不记）、\n      #18 退出先清 dock 再 print（e2e 拿 `s.raw` 喂虚拟屏钉「shell 拿回的屏幕」）、\n      #20 resize 清选区（挪进 `app.handle_resize` 可离线测，头注已订正）、\n      #21 `Interrupted(where=\"stream\")` 文案改说真话（已计费、无 usage 不进账）、\n      #22 loop 层 recall 兜底不再静默（发 `RecallFailed(reason=\"crashed\")`）、\n      #24 空闲 Ctrl+C 真清输入（e2e 钉屏幕）、#28 `atomic_write` 承诺收窄到\n      进程死亡（掉电如实声明不保）、#23 已在 `awaiting_verify` 旁记档、\n      #26 见上一条。剩 4 条 2026-08-22 由用户一轮拍板（问答存\n      [features/21 README](features/21-20260822-input-line-overflow/README.md)\n      「确认」节与本条）后同日修完，R4#15~28 全部清零：\n      - [x] #16 数字直选 → 拍板「按框分流」：权限框保留首键直选（无自由文本\n        语义），提问框改判整串（回车才裁决，越界数字当自由文本），与 REPL 一致；\n      - [x] #19 组合字符宽度 → 拍板「最小修」：Mn/Me/Cf 计 0 列（纯标准库）。\n        诚实边界：ZWJ emoji 序列仍算错（要 UAX#29 才对），有一条测试钉住这个\n        已知错误，做完整 grapheme 分段时它该红然后改写；\n      - [x] #25 busy 期按键 → 拍板「放行安全三键」：CYCLE_MODE/EXPAND/REDRAW\n        在 busy 与对话框期都放行（抽 `cycle_mode()` 三处共用），EOF 刻意仍忽略\n        （误触即退代价太大）；e2e 钉对话框期与 busy 期各切一次模式；\n      - [x] #27 输入行超宽 → 拍板 A·折行，立档案交付，见\n        [features/21](features/21-20260822-input-line-overflow/README.md)。\n      2026-10-22 审计核销（feature 55）：原文已确认 R4#15—28 全部清零；保留原修复与遗留边界记录，不再把父条目计作开放。"
+    },
+    {
+      "audit_id": 79,
+      "action": "核销",
+      "original_line": 1167,
+      "original": "- [ ] 「工具结果能点」是 13 的地基而不是 13 本身（13 brainstorm 问 1/3）。\n      13 拍板不接管鼠标（保住终端原生的拖选复制与 `Cmd+F`——一旦上报鼠标终端就不管了，\n      且失败是静默的）。13 建的是「每帧知道每个条目画在哪几行」这个前提；\n      加鼠标是 SGR 1006 解析 + 命中测试（CC 实测只要 130 行，便宜），单独立项。\n      动工前先看 [K tui/alt-screen-and-mouse.md](../../knowledge/tui/alt-screen-and-mouse.md)\n      第 3 节：`1000/1002/1003` 互斥单选，照抄 pi/CC 那串四条序列会选中最费的 1003。",
+      "replacement": "- [x] 已核销：「工具结果能点」是 13 的地基而不是 13 本身（13 brainstorm 问 1/3）。\n      13 拍板不接管鼠标（保住终端原生的拖选复制与 `Cmd+F`——一旦上报鼠标终端就不管了，\n      且失败是静默的）。13 建的是「每帧知道每个条目画在哪几行」这个前提；\n      加鼠标是 SGR 1006 解析 + 命中测试（CC 实测只要 130 行，便宜），单独立项。\n      动工前先看 [K tui/alt-screen-and-mouse.md](../../knowledge/tui/alt-screen-and-mouse.md)\n      第 3 节：`1000/1002/1003` 互斥单选，照抄 pi/CC 那串四条序列会选中最费的 1003。\n      2026-10-22 审计核销（feature 55）：工具结果点击展开已由 feature 16 交付；tests/test_tui_click_expand.py 覆盖点击展开、再点收起和拖动不误触。原文是当时的前置判断。"
+    },
+    {
+      "audit_id": 85,
+      "action": "核销",
+      "original_line": 1220,
+      "original": "- [ ] 「跑一次真 pai 然后出图」这条链路没有自动化（14 复盘质疑二）：\n      录制/回放有 8 条单测，但端到端活在 gitignore 掉的探针脚本里——\n      改坏 `DockRenderer` 的 write 注入点不会有任何东西变红。\n      建议做成一条 e2e：起 pai → 录 → 回放 → 断言屏幕上有欢迎语。",
+      "replacement": "- [x] 已核销：「跑一次真 pai 然后出图」这条链路没有自动化（14 复盘质疑二）：\n      录制/回放有 8 条单测，但端到端活在 gitignore 掉的探针脚本里——\n      改坏 `DockRenderer` 的 write 注入点不会有任何东西变红。\n      建议做成一条 e2e：起 pai → 录 → 回放 → 断言屏幕上有欢迎语。\n      2026-10-22 审计核销（feature 55）：同文件 feature 15 小节已勾选同题事项；tests/test_e2e_tui.py 已运行真进程录制与屏幕回放，tests/test_tui_record.py 覆盖 PNG 输出。"
+    },
+    {
+      "audit_id": 110,
+      "action": "核销",
+      "original_line": 1484,
+      "original": "- [ ] `memory_dir` 的 key 是 hash，不可读（06 task 3）：调试时得靠 `/memory` 才知道\n      记忆写到哪去了。可考虑 `<仓库名>-<hash 前 8 位>` 兼顾可读与唯一。",
+      "replacement": "- [x] 已核销：`memory_dir` 的 key 是 hash，不可读（06 task 3）：调试时得靠 `/memory` 才知道\n      记忆写到哪去了。可考虑 `<仓库名>-<hash 前 8 位>` 兼顾可读与唯一。\n      2026-10-22 审计核销（feature 55）：feature 08 已改用可读项目 slug；core/paths.py 的 memory_dir 经 project_dir/project_slug 解析，tests/test_paths.py 已覆盖。"
+    },
+    {
+      "audit_id": 113,
+      "action": "核销",
+      "original_line": 1510,
+      "original": "- [ ] steering 队列在 REPL 阶段无真实输入源（05 拍板问 2，诚实边界）：\n      结构与注入点已在 loop 里备好、有假回调测试钉死位置，但阻塞的 `input()` 拿不到\n      「agent 干活时打字」。TUI/流式阶段接真实输入源时才通电。\n      2026-08-11 实测修正本条的定性（feature 12 反向对照）：那些字根本没丢——\n      内核 tty 行规程替我们缓冲着，`!sleep 3` 期间打的字在命令结束后原样出现在\n      下一个提示符上。所以缺的不是「独立输入线程」这么重的东西，在干活期间对\n      stdin 做非阻塞读/`select` 就取得到。证据见\n      [features/12 evidence](features/12-20260811-tui/evidence/20260811-终端反向对照/说明.md) 第 2 条。\n      2026-08-13 由 [features/18](features/18-20260813-steering-input/README.md) 关闭：\n      非阻塞读在 12 已做到（`driver.poll(timeout=0)` 挂在 loop 的每个事件上），\n      18 补上的是「那些字进哪条队列、什么时候发出去」。",
+      "replacement": "- [x] 已核销：steering 队列在 REPL 阶段无真实输入源（05 拍板问 2，诚实边界）：\n      结构与注入点已在 loop 里备好、有假回调测试钉死位置，但阻塞的 `input()` 拿不到\n      「agent 干活时打字」。TUI/流式阶段接真实输入源时才通电。\n      2026-08-11 实测修正本条的定性（feature 12 反向对照）：那些字根本没丢——\n      内核 tty 行规程替我们缓冲着，`!sleep 3` 期间打的字在命令结束后原样出现在\n      下一个提示符上。所以缺的不是「独立输入线程」这么重的东西，在干活期间对\n      stdin 做非阻塞读/`select` 就取得到。证据见\n      [features/12 evidence](features/12-20260811-tui/evidence/20260811-终端反向对照/说明.md) 第 2 条。\n      2026-08-13 由 [features/18](features/18-20260813-steering-input/README.md) 关闭：\n      非阻塞读在 12 已做到（`driver.poll(timeout=0)` 挂在 loop 的每个事件上），\n      18 补上的是「那些字进哪条队列、什么时候发出去」。\n      2026-10-22 审计核销（feature 55）：原文已记 feature 18 关闭，本次补勾。覆盖的是 TUI 忙时输入与队列接线；纯行式 REPL 仍用阻塞 reader，不能外推为两条路径等价。"
+    },
+    {
+      "audit_id": 217,
+      "action": "核销",
+      "original_line": 2299,
+      "original": "- [ ] pai-viz 不做自动刷新（2026-08-03，YAGNI）：现状是点按钮手动刷新；\n      若用起来发现手动刷新烦，再加。\n      2026-08-13 由 feature 17 关闭：结构图照旧手动刷新；时间线是 2s 游标轮询\n      （对象不同：当时不做刷新针对的是静态结构图，流转本身是时间性的，不刷新等于没做）。",
+      "replacement": "- [x] 已核销：pai-viz 不做自动刷新（2026-08-03，YAGNI）：现状是点按钮手动刷新；\n      若用起来发现手动刷新烦，再加。\n      2026-08-13 由 feature 17 关闭：结构图照旧手动刷新；时间线是 2s 游标轮询\n      （对象不同：当时不做刷新针对的是静态结构图，流转本身是时间性的，不刷新等于没做）。\n      2026-10-22 审计核销（feature 55）：原文已记 feature 17 关闭，本次补勾。静态结构图仍手动刷新，时间线为 2s 轮询；不声称全部视图自动刷新。"
+    },
+    {
+      "audit_id": 3,
+      "action": "改写或拆分",
+      "original_line": 107,
+      "original": "- [ ] 文档测试只匹配 STATUS 中首个 `N passed`，未核对其他当前数字与 README 行为说明。\n      本轮删除快照内的重复旧数字，但不改 tests；后续若加强校验，应明确当前基线与历史引用的边界，\n      不把冻结档案里的旧数字认作错误（出处：[feature 54](features/54-20261022-current-docs-alignment/README.md)）。",
+      "replacement": "- [ ] 当前文档的行为说明仍依赖人工对照，尚无覆盖所有 README 默认值与配置接线的语义校验。\n      feature 55 已补 STATUS 唯一当前通过数、决策两种编号形态与档案索引双向覆盖；\n      这只关闭了原 feature 54 遗留的一部分，不保证文档叙述全部准确。\n      后续加强时区分当前说明与冻结历史数字（出处：feature 54 遗留，feature 55 审计收口）。"
+    },
+    {
+      "audit_id": 9,
+      "action": "改写或拆分",
+      "original_line": 268,
+      "original": "- [ ] R4#E1~E5 可扩展性改造（对照 dsh，用户 2026-08-17 提出「想像 dsh 一样可扩展」）。\n      2026-08-22 清掉前三条（E2/E3 用户拍板「参照 CC」，走读沉淀\n      K loop/cc-prompt-and-transcript.md）：\n      - [x] E1「要加 X 去哪里」映射表 → docs/dev/扩展点.md（末节「现在还\n        说不清的」即 E2~E5 的证据）；顺带把「新模块只依赖 events 与注入回调、\n        绝不 import loop 内部」采纳进 AGENTS「架构约束」。\n      - [x] E2 system prompt 从常量变装配 → 交付见\n        [features/22](features/22-20260822-system-prompt-assembly/README.md)。\n        追记：CC 的 env 段（cwd/日期/模型进 prompt）刻意未抄，skills 阶段\n        加段时一并评估。\n      - [x] E3「模型可见即已记录」不变量 → 交付见\n        [features/23](features/23-20260822-model-visible-is-recorded/README.md)。\n      - [x] E4 ToolSource seam → 最小形态兑现 2026-08-23（feature 29）：\n        工具第二来源经 `core/mcp.bridge_tools` 在装配层 setdefault 并表，\n        「schema 与代码同源」的改述由 D#74 完成。正式 ToolSource 协议刻意\n        未立——第二来源只此一家，协议等第三来源出现再抽（不预防性拆分，\n        dsh 同款戒律）。\n      仍开着的一条：E5 after_tool_call 对称缝\n      （等 microcompact 这类真实需求出现再开）。\n      点名不抄：Cordis 全插件化 / profile 分层 / waterfall 事件总线。",
+      "replacement": "- [ ] R4#E5：工具结果回填前的对称扩展缝仍待真实需求；有 microcompact/结果剪枝需求时再立项。\n      E1 扩展点地图、E2 动态 system prompt（feature 22）、E3 消息入账收口（feature 23）已交付；\n      E4 第二工具来源已由 feature 29 的 MCP 桥接并表兑现，正式 ToolSource 协议仍等第三来源。\n      原 R4#E1—E5 的完整登记保存在 feature 55 审计原件；本条只保留尚开放的 E5（2026-10-22 对账）。"
+    },
+    {
+      "audit_id": 10,
+      "action": "改写或拆分",
+      "original_line": 291,
+      "original": "- [ ] R4#A1~A10 跨项目吸收 10 条（A1 已于 2026-08-22 交付，见\n      [features/24](features/24-20260822-session-format-and-resume/README.md)）：\n      ~~会话格式一次到位改造 → 线性 `--resume`（高）~~、\n      成本核算（pi 费率结构 + waku「台账只存 token、金额读时算」，高）、\n      记忆双时间轴 `valid_at`/`invalid_at`（graphiti，成本近零，高）、\n      skills 照 pi 最小形态（高，阶段 6）等，完整表见评审文件第四节。\n      注：hermes/waku/graphiti/zep 不在 D#69 参照制度内，第一次被 feature\n      引用时须在 decisions 补一条「参照源定级」。",
+      "replacement": "- [ ] R4#A1—A10 跨项目吸收清单的剩余候选需按当前需求逐项评估，不能继续视为十条均未实现。\n      A1 会话格式已由 feature 24 交付，skills 最小形态已由 feature 25 交付；\n      成本核算、记忆 valid_at/invalid_at 等仍是候选，完整来源见 R4 评审第四节。\n      非 D#69 参照源首次用于新功能时仍需定级（原条目与本轮映射见 feature 55 审计原件）。"
+    },
+    {
+      "audit_id": 29,
+      "action": "改写或拆分",
+      "original_line": 620,
+      "original": "- [ ] ★ MCP 阶段必须回来处理统一超时（P2，阶段 7 前置）。\n      「只有 bash 有超时」目前不是硬伤（CC 与 pi 也这样，2:1），\n      但网络调用会让它变成硬伤：接了 MCP 的两家都给 MCP 单独设了超时\n      （CC `MCP_TOOL_TIMEOUT`、dsh `toolCallTimeoutMs=60_000`）。\n      pai 的 loop 一旦挂住就回不来——已实测：`read_file` 读一个无写端的 FIFO\n      永久阻塞，置中断标志也没用（工具内部没人查它），只能 kill 进程。\n      真要做统一层就抄 dsh 的形状，两条必须一起抄：① 声明式 + 协作式\n      （工具声明预算、执行器只置位取消信号、`await` 到底不 race，\n      避免「结果返回了但活还在跑」）；② 超时元数据绝不给模型看\n      （dsh 在 `ToolDefinition.timeoutMs` 注释里钉死 `NEVER sent to the model`）。",
+      "replacement": "- [ ] 本地阻塞工具的取消/截止时间策略仍待明确，不能只因 MCP 已有超时就声称所有工具均可终止。\n      原实测 read_file 读取无写端 FIFO 的阻塞仍是待解决场景；统一执行器即使设截止时间，\n      也不能假装底层工作已经结束。设计时须同时回答取消信号、结果回填与工作何时真正终止。\n      已完成的部分：feature 29 的 MCP 调用已有可配置超时，core/mcp.py 的 _wait_for 检查 deadline。\n      原「MCP 阶段前必须回来」的排期前提作废；其余参照与原实测保存在 feature 55 审计原件。"
+    },
+    {
+      "audit_id": 44,
+      "action": "改写或拆分",
+      "original_line": 868,
+      "original": "- [ ] asker 与 REPL 抢同一个输入流——现在的修法是逃生口，不是根治（2026-08-10，\n      08 devlog「越界修复」，根因记录）。\n      现象：模型调 `ask_user_question` 时，asker 去读下一行 stdin，\n      而用户此刻敲的可能是给 REPL 的命令。实际发生过：`!echo 我是命令` 被当成了对问题的回答\n      （铁证是它没进输入历史——那一行根本没被主循环读到）。\n      根因：`_make_asker` 与主循环共用同一个阻塞 `reader`，本质是\n      同一个输入流被两个消费者抢，谁先 `read()` 谁拿到。\n      已做的只是缓解：空行跳过、`/exit` 退出、其他 `/命令` 提示后重读。\n      仍然坏的：① `!命令` 仍被当成答案（没一并拦是因为真实答案以 `!` 开头的可能性\n      不为零，硬拦会误伤）；② 提问期间用户无法执行任何命令，只能答或退。\n      真正的解法在 TUI 阶段：模态输入——问题框接管输入焦点、Esc 取消\n      （CC 的 AskUserQuestion 就是这么做的，见 K tui/claude-interactive-mode.md 的\n      「Esc 关闭对话框而不是中断 Claude」）。纯 REPL 里做不出模态，\n      所以这条不该在 REPL 阶段继续打补丁，等 TUI 一并解决。",
+      "replacement": "- [ ] 纯行式 REPL 提问期间的命令/答案归属仍需评估；不能继续表述为 TUI 也没有输入仲裁。\n      原事故是 ask_user_question 的阻塞 reader 把 !命令当答案，纯 REPL 当前仍存在同类语义限制。\n      feature 12 的 TUI 已有统一输入仲裁与对话框路径；旧建议「等 TUI 一并解决」不再是未来计划。\n      是否为纯 REPL 增加命令交接或明确限制，需独立验证（出处：feature 08 越界修复与本轮审计）。"
+    },
+    {
+      "audit_id": 56,
+      "action": "改写或拆分",
+      "original_line": 983,
+      "original": "- [ ] `MAX_TOOL_WORKERS = 8` 是个不会生效的常量（11 复盘质疑一）：唯一的并发安全工具是\n      `read_file`，模型一轮最多发过 3 个。连带质疑「给照抄常数写来源注释」这条习惯——\n      给一个不会生效的常量写严肃注释，可能把「留痕」做成了仪式。\n      下次遇到倾向于直接写「暂不限并发，真撞上再加」。",
+      "replacement": "- [ ] 并发上限 MAX_TOOL_WORKERS=8 的实际需求仍未测量，调整前需要工具批大小与墙钟数据。\n      原「只有 read_file 并发安全，所以常量不会生效」的前提已过期：search_files、list_dir、skill\n      也有并发能力声明，git_read 还按 subcommand 决定。不能据旧论据直接删除上限。\n      出处：feature 11 复盘质疑一；2026-10-22 按当前工具声明改写，未进行性能调参。"
+    },
+    {
+      "audit_id": 74,
+      "action": "改写或拆分",
+      "original_line": 1129,
+      "original": "- [ ] `vim`/`less` 这类程序退出时的 rmcup 会把 pai 也踢回主屏（CC 注释点名）：\n      pai 的 `bash` 工具就可能跑到它们。本轮不做自愈——两条实测结论把路堵死了：\n      重进 alt 会清屏（evidence 第 1 条）、没法问终端自己在不在 alt（evidence 第 2 条）。",
+      "replacement": "- [ ] vim/less 的 rmcup 是否能在当前工具路径干扰 pai 备用屏，需要先给出可复现场景。\n      原登记来自 feature 13 对 CC 注释的推论；当前 bash 输出经 PIPE 收集、终端显示前会消毒，\n      不能直接把旧推论当成已确认的当前缺陷。若复现，再评估自愈；重发备用屏会清屏等约束仍保留。\n      出处：feature 13 复盘与 core/tools/shell.py、tui/sanitize.py；本轮未做真终端复现。"
+    },
+    {
+      "audit_id": 81,
+      "action": "改写或拆分",
+      "original_line": 1185,
+      "original": "- [ ] 中等改动通道没有承载「验收项」的地方（同上引出的真问题）：\n      feature 15 的「每条 e2e 必须配一条注入反证」只活在脑子里，结果 2/3 假绿。\n      规矩 9 已要求「走中等改动时把验收项写进档案的需求节」，\n      但机器判不了「验收项写得够不够」——这条是提示词层约束，如实声明。",
+      "replacement": "- [ ] 中等改动验收项的质量与完整性仍主要靠人工审查，机器不能证明验收项写得足够。\n      features/README 规矩 9 已明确验收项放在档案需求节；原「没有承载位置」已被解决，\n      不再据此另造文件。剩余问题是立项时写清可验证标准并在交付时逐项对照。\n      出处：feature 15 复盘、2026-10-22 审计改写。"
+    },
+    {
+      "audit_id": 96,
+      "action": "改写或拆分",
+      "original_line": 1321,
+      "original": "- [ ] 给「照抄来的常数」建一条检查习惯（10 冒烟教训，与 06 复盘质疑四同类）：\n      `max_tokens=256`（CC 的 Sonnet 档）、`MEMORY.md` 200 行/25KB（英文调的）、\n      `reserve_tokens=16384`（从 pi 借的）——三条都是抄来的数字带着它原本的模型/语言假设。\n      至少在常量旁强制写「这个数从哪来、依赖什么前提」，让下一个人看得见前提。",
+      "replacement": "- [ ] 在引入或修改经验常量时检查来源、假设和校准证据，避免只有数字没有适用条件。\n      scheduler、skills、shell 等常量旁已有来源/前提注释，不能继续笼统称从未建立这条习惯；\n      全仓覆盖和真实校准仍未保证。来源说明与校准数据是两件事，后者仍见各参数条目。\n      出处：feature 10 冒烟教训与本轮对账；原例子保存在 feature 55 审计原件。"
+    },
+    {
+      "audit_id": 102,
+      "action": "改写或拆分",
+      "original_line": 1374,
+      "original": "- [ ] 观测流 `.events.jsonl` 仍是旧平铺格式：一对文件两种形状，viz 靠读边\n      归一化弥合；events 侧换不换信封等 evals 立项时定（出处：24 README 遗留）。",
+      "replacement": "- [ ] 会话 v1 与观测流的记录形状是否统一，仍需按消费者需求评估。\n      当前 sessions 使用统一信封，events 仍是平铺记录，viz 在读取侧归一化；\n      feature 32 evals 已交付，不能继续写成「等 evals 立项时定」。目前没有已批准的 events 格式迁移。\n      出处：feature 24 遗留；不为形式统一改写既有观测流。"
+    },
+    {
+      "audit_id": 106,
+      "action": "改写或拆分",
+      "original_line": 1419,
+      "original": "- [ ] 项目级指令只认 `PAI.md`，官方还认 `./.claude/CLAUDE.md`（小，可不做）：\n      记下来是为了别在对照时说漏。真要加就是 `discover()` 里多一个候选路径。",
+      "replacement": "- [ ] 是否兼容其他 agent 的指令入口，仍是可不做的候选；需具体场景再评估。\n      当前项目级读取 AGENTS.md、PAI.md、PAI.local.md，用户级读取 AGENTS.md/PAI.md；\n      不能再写「项目级只认 PAI.md」。CLAUDE.md 等入口仍刻意不读，可显式 @ 导入。\n      出处：D#43 复议、core/memory.py::discover；2026-10-22 订正原候选的事实前提。"
+    },
+    {
+      "audit_id": 115,
+      "action": "改写或拆分",
+      "original_line": 1578,
+      "original": "- [ ] 截断逻辑 fs/shell 两处重复（R3#6）：第三个产出文本的工具出现时抽\n      `truncate_output()` 进 tools/__init__.py，现在抽是过度设计。",
+      "replacement": "- [ ] 需要新增输出策略时，再评估截断接口的共用边界，不能按旧方案直接抽同一种 truncate_output。\n      feature 42 已把共用上限与 head_and_tail 放入 tools/output.py；read_file 按整行截断、\n      shell/search 的头部截断及测试/git 的保头保尾语义不同。「等第三个工具」的触发条件早已超过。\n      剩余候选是明确不同策略的归属，非「常量仍复制两份」（出处：R3#6、feature 42 遗留）。"
+    },
+    {
+      "audit_id": 140,
+      "action": "改写或拆分",
+      "original_line": 1843,
+      "original": "- [ ] AGENTS.md 该「读多少」值得复议（35 复盘质疑一）：本轮拍板解决的是\n      「读不读」，代价面比问的时候说的更宽——任何用 pai 的仓库，它的\n      `AGENTS.md` 都会每轮常驻，而那份文件通常是写给「开发这个仓库的人/AI」的\n      （构建命令、测试规约、提交格式），与当轮任务的相关性未必高。\n      CC 至今仍不直接读它、让用户显式 `@` 导入，不见得只是保守。\n      真正该议的是常驻整篇 vs 相关时才加载——与「没有路径作用域规则」\n      （`.claude/rules/` + `paths:`）是同一件事，做时一起。",
+      "replacement": "- [ ] AGENTS.md 常驻整篇还是按相关性加载，仍需使用数据与方案评估。\n      feature 35 已解决「读不读」，feature 36 另有 paths 路径规则；不能继续写成尚无路径规则。\n      两者并不自动等价：现有 paths 规则不会让 AGENTS.md 本身按目录懒加载。\n      出处：feature 35 复盘质疑一；原各家对照属于当时研究，不代替当前需求证据。"
+    },
+    {
+      "audit_id": 172,
+      "action": "改写或拆分",
+      "original_line": 2105,
+      "original": "- [ ] 「加工具的边际收益在递减」这条没被正面对待（46 复盘质疑二）：`list_dir`\n      是第七个工具，真跑里被选中过一次、也被 `ls` 顶掉过一次，而它每轮对话都要\n      花 schema token。加第八个工具之前该先算这笔账。",
+      "replacement": "- [ ] 新增工具前评估 schema 常驻成本与实际使用收益；「加第八个之前」不再是可用触发条件。\n      当前 get_tools() 注册候选为 10 个，实际给模型的集合还受权限和 skills 装配条件影响；\n      应按真实请求中的 schema 与使用率量成本，不能把注册数直接当作每轮工具数。\n      出处：feature 46 复盘质疑二；本轮只修正计数前提，未进行收益实验。"
+    },
+    {
+      "audit_id": 175,
+      "action": "改写或拆分",
+      "original_line": 2114,
+      "original": "- [ ] 引导句已经五句都堆在 system prompt 里（46 遗留）：加第六个工具时这一段\n      会开始显得长，且每轮都要发。触发条件：第六句出现时考虑换形态\n      （比如只在相关工具首次可用时说一次）。",
+      "replacement": "- [ ] 增加新的工具引导句时评估其常驻成本和实际选择效果；旧「第六句出现时」阈值需重评。\n      当前提示词由 build_system_prompt 按实际工具条件拼接，另有编辑与 bash 引导，\n      不能只用 feature 46 当时的五句计数决定是否改形态。优先保留与改动相关的案例测量。\n      出处：feature 46 遗留；不凭句数直接改为仅首次提示。"
+    },
+    {
+      "audit_id": 210,
+      "action": "改写或拆分",
+      "original_line": 2276,
+      "original": "- [ ] 接流式后真正会咬人的是这两条（2026-08-11 探针替换上面那条，归 feature 11）：\n      ① usage 的取法——`stream_options.include_usage` 在 DeepSeek 上是空操作，\n      usage 永远在末块且 `choices` 非空；OpenAI 生态惯用的\n      `if not chunk.choices: usage = chunk.usage` 分支永不触发 → 预算熔断与锚点一起静默哑掉。\n      稳妥写法是「每块都看一眼 `chunk.usage`，最后一个非空的就是它」。\n      ② 中断掉的流拿不到 usage（它在末块，而我们没读到末块）→ 被中断请求的消耗\n      不进 `spent_tokens`，且偏差方向恒定（总是少算）。与下面「usage 可信度过滤」同源。",
+      "replacement": "- [ ] 中断流拿不到末块 usage 时，已计费消耗不进入 spent_tokens，预算存在单向低估。\n      此问题与半截答案是否进上下文、usage 可信度过滤有关，仍需独立设计；不凭猜测补账。\n      已完成的部分：feature 11 的 streaming.assemble 已每块查看 usage，原 include_usage 接线风险\n      不应继续与中断计费共用同一个未完成状态（出处：2026-08-11 探针与本轮审计）。"
+    },
+    {
+      "audit_id": 218,
+      "action": "改写或拆分",
+      "original_line": 2303,
+      "original": "- [ ] pai-viz 的会话回放、用量仪表盘未立项（2026-08-03）：以后有需要再单独立项设计，\n      不是本轮 viz 范围。\n      2026-08-13 更新：会话回放已由 feature 17 交付（跨项目会话下拉 + 逐步展开 +\n      未完成回合标红）；用量聚合仪表盘仍未立项（17 只做单会话内的每步用量）。",
+      "replacement": "- [ ] 用量聚合仪表盘仍未立项，需具体需求再单独设计。\n      会话回放已由 feature 17 交付（跨项目选择、逐步展开和未完成回合标红），\n      不再把「会话回放」列作未实现；单会话每步用量与跨会话聚合不是同一范围。\n      出处：2026-08-03 viz 候选、2026-08-13 更新；原登记保存在 feature 55 审计原件。"
+    },
+    {
+      "audit_id": 223,
+      "action": "改写或拆分",
+      "original_line": 2349,
+      "original": "- [ ] microcompact 评估（2026-08-09，K context/cc-compaction.md）：\n      触发条件已满足（阶段 1 压缩闭环 2026-08-09 已跑通接进 loop）——pai 的 4 个工具\n      全部可重放，按 tool_call_id 清旧结果\n      不用调模型，可能是性价比最高的第二级压缩。",
+      "replacement": "- [ ] microcompact 仍是候选，立项前先按当前工具集评估哪些旧结果可清、如何重新取得及成本。\n      「pai 只有四个工具、全部可重放」是旧前提；现有工具含执行与写入能力，不能套用一个判据。\n      设计还需保住 assistant/tool 配对，并确定回填后处理的扩展缝；阶段 1 完成不等于方案已获批准。\n      出处：2026-08-09 候选、R4#E5；本轮未实现或扩大压缩范围。"
+    },
+    {
+      "audit_id": 147,
+      "action": "核销",
+      "original_line": 1902,
+      "original": "- [ ] decisions 的索引表从 69 之后就没再维护（41 发现）：70-76 用的是\n      `## NN. 标题` 形式，而 `test_decisions_index_matches_entries` 的正文正则是\n      `^(\\d+)\\. `，看不见它们——于是「索引与正文一一对应」这条被机器钉住的规矩，\n      对最近七条实际上是失效的。本轮补录索引反而把测试弄红了，说明这不是顺手能改的：\n      要么改正则认两种形式并补齐 7 行索引，要么把 70+ 改回旧形式。刻意没在本轮做\n      （用户划的范围是两条）。",
+      "replacement": "- [x] 已核销：decisions 的索引表从 69 之后就没再维护（41 发现）：70-76 用的是\n      `## NN. 标题` 形式，而 `test_decisions_index_matches_entries` 的正文正则是\n      `^(\\d+)\\. `，看不见它们——于是「索引与正文一一对应」这条被机器钉住的规矩，\n      对最近七条实际上是失效的。本轮补录索引反而把测试弄红了，说明这不是顺手能改的：\n      要么改正则认两种形式并补齐 7 行索引，要么把 70+ 改回旧形式。刻意没在本轮做\n      （用户划的范围是两条）。\n      2026-10-22 审计核销（feature 55）：D70—D81 已补齐索引；文档校验现同时识别两种标题并检查重复。本轮先得到真实 2 failed，再补索引得到 39 passed、1 skipped（含 viz 子集）。原 70—76 的范围只是登记时快照。"
+    },
+    {
+      "audit_id": 31,
+      "action": "重复合并为非 checkbox 来源说明",
+      "original_line": 644,
+      "original": "- [ ] `./test.sh` 偶发永久挂起，进程留在那儿不退（出处：2026-08-13 写 dsh 笔记时连撞两次）。\n      现象：同一天同一份代码，四次 `./test.sh` 里两次正常（~107s，1112 passed）、\n      两次永不返回（一次挂了 1 小时，一次 10 分钟，都是人工 `kill -9` 才停）。\n      两次的进程签名完全一致：父 pytest 阻塞着持有 `/dev/ptmx`，\n      子进程已是僵尸（`ps` STAT = `?Es`），另外还占着一个 LISTEN 的本地端口\n      （fake_provider 的 HTTP server）。两次端口不同，所以不是端口冲突。\n      判据：docs-only 改动也能复现 → 与被测代码无关，是 pty e2e 自身的竞态\n      （父进程等 pty 上的东西，子进程已经先走了）。\n      危害不是慢，是它不红也不超时 —— CI 里会表现成「一直在跑」，\n      本地会表现成「我的改动把测试跑挂了」，两种都会把人引到错误的方向。\n      下一步：给 pty e2e 加测试级超时（挂死必须变成红，不能变成等待），\n      再查父子退出顺序。注：`timeout` 命令 macOS 默认没有，别在 test.sh 里直接用。",
+      "replacement": "登记合并（2026-10-22，feature 55）：原「./test.sh 偶发永久挂起」并入 P2 的「pty e2e 父子退出竞态根因仍未查」。测试级超时与回收硬化已经有了，剩余根因继续开放；原事件与下一步原文保存在本轮审计原件。"
+    },
+    {
+      "audit_id": 107,
+      "action": "重复合并为非 checkbox 来源说明",
+      "original_line": 1421,
+      "original": "- [ ] `remember` 在真实会话里从未被调用过（2026-08-19 实测）：\n      `~/.pai/projects/` 下 5 个项目目录**全部只有 `sessions/`，没有 `memory/`**——\n      该目录是 `remember` 首次调用时才 mkdir 的，所以事实记忆一篇都没写过。\n      召回层因此每轮都走第二个短路（候选为空）直接返回，请求根本不发。\n      后果不是坏，是看不出来：「它没在工作」和「它工作得很好」外部表现一模一样，\n      这正是这一层反复讲的「失效方式是沉默」本身。\n      要做的是一次端到端真实验证：让 pai 自己 remember 三五条，再问一个能命中的问题，\n      确认召回块真的注入了。与「json_object 一次都没真验过」那条不同——\n      那条验的是侧查询本身（已完成 2026-08-11），这条验的是从写入到召回的整条链。",
+      "replacement": "登记合并（2026-10-22，feature 55）：原「remember 真实会话从未调用」的写入→召回验收并入 feature 38 的「两条 --llm 冒烟尚未被跑过」。2026-08-19 的目录观测是历史快照，不据此断言现在从未使用。"
+    },
+    {
+      "audit_id": 127,
+      "action": "重复合并为非 checkbox 来源说明",
+      "original_line": 1748,
+      "original": "- [ ] 手工清单尚未被人跑过（38 遗留）：`features/38/evidence/手工清单.md` 六节\n      （IME 候选框、resize 视觉残留、颜色与 NO_COLOR、鼠标拖选、退出与 --resume\n      提示、规则与记忆的真跑佐证）。第三类差距本轮只做到了「有清单」，\n      没做到「验过」——清单末尾已如实写明。",
+      "replacement": "登记合并（2026-10-22，feature 55）：feature 38 的旧手工清单开放项并入 feature 45 的收紧版清单；保留 38 来源，统一验收入口，不将未验收事项勾成完成。"
+    },
+    {
+      "audit_id": 138,
+      "action": "重复合并为非 checkbox 来源说明",
+      "original_line": 1812,
+      "original": "- [ ] 规则的效果没有真模型验证（36 遗留）：离线测试只能断言「正文进了 messages」，\n      「模型会不会真按规则做事」没验过。与 34 复盘质疑三（read_file 截断提示\n      没有真模型验证）同族，验收要么一次 `--llm` 冒烟，要么等 dogfooding。",
+      "replacement": "登记合并（2026-10-22，feature 55）：feature 36 的「规则效果真模型验证」并入 feature 38 的两条 --llm 冒烟；仓库 .pai/rules/tests.md 的具体规则验收仍另行保留。"
+    },
+    {
+      "audit_id": 195,
+      "action": "重复合并为非 checkbox 来源说明",
+      "original_line": 2187,
+      "original": "- [ ] 活轮次的 `!命令` 仍全量上屏（接 48 那条）：`_run_shell(out=commit)` 直接把输出 commit 成文本，\n      没走工具组；回放侧已经走了。两条路该同一个函数（出处：50 复盘质疑一）。",
+      "replacement": "登记合并（2026-10-22，feature 55）：feature 50 的 !命令活轮次全量上屏问题并入 feature 48 的「活轮次与回放形态不一致」；该条已有 50 追记，问题仍开放。"
+    }
+  ],
+  "note": "正文原件留在审计 JSON；核销不代表本轮实现功能，未验证的真人/模型/数据事项不批量关闭。"
+}

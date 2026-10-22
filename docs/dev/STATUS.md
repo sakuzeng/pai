@@ -1,510 +1,64 @@
 # 当前状态快照
 
-最后更新：2026-09-13（feature 53 交付——feature 45 真用清单的最后四条，用户「做吧」。
-①默认 token 预算 20 万 → 50 万（实测 11 步任务烧 131820、用户 2026-09-10 那次 217839 撞顶），
-撞顶那句话改成说清三件事：停在第几步、再说一句就接着做（`spent_tokens` 是 run_agent 的局部变量，
-REPL 下一轮本来就重新计数——这事从没人说过）、要放宽用 `--max-tokens`；once 模式不说中间那半句
-（没有下一轮，说了是空头支票，`run_agent` 为此加 `interactive` 参数）。
-②等真人回答的时间不算「用时」：`Dock.pause_clock/resume_clock` + `_elapsed()`，
-TUI 的 `ask_human` 用 try/finally 包住对话框（真跑那次 `⠹ 3m59s` 里 3m55s 是弹窗在等人）。
-③长 cwd 不再挤掉模型与上下文：footer 先压路径（中间省略、保住最后一段 `~/…/pai`）再牺牲右边。
-④权限弹窗说人话：四类 ask 的 `Decision.reason` 各说清「为什么问 / 允许后会怎样 / 怎么配才不再问」，
-`/permissions` 同步；`reason` 是唯一出处，弹窗与事件流同一份文本。
-两处注入反证各红。档案 [features/53](features/53-20260913-four-frictions/README.md)。1914 passed）。
-同日早些：feature 52 交付——英文单词不再被折行劈开（45-B1，推迟三轮的那条）。
-成因是 44 为禁则选的「逐字符攒行」：对中日韩是对的，对英文就是把 `read_file` 劈成 `read_fi`+`le`。
-修法是换行时决定「本行留几个字」的两条规则依次作用——先避头（标点不能在行首），再补词
-（断点落在 ASCII 词中间就整词下移，词本身占满一行才硬断）。顺序不能反：真正劈开 `rules.py` 的
-正是 44 那条 ASCII 标点避头——它把 `s` 挤下来陪句点。词字符 = ASCII 字母数字 + `_`，
-`.` `/` `-` 不算，于是长路径仍可在分隔符处断。顺带剥掉折行留下的行尾空格（选区复制会带出来）。
-断言按宽度区间跑（44 复盘「下次怎么做更好」的落点）：24..80 每个宽度都验一遍词完整、不丢不重，
-中文行仍填满。注入反证：拿掉词回退 34 failed。档案
-[features/52](features/52-20260913-word-wrap/README.md)。1899 passed）。
-同日早些：feature 50 交付——工具调用折成组，用户截图「一轮十几条灰色工具行铺满屏，
-展开收起不明显」，拍板「都可以照cc的来」。照 CC 2.1.88 `collapseReadSearchGroups`：连续的读/搜/看/跑
-合成一条会更新的 transcript 条目，跑着时「Reading 3 files…」+ `⎿` 当前工具提示，
-跑完「Read 3 files, ran 4 shell commands」dim 灰（文案按用户指定用英文、不带快捷键提示——
-CC 真机的组行就是光秃秃的「Ran 3 shell commands」）；展开时视口跟到最底下、收起回到原处；模型开口 / 写改文件 / 轮末 / 用户再说话断组；
-写改文件单独一行且默认展开 diff（顺带兑现 45-B2）；展开一级铺全部输出、整块暗底 `TOOL_BG`
-（CC 的暗底是光标选中行，pai 点开即选中）；^O 切最近一个可展开条目；48 的回放走同一条状态机。
-只在备用屏分组，main-screen 照旧逐条。新增 `tui/groups.py`，四处注入反证各红（不断组 / 轮末不定格 /
-展开不跟到底 / 收起不回原位）。
-档案 [features/50](features/50-20260912-tool-group-collapse/README.md)。
-1738 passed）。
-2026-09-11：feature 49 交付——resume 追加同一文件 + 会话内 `/resume`，用户原话
-「我想追加同一文件呢。并且在命令/resume 下能够恢复对话呢」，拍板「照cc的吧，先合48」。
-照 CC 2.1.88：①`--resume` 默认沿用被恢复会话的 id、往同一个文件追加（`SessionLog.open_existing`），
-一条新消息都没有就一个字节不写；24 的「新文件 + parentSession + 按原 id 重录」搬到 `--fork-session`
-（CC 同名 flag）后面；重装配的 system 只在内存不落盘（CC 转录不存 system prompt），指令消息内容
-没变就沿用原条目。②`/resume` 命令：无参经 asker 弹当前目录最近 8 个会话（时间 · 条数 · 首句；只认录制 cwd 相同的——用户截图抓到 pai_playground 子目录的会话混进来，补漏），带参
-id 前缀 / 路径直达；切换 = 就地换 messages/ledger、锚点与熔断归零、`SessionLog.switch_to`、
-`EventTrace` 跟着 session 当前路径写、发新事件 `ConversationResumed`（进 `CONTEXT_REWRITING`，
-召回去重表随之作废——events.py 那条「将来 resume 重建往这里加一行」的注释兑现）、TUI 清屏用 48 的
-回放画目标会话。三处注入反证各红（不清屏 / 不发事件 / 重写 header）。
-顺带推翻 TODO 里「没有 /resume，要做得先有会话树」：CC 的 /resume 是线性切换，不需要树。
-档案 [features/49](features/49-20260911-resume-same-file-and-slash-resume/README.md)。
-1723 passed）。
-同日早些：feature 48 交付——`--resume` 之后旧对话上屏，修用户报的
-「我使用resume并不能恢复对话状态」。排查结论：模型侧一直是通的，屏幕侧从没画过——
-`_run_tui` 的 `Transcript()` 从空建起，恢复提示走 print 在进备用屏（自带 `2J`）之前打，
-用户看到的是一张与全新会话一模一样的空屏。用户拍板「按 CC 的来」，四问全按 CC 2.1.88
-反编译源码定：①恢复的消息与活轮次走同一个渲染器（CC 把 initialMessages 直接当 messages
-状态喂同一个 `<Messages>`）——pai 新增 `modes/resume.py::history_items`（消息 → 回放项，
-纯函数）+ `TuiApp.replay`（复用活轮次的用户行 / 答案 / 工具折叠行，不过 dock，^O 能展开）；
-②框架注入（指令、规则/召回 system-reminder）不画（CC 的 isMeta），压缩位置一行标记不回放
-摘要正文，`!命令` 画成一条折叠工具行；③system prompt 与项目指令按当前环境重装配
-（CC 转录里根本不存 system prompt）——此前提示语说重装配而代码没做，13 天没人发现；
-④纯 REPL 路径只打提示不回放（CC print 模式无渲染）。真实轨迹夹具就是用户那次
-「看起来没恢复」的原始会话（37 条，一次 run 被预算掐断、零最终回答）。
-两处注入反证各红。档案 [features/48](features/48-20260910-resume-transcript-replay/README.md)。
-1704 passed）。
-2026-08-27：feature 47 交付——工具选择的可重复测量，修 feature 46
-留下的「端到端效果没有可信测量方法」（用户问「怎样修复呢」）。
-方法：不跑整条轨迹，固定上下文只看第一个 `tool_call`；18 条案例集
-（14 条专用工具该赢 + 4 条 bash 才是对的，防止指标奖励「一律不选 bash」）
-× 每条采样 5 次 × 两个提示词变体（当前 vs feature 46 之前的冻结抄写）。
-判据**预先注册**在档案里、写于跑第一次之前，且一个字没改过。
-四条里两条被证伪：①`temperature=0` 在这家 provider 上**不给确定性**
-（逐字冻结的对照组三次跑出 14/14/16；直接探针同 case 6 次采样 5:1）——
-这推翻了方法的原始前提，抓到它的正是预注册第 4 条（重复性），
-修法是每条 case 采样多次按命中率计分；②「引导比不引导多赢 ≥3 个 case」
-被决定性证伪，定稿 **14.80 vs 14.80**，唯一稳定占优的是
-「跑一下这个项目的测试」（80% vs 60%）——即 feature 45 发现的那一条，
-不外推；我在 45/46 说的「瓶颈在提示层」讲大了。
-测量的第一件事是抓到我自己在 46 引入的回归：引导把 bash 该赢的场景弄差了
-（2.40/4 vs 无引导 3.20/4），据此补了一句给 bash 划回地盘（→2.60，没修完）。
-跑法 `./eval.sh --llm -k tool_choice`（约 4 分半 / 360 次短请求）。
-档案 [features/47](features/47-20260827-tool-choice-eval/README.md)。
-1694 passed）。
-同日早些：feature 46 交付——补上 feature 45 实测发现的 A1+A2
-（用户点名一起做）。①`build_system_prompt` 加五句条件化工具引导
-（read_file / search_files / run_tests / git_read / list_dir），`bash` 的工具描述
-收紧成「先确认没有更合适的专用工具再用它」——两个决策时刻各盖一个（读指令那一刻、
-在 schema 里挑工具那一刻）。②装配期把 cwd 与项目结构摘要注入 system prompt
-（顺带修掉 45-C4「模型不知道自己 cwd」），新增 `list_dir` 工具兜底会话中途新建的
-目录；`render_tree` 的预算**按层分配**而不是深度优先——深度优先 + 全局上限会让
-最重要的目录整个消失且看不出来（本仓库上 `src/` 真的没出现过）。
-③`search_files` 接受单个文件当搜索根。
-验收是 `tests/test_llm_steering.py` 三条 `--llm` 测试（真跑三遍全过）——
-这是本轮唯一能证明它有用的东西，离线断言「提示语里有那几个字」证明不了模型会听。
-端到端单次真跑方差极大（同一问题跑出 7 调用/2 弹窗与 12 调用/5 弹窗），
-刻意不拿它声称改进。档案 [features/46](features/46-20260827-tool-steering/README.md)。
-1683 passed）。
-同日早些：feature 45 交付——**第一次真用**（用户从四个候选里选定）。
-本轮不加功能，交付物是一份发现清单：真 pai 进程 + 真 pty + 真模型跑三件真活
-（查一处实现 / 改一个函数+加测试 / 跑测试）+ 一次 A/B 实验，累计约 20 万 token。
-最大的发现是**证伪**：feature 41～44 四轮工具建设的收益卡在提示层——
-`build_system_prompt` 生成的整份系统提示里只有一句工具引导，而它是给 `edit_file`
-的；`search_files` / `run_tests` / `git_read` 一句都没有，而模型确实只听了那一句。
-A/B：`run_tests` 在任务明说「跑测试」时零次被选中、走 bash、7 次权限弹窗、
-烧完预算没做完；加一句引导后 1 次调用、0 弹窗、9 秒完成。
-第二条证伪：剩下的 bash 调用有结构性原因不是模型不听话——没有工具能回答
-「这个项目长什么样」，且 `search_files` 不接受单个文件当搜索根。
-另确认三条真缺陷（md 折行劈开英文单词、编辑的 diff 默认视图看不见、长 cwd 撑爆
-footer）与四条体验摩擦。本轮刻意一条不修（修改会污染下一次观察）。
-只有真人能跑的那半收紧成六节清单交给用户，**仍未被跑过**。
-档案 [features/45](features/45-20260827-first-real-use/README.md)。
-测试数字不变，1656 passed）。
-同日早些：feature 44 交付——模型回答的 markdown 渲染（用户点名
-「输出的 md 的预览而不是原文，还有表格」）。新增 `tui/markdown.py`：按行扫描分块
-（围栏代码块 / 标题 / 分隔线 / 表格 / 引用 / 列表 / 段落）+ 行内粗斜与行内代码
-（成对才算标记，`2 ** 3` 不会被吃）。**只做 TUI**（拍板问 1）：那边答案是
-`_flush_answer` 一次性 commit 的、与流式没有冲突，而 REPL/once 逐字写 stdout，
-渲染与它相悖且管道里不该有转义符。**自己写不引 rich**（拍板问 2）：复用
-`width.display_width` 与 `theme.paint`，不引第二套宽度/颜色体系——两套宽度计算
-正是 feature 13「满屏阶梯」那类 bug 的温床。表格按 `display_width` 定列宽、
-超宽按比例压 + 单元格截断，分隔行刻意用 ASCII `-`（框线字符是 Ambiguous 宽度，
-部分 CJK 终端画 2 列，落在表格里会让整张表塌）。答案条目走 `dynamic_entry`，
-拉宽窗口表格跟着重排。`tui.markdown` 可关退回原文。
-两处过程中的修正：单换行按硬换行（既有 e2e 撞出来的——21 行答案被合成一段，
-内容没丢但结构没了）、中文禁则避头（真跑看出逗号顶行首）。
-档案 [features/44](features/44-20260826-markdown-rendering/README.md)。
-1656 passed）。
-同日早些：feature 43 交付——「改代码」这条链上的三件（用户「继续」，
-接 42 交付汇报里列的下一格）。①`edit_file` 加 `near_line`：只在 `old` 出现多次时
-用行号挑哪一处（平局取靠前并说出来），`old` 仍必须逐字匹配——行号只用来「挑」
-不用来「定位内容」，这条不对称是这个参数敢存在的全部理由；`old` 唯一时的老路
-一个字没变。出现多次时的错误文案现在报出每一处在第几行并点名 `near_line`。
-②`edit_file` / `write_file` 的返回值带一段 unified diff（超 80 行只报 `+X/-Y`
-并指向 `git_read("diff")`，新建只报行数，没变说「无变化」）——落点选返回值而非
-事件，因为 TUI 的 `_tool_entry` 本来就会把多行结果折叠成可展开条目、
-`_display_result` 本来就分好了「模型拿原文 / 终端拿消毒版」，零 UI 改动。
-③三份形状一样的「默认根解析 + matcher 包装」抽进 `core/tools/roots.py`，
-验收按「解析后的值逐字相等」（把抽取前的三份实现抄进测试当对照组）。
-档案 [features/43](features/43-20260826-edit-and-diff/README.md)。
-1628 passed）。
-同日早些：feature 42 交付——把跑测试与 git 从 bash 里摘出来
-（用户指示，接 41 交付汇报里「现在还差什么」的第一条）。三件：
-①权限层加 `EXEC` 第三档——`access` 原本只有 READ/WRITE，判据是「碰哪个文件」，
-而跑测试两头都不沾；写成 READ 行为对但字段说谎，新开一档买到的是
-「下一个执行类工具算哪一档」的判据（D#78），兜底待遇与 READ 相同，
-`acceptEdits` 与危险写检查刻意都不管它，三处各钉一条。
-②`run_tests(filter, path)`——命令来自 `tests.command` 或自动探测（五种项目），
-模型只能给「跑哪一部分」，这正是它能自动放行而 bash 不行的根据（D#77）；
-默认超时 600s（bash 的 120s 会把本仓库 183s 的全量掐死），输出保头保尾
-（bash 是头部截断，正好把 `N passed` 那行扔掉）。
-③`git_read(subcommand, args)`——argv 由 pai 拼、不过 shell，`git status; rm -rf x`
-结构上构造不出来；子命令白名单 + 按子命令的 flag 白名单，写操作不进、仍走 bash 的 ask。
-顺带：能力标志「收 input」的第一个真实用户出现（`git log` 能并发，
-`git status` 会抢 `.git/index.lock`）；`MAX_OUTPUT_CHARS` 的家收进 `tools/output.py`。
-档案 [features/42](features/42-20260826-tests-and-git-tools/README.md)。
-1575 passed）。
-同日早些：feature 41 交付——推到「能拿来做日常开发」这一格
-（用户指示，能力补齐不是批清 TODO）。两条：①`read_file` 有了按行的
-`offset`/`limit`（0 哨兵，坐标系与截断文案同源）——本仓库 160 个 `.py` 里
-92 个超过 4000 字符上限，`test_loop.py` 此前要分 21 次读，且只能靠提示语教模型
-走 `sed -n`（成本转嫁给模型）；截断改切在整行边界，文案给出的续读 offset
-逐字接得上。②新工具 `search_files`（内容正则 + 文件名 glob，空 pattern 只按
-文件名找）——纯 Python 不依赖 ripgrep，三件声明齐全，于是走
-`_boundary_fallback` 的「读 → 界内 allow」：界内搜索一次都不问，且不需要用户
-配任何 allow 白名单去换（那条路会绕开目录边界，D#52；本轮的取舍记 D#76）。
-档案 [features/41](features/41-20260826-daily-driver/README.md)。
-1534 passed）。
-同日早些：feature 40 交付——还三类旧账（用户点名），全程不改行为、
-测试数字一个不动（1503 passed）。①共享测试夹具层：跨测试文件的 import 归零
-（此前 5 处），`tests/helpers.py` 与 `tests/trajectories.py` 分别装动作与数据；
-②拆文件一个不拆一个真拆——`compaction.py` 重估后不拆（392 行，条目自带的参照是
-pi 的 893 行，且与 AGENTS「一个阶段一个模块」相抵），真拆的是 `interactive.py`
-（1365 → 1007，抽出 `modes/commands.py`：`/命令` 与 `!shell` 被两条主循环共用，
-不该住在其中一条的文件里；中断三件套同时搬回 `core/interrupt.py`）；
-③方法论欠账清 6 条（两篇新笔记 + 两处追记）。档案
-[features/40](features/40-20260826-old-debts/README.md)。
-1503 passed）。
-同日早些：feature 39 交付——干活期间的键盘不再像死了（用户从四处
-体验候选里点名这一处）：一条跑着的长命令期间打的字当场上屏。新增
-`core/heartbeat.py`（进程级心跳，形状照 `core/interrupt.py`），`shell._wait` 的
-轮询循环每轮一跳，TUI 把读键盘那段抽成 `pump_keys()` 给事件路径与心跳共用。
-顺带修掉一个谁也没登记过的真 bug：TUI 里 `!命令` 期间 Ctrl+C 停不下来——
-raw mode 关了 ISIG，而那时没人读键盘，Ctrl+C 那个字节要等命令跑完才被看见。
-档案 [features/39](features/39-20260826-busy-heartbeat/README.md)。
-随后（!小修）把 MCP 那条同族缺口一并修掉：`_wait_for` 小步等 + 每步心跳，
-中断也接上并在回填文案里说清「server 没收到取消信号、可能仍在执行」——
-与 bash 不同，那边我们真能杀进程组。
-1503 passed）。
-同日早些：feature 38 交付——缩小「离线全绿」与「真实使用」的差距
-（用户指示）。三类差距各自兑现：①离线其实能验、只是一直没验的——自动压缩第一次
-在真进程 + 真 pty 里跑到（屏幕上有「压缩：切于 2」、摘要请求真的发出去了），
-流中途 Ctrl+C 也补了 e2e。这两条此前结构上跑不到：假 provider 对每轮回固定 usage，
-相邻锚差值恒为 0，切点永远算成「无可压」——先把它改成随对话增长才解锁。
-②只有真模型能验的写成 `--llm` 冒烟（remember→召回全链、规则模型听不听），
-默认跳过。③只有真人真终端能验的做成手工清单（六节，尚未被人跑过，如实写明）。
-知识回流：instruments-lie 从四种骗法扩到五种。档案
-[features/38](features/38-20260826-offline-real-gap/README.md)。
-1492 passed）。
-同日早些：feature 37 交付——`on_context_rewritten` 升格成事件
-（用户指示）：`events.CONTEXT_REWRITING = (Compacted, ConversationCleared)` 成为
-「哪些事件意味着上下文被改写」唯一的家，装配层给出一个事件监听器并联进 on_event，
-`run_agent` 的参数与八个调用点的穿参数全部消失（src 里 28 处引用 → 0）。
-行为逐字不变，纵切 + 三处注入反证钉住。档案
-[features/37](features/37-20260826-context-rewritten-event/README.md)。
-1487 passed）。
-同日早些：feature 36 交付——路径作用域规则：pai 的指令层从
-「只有常驻一档」变成两档。`.pai/rules/*.md`（与 `~/.pai/rules/*.md`）里带
-`paths:` 的规则，只在模型这一步真的碰到匹配文件时才进上下文，碰不到就一个字
-都不占。挂点在 loop 的工具结果回填处（路径怎么取仍下放给 `Tool.get_path`），
-注入形态与召回块同款，压缩后作废重来（当时是回调，同日由 feature 37 改成事件）。
-需求出处是用户 2026-08-19 在需求池里点名要做的那条；三问一轮拍板全 A，
-另立 [D#75](decisions.md)（不带 `paths:` 的文件不加载，与官方相反——
-降低常驻成本的功能里不该再开一条常驻通道）。档案
-[features/36](features/36-20260826-path-scoped-instructions/README.md)。
-1481 passed）。
-同日早些：feature 35 交付——TODO 存量批清第二轮：从 165 条开放项里
-再挑「不等外部输入、修法已有形状」的一批，12 条真修 + 3 条对账核销（详见档案
-[features/35](features/35-20260826-todo-backlog-batch-2/README.md)）。
-真修的面：`PAI_KEEP_RECENT_TOKENS`（压缩链路第一次能在真实使用里跑到）、
-`/compact` 说清「还差多少 token」、上下文被改写就清召回去重表（10 遗留 6，
-并揪出 `/clear` 同族洞）、召回单篇 4000 字符上限、`/memory reload`、
-`AGENTS.md` 进指令发现（D#43 复议，用户拍板）、子目录懒加载注释改说真话、
-能力判定器崩溃留痕、`derive_replay` 不再把指令消息当任务、`--resume` 说清
-设置不跟着回来、`./test.sh --fast` 快循环（4.5×）、宽度原语搬进 `tui/width.py`。
-1447 passed）。
-更早（2026-08-25）：feature 34 交付——TODO 存量批清：从 180 条开放项里挑出
-「不等外部输入、修法已有形状」的一批清掉，11 条真修 + 6 条对账核销 + 2 对重复登记
-合并（详见档案 [features/34](features/34-20260825-todo-backlog-batch/README.md)）。
-真修的面：`PAI_CONTEXT_WINDOW` 非法值清晰报错、锚点换具名 `Anchor(index, tokens)`、
-未知 role 照常称重（R#5 推翻 D#8 的秤那一半）、熔断单向性补测试、
-TUI 下记忆/召回事件走 `EventSink` 不再打进 stdout、队列 `__len__`、
-`--resume` 同秒 tie 排序稳定、`read_file` 截断提示给出路、
-`core/protocols.py` 的 `ChatClient`（R#14）、design_gate 类型注解、R3 风格五条。
-1411 passed）。
-更早（2026-08-24 深夜）：feature 33 交付——usability-hardening，用户指示
-「不加新功能、已有功能健全到能让人使用」：九个修复面（折行点击定位、↑↓
-显示行移动、粘贴自愈提示、/permissions 说全真话、once defaultMode 告警、
-MCP 非对象 schema 拦截、超高 dock 钳制、additionalDirectories 首次接线）+
-README 全面重写。档案
-[features/33](features/33-20260824-usability-hardening/README.md)）。
-更早（夜）：feature 32 交付——阶段 7 evals 第一梯队（方案 C），
-roadmap 阶段 1-7 至此全部有交付：`./eval.sh` 独立评测入口 + runs.jsonl 工件
-索引；回放纵切（真 API 铸造 v1 轨迹入库 → `derive_replay` 派生 fake_provider
-脚本 → 真 pai 子进程重放 → 外部世界断言）+ 真模型冒烟纵切（--llm 双门槛）。
-档案 [features/32](features/32-20260824-evals/README.md)）。
-同日早些：feature 31 交付——装配收敛：once/interactive 的装配
-序列合一进 `modes/assembly.py`，MCP 关闭 atexit→单出口 finally（29 遗留 7）；
-同日独立功能测试 28 冒烟场景全过、三条低级发现 !小修 清零——mcp timeout
-静默回默认加 warn、纯中文工具名挂 hash 防撞名、07 档案状态行补翻。档案
-[features/31](features/31-20260824-assembly-convergence/README.md)。
-随后已知错误面批清（修正路线第一层）：截断轮次（`finish_reason=="length"`）
-tool_calls 全判失败不执行（DeepSeek 实测确认字段值）、MCP 连接失败经
-instructions 告知模型（29 遗留 6）、P0 并行调用条目对账核销——测试 2026-08-09
-就在，漏勾 15 天）。
-更早（2026-08-23 夜）：feature 29 交付——阶段 6 后半程 MCP client，阶段 6
-全部完成：`core/mcp.py` 手写 stdio JSON-RPC（Tools only，四问拍板全 A）→
-`mcp__<server>__<tool>` 桥接（清洗/截断/预算，D#74 schema 同源显式破例）→
-settings `mcpServers` 两层配置 + 28 式信任门禁 → 权限零引擎改动（默认 ask 落
-既有兜底、`mcp__s__*` fnmatch 白拿）。前置精读四篇 knowledge/mcp/、动工前后
-两轮反向对照（真探针 + 真 DeepSeek 回合一跑即成）。档案
-[features/29](features/29-20260823-mcp-client/README.md)）。
-更早（晚）：feature 28 交付——skills 持久化位点与信任门槛三合一：
-`.pai/skills` 段进危险写名单（acceptEdits/bypass 都翻不过）、项目级 skills
-CC 式信任门禁（interactive 真人确认持久化 / once 未信任不加载+warn）、用户级
-软链真身进边界（项目级刻意不解）。25 复核至此全部清零（高 2 中 2 低 3 修毕，
-7 条发现两日收口）。档案
-[features/28](features/28-20260823-skills-trust-and-write-guard/README.md)）。
-更早（同日）：25 独立交付复核 7 条发现分级登记后，两条高级当日修毕：
-feature 26 修假绿——压缩重挂锚测试三锚场景 + 双向断言，注入反证掐断重挂必红；
-feature 27 skill 工具退出路径边界——`Tool.boundary_exempt` 显式豁免位（D#73，
-CC/dsh 同构），子目录启动与软链正文由「权限被拒绝」变为可用。档案
-[features/26](features/26-20260823-reattach-test-fix/README.md)、
-[features/27](features/27-20260823-skill-boundary-exempt/README.md)）。
-更早：feature 25 交付——阶段 6 skills 子阶段（MCP 子阶段未动）：
-`<name>/SKILL.md` 两级目录扫描（项目赢用户 D#72）→ `<available_skills>` 目录经
-build_system_prompt 装配缝注入（带预算）→ 专用 `skill(name)` 工具加载正文
-（D#71，偏离 R4#A4 的 pi 定向）→ 压缩后重挂已加载正文（搭 D#42 指令重注入的车，
-零 loop 改动）→ `/skill` 命令显式通道。档案
-[features/25](features/25-20260822-skills/README.md)。
-更早（晚）：feature 24 交付——会话格式 v1（三家收敛形：header
-首行 / 统一信封 / 消息嵌套 / 压缩即条目带 firstKeptEntryId）+ 全量 `pai --resume`
-（配平 + 状态从零 + 按原 id 重录，两进程接力 e2e 钉死），13 号「退出即失联」
-与 23 号「拒收压缩会话」两笔债一并关掉，档案
-[features/24](features/24-20260822-session-format-and-resume/README.md)。
-同日早些：R4 清账日：低批 11 条 + 拍板四条（#16/19/25/27，
-#27 立 [features/21](features/21-20260822-input-line-overflow/README.md) 交付
-输入行折行）——R4#15~28 全清；随后 E 系列前三条交付：E1 扩展点地图
-（[docs/dev/扩展点.md](扩展点.md)）、E2 system prompt 装配
-（[features/22](features/22-20260822-system-prompt-assembly/README.md)，
-prompt 不再谎报工具集）、E3 落盘唯一收口 + 回放不变量
-（[features/23](features/23-20260822-model-visible-is-recorded/README.md)，
-`replay_messages` 是 evals 地基），E2/E3 按用户指示参照 CC。
-当日早些时候 feature 20 交付并推翻 feature 16 的节流结论，卡顿成因重开待诊）。
-数字由机器对账：`test_status_reports_the_current_test_count` 会在完整跑时校验本页的 passed 数——漂了三次之后不再靠人肉。
-给接手者（人或 AI）一页看清现状。
-「做了什么」的时间线见 [devlog.md](devlog.md)，「为什么这么选」见 [decisions.md](decisions.md)，
-功能级故事线见 [features/](features/README.md)，阶段地图见 [roadmap.md](roadmap.md)。
+最后核对：2026-10-22（运行时代码沿用 `6f6d055`；文档基线为包含本快照的提交，涵盖 [54 文档对齐](features/54-20261022-current-docs-alignment/README.md)与[55 审计收口](features/55-20261022-baseline-consistency/README.md)）。
+版本定位：`git log -1 --format=%H -- docs/dev/STATUS.md`；基线位于 `fix/55-baseline-consistency`，尚未合并 main。
 
-## 一句话
-
-agent loop + 工具系统 + 会话落盘 + 阶段 1 压缩闭环已跑通；阶段 2 前半程交互模式（纯 REPL）
-已交付——结构化事件流、排队消息队列、中断到进程组、`/` 命令与 `!` shell 模式、
-AskUserQuestion、工具状态行。`pai` 不带参数即进 REPL。
-阶段 3 记忆已交付——`PAI.md` 三层加载 + `@` 导入 + 自动记忆索引 + `remember` 写回，
-且压缩后从磁盘重读重注入（不做就是长会话里指令静默失效）。
-随后 feature 10 补上召回层（06 复盘悬案的落点）：记忆改一事一文件带 frontmatter、
-`MEMORY.md` 由扫描结果重建（投影而非账本）、相对时间与陈旧警告、
-每轮一次侧查询选 ≤5 篇注入 `<system-reminder>`（usage 计进预算熔断，连续失败即停用）。
-阶段 4 权限已交付——allow/ask/deny 三态（求值顺序 deny → ask → allow）、
-匹配语义下放给工具（bash 拆复合命令、fs 认路径锚点）、两层 `settings.json`、
-外部命令 hook（三种退出码），pai 已能跑自己的 `guards/design_gate.py`。
-随后 feature 09 补上策略层：默认兜底不再是常量 `allow` 而是工作目录边界函数
-（读界内放行/界外问、写一律问）、符号链接双路径、危险路径 bypass 免疫、
-权限模式四态（`default`/`acceptEdits`/`dontAsk`/`bypassPermissions`）。
-在当前目录跑 pai，上级目录与系统文件已需确认。
-阶段 5 流式已交付——答案逐字上屏、中断可掐在模型输出中途、工具能力标志
-（`is_read_only` / `is_concurrency_safe`，收 input 的函数、默认全 False）进 `@tool`、
-保序贪心分批调度（连续的并发安全工具并行，其余串行，不重排），
-权限按批前置判定（偏离 CC，绕开「两个并行工具同时问真人」）。
-usage 的取法按实测重写（D#58）：`include_usage` 在 DeepSeek 上是空操作，每块都看才取得到。
-阶段 2 后半程 TUI 已交付——真 tty 下 `pai` 进 TUI：上面是终端 scrollback、
-下面是 pai 接管的 dock（活动区 / 队列区 / 输入行或对话框 / 状态行）。
-输入归属由一个仲裁函数算出来（不再是「谁先 read 谁拿到」），
-于是提问期间敲 `!命令` 就是执行命令——08 那条真实事故关掉了；
-`/mode` 与 shift+tab 可切权限模式；干活时打的字本轮就注入（feature 18 改了 12 的默认值）；
-并发按动作聚合计数看得见。非 tty（管道/CI/注入 reader）整个不进 TUI，行为不变。
-随后 feature 14/15 补上自测闭环：`PAI_TUI_RECORD` 录下写给终端的字节、
-`pai-replay` 回放成 PNG（让 AI 自己看得见界面，不必每次让用户截图）；
-本地假 provider 说 OpenAI 兼容协议，于是真 pai 进程能在真 pty 里跑完整回合
-（真 SSE / 真 gate / 真 TUI），「需要模型开口」的功能也能自动测了——
-feature 12 被用户打回的三条 bug 各钉了一条 e2e。
-阶段 6 全部交付——skills（SKILL.md 两级目录扫描、目录索引进 system prompt
-的渐进式披露、`skill(name)` 工具加载、压缩后重挂、`/skill` 显式通道）与
-MCP client（手写 stdio JSON-RPC、`mcp__<server>__<tool>` 桥接、settings 两层
-配置 + 信任门禁、权限零引擎改动）。
-功能全貌见 [features/02](features/02-20260803-compaction/README.md)、
-[features/05](features/05-20260810-repl/README.md)、
-[features/07](features/07-20260810-permissions/README.md)。
+阶段 1—7 均已有交付：压缩、REPL/TUI、记忆、权限、流式、skills/MCP 与基础 evals。
+当前重点是实际使用验收、效果测量与参数校准；交付不等于全部真人验收完成。
+历史过程见 [devlog](devlog.md) 和 [功能档案](features/README.md)，取舍见 [decisions](decisions.md)，开放项只在 [TODO](TODO.md) 维护。
+本文件原有详细叙述可用 `git show 6f6d055:docs/dev/STATUS.md` 查看；旧测试数字、缓存比例与价格不作为当前实测重复列出。
 
 ## 模块现状
 
+以下表格由 `pai-viz` 读取；「可用」表示已有实现与离线验证，具体范围及未验证项见后文。
+
 | 模块 | 状态 | 说明 |
 |---|---|---|
-| `core/loop.py` | 可用 | agent loop：依赖注入、max_steps 兜底、每条消息落盘、usage 落盘、用量预算熔断、自动压缩触发/熔断；主循环走流式（侧查询刻意不走）、工具按批调度、权限按批前置（D#59）；截断轮次（`finish_reason=="length"`）tool_calls 全判失败回填不执行（2026-08-24，pi 同款判据） |
-| `core/tools/` | 可用 | `@tool` 从签名生成 schema；bash / read_file（按行 `offset`/`limit` 分段，截断切在整行边界、文案给出可续读的 offset）/ `search_files`（内容正则 + 文件名 glob；纯 Python 不依赖 ripgrep；三件声明齐全故界内不问、可与 read_file 并发；跳噪音目录与越界软链）/ write_file / edit_file / `run_tests`（命令来自 `tests.command` 或探测，模型只能给 filter/path；超时自成一档 600s；输出保头保尾——判决在尾部）/ `git_read`（只读子命令白名单 + 按子命令的 flag 白名单，argv 不过 shell；并发安全性取决于 subcommand）/ `output.py`（输出上限与保头保尾的家） / `edit_file` 带 `near_line`（多处出现时按行号挑，old 仍逐字匹配）与 diff 回执 / `diffs.py`（unified diff，超 80 行只报统计）/ `roots.py`（默认根解析 + matcher 包装，三工具共用） / `list_dir`（目录结构，与装配期注入共用 `render_tree`，预算按层分配）|
-| `core/compaction.py` | 可用 | 见下——阶段 1 主线（触发→切→摘→重建→熔断）全部接进 loop |
-| `modes/once.py` | 可用 | 单次任务，跑完即退出（对应 pi 的 print-mode）。client/model 可注入故可离线测；`context_window()` + `CompactionSettings()` 默认透传；装配走 `modes/assembly.py` |
-| `modes/commands.py` | 可用 | `/命令` 与 `!shell` 模式（feature 40 从 interactive 抽出）：两条主循环共用的那一半。只放「一条命令怎么执行、打什么字」，不放循环本身；跨轮状态一律由调用方传入，不认识 driver 与 app |
-| `modes/assembly.py` | 可用 | 共用装配序列（feature 31）：rules/hooks → skills 信任 → MCP 信任与并表 → boundary → gate → memory → recall 一份实现，once/interactive 只注入差异点（asker / 权限模式 / 事件通道）；不 import loop 内部，MCP 关闭归各模式单出口 finally |
-| `viz/` | 可用 | `pai-viz` 本地网页：运行时流转可视化（feature 17）——结构图（工具自省上图、阶段状态解析本表、每处标代码位置可点击跳编辑器）+ 回合时间线（读会话 JSONL 与并排的 `.events.jsonl`，分组配对成回合，2s 游标轮询实时点亮）。页面纯观察，无对话输入 |
-| `core/trace.py` | 可用 | `path` 按 session 当前路径算（feature 49：`/resume` 切文件，观测流跟着走）；观测流落盘：`EventTrace` 当 `on_event` 用，事件（类型数以 `core/events.py` 的 `AgentEvent` Union 为准，勿在文档里抄数）追加进 `<会话同名>.events.jsonl`（`MessageDelta` 刻意不落）；写失败吞掉且只告警一次——观测流挂了不连累正事。`compose()` 扇出渲染器与落盘器 |
-| `cli.py` / `config.py` | 可用 | cli 只做参数解析与分发；OpenAI 兼容协议打 DeepSeek；`context_window()` 读 `PAI_CONTEXT_WINDOW`，默认 1_000_000（v4-flash）；`keep_recent_tokens()` 读 `PAI_KEEP_RECENT_TOKENS`，默认取 `CompactionSettings` 的 20000（这个口子是为了让压缩在真实使用里跑得到，不是调优旋钮）；两者非法值都在门口 `sys.exit` |
-| `modes/resume.py` | 可用 | 会话切换（feature 49，照 CC `switchSession` + `/resume`）：`load_conversation` / `refresh_assembly`（system 只在内存、指令没变不重录）/ `switch_conversation`（就地换 messages/ledger、归零锚点熔断、`SessionLog.switch_to`、发 `ConversationResumed`）/ `recent_sessions` + `resume_command`（选择框与直达）；以及 resume 回放的分类（feature 48，照 CC `shouldShowUserMessage`）：恢复的 messages → 回放项（`UserLine` / `AssistantMessage` / `ToolEnd` 按 tool_call_id 配对 / `ShellLine` / `CompactedMark`），指令头、`<system-reminder>`、摘要头、`!` 回显四种 pai 自造的注入形状在这里认；住 modes 层是因为 tui 不该 import loop/commands（AST 守卫） |
-| `modes/interactive.py` | 可用 | REPL：跨轮持有 messages/锚点簿/熔断状态；历史（按 cwd 分文件、连续重复只记一条）、`\` 续行、`!` shell 模式、`/help /status /compact /clear /exit`、两级 Ctrl+C；API 出错不炸会话 |
-| `core/heartbeat.py` | 可用 | 干活期间的心跳（feature 39）：长时间阻塞的工具每轮给界面一个喘气机会。进程级单例 + `current()`/`set_current()`，形状与理由照 `core/interrupt.py`（`@tool` 从签名生成 schema，运行期上下文只能旁路进）。`shell._wait` 每 `POLL_SECONDS` 一跳；TUI 装上去读键盘，退出时卸载。回调抛异常一律吞——心跳是界面便利不是正确性。两条阻塞路径都接上了：`shell._wait` 与 `mcp._wait_for`（后者顺带接了中断） |
-| `core/events.py` | 可用 | frozen dataclass 扁平联合 + `render_text` 默认渲染器（D#39）。成员数不在文档里抄——已漂过三次（12→14→17），以本文件的 `AgentEvent` Union 为准。`on_event` 现在收事件对象，渲染下放 modes 层；`MessageDelta`（流式增量）与 `Interrupted(where="stream")` 于阶段 5 补上 |
-| `core/queue.py` | 可用 | `PendingMessageQueue`（all/single 两种 drain + 可选谓词）。已通电（feature 18）：TUI 干活期间打的字进队列，loop 有两个注入出口（工具结果回填后 / 模型不调工具时）。队列混装消息与 `/`、`!` 命令，谓词把命令滤出注入之外、留到轮末执行。单队列取自 CC、第二出口取自 pi（D#68）。长度走 `__len__`（feature 34，modes 层不再读私有表） |
-| `core/protocols.py` | 可用 | 跨模块共用的结构化类型（feature 34，R#14）：`ChatClient` 只描述 `chat.completions.create` 这一条路径——`run_agent` / `summarize` / `compact` / `make_recall` / `assemble` / `run_once` 六处的 client 参数从此有类型，FakeClient 与真 SDK 的同构性有测试钉住 |
-| `core/interrupt.py` | 可用 | 进程级中断标志（D#40）。loop 在步边界与每个 tool_call 前查，bash 在轮询里查 |
-| `modes/statusline.py` | 可用 | `render_tool_line(events, width)` 纯函数（按终端列宽算中文宽度）+ `\r` 原地刷新；真 tty 才启用，非 tty 退回滚动行。宽度原语已搬去 `tui/width.py`（2026-08-26，12 T1），这里 re-export |
-| `tui/width.py` | 可用 | 终端列宽原语：`display_width`（东亚宽字符 2 列、CSI/OSC/APC 0 列、Mn/Me/Cf 0 列）/ `_truncate` / `_ESCAPES`。十个 tui 模块的地基；一条 AST 守卫钉住 `pai/tui/*` 不反向依赖 `pai.modes`（唯一豁免 `_preview`） |
-| `core/tools/ask.py` | 可用 | AskUserQuestion，asker 装配期注入；默认工具集不含它（once 无真人可问） |
-| `core/paths.py` | 可用 | pai 用户级路径唯一事实源：`~/.pai/projects/<可读 slug>/{memory,sessions}/`，slug 用全路径连字符（D#44，对齐 CC） |
-| `core/session.py` | 可用 | `open_existing` / `switch_to` 接管既有文件（feature 49，照 CC：resume 默认追加同一文件，`_last_id` 取物理尾部）；格式 v1（feature 24，三家收敛形）：首行 header（version/id/cwd/parentSession）、统一信封 `{type,id,parentId,ts}`、消息嵌套 `message`、压缩即条目带 `firstKeptEntryId`；`load_session`（版本拒绝语义分方向、词汇表外类型拒收）、`build_messages`（压缩重建 + 指令归位）、`replay_messages`（压缩会话不再拒收）、`trim_unfinished` 配平、`resolve_resume_target`；`append` 加锁返 id、支持 `record_id`（resume 不造新身份）。旧 v0 文件按拍板不读（如实报错，不动不删） |
-| `core/memory.py` | 可用 | 分层指令发现（用户级→根→cwd，同目录内 AGENTS.md → PAI.md → PAI.local.md；读 AGENTS.md 是 2026-08-26 的 D#43 复议结论，CLAUDE.md 仍不读）、`@path` 导入（相对基准/4 跳/环检测/代码块内不算）、记忆扫描（每文件前 30 行取 frontmatter、mtime 新→旧、截 200）、索引投影（`render_index`，200 行 + 25KB 双上限，截断留提示）、相对时间与陈旧警告（`memory_age` / `freshness_note`） |
-| `core/rules.py` | 可用 | 路径作用域规则（feature 36）：`.pai/rules/*.md` 与 `~/.pai/rules/*.md` 递归发现 → `paths:` 认行内逗号与 YAML 列表两种写法 → 自写 glob→正则（`**` 跨目录、`*`/`?` 不跨 `/`）→ 碰到匹配路径才注入（单篇 4000 字符、每步 ≤3 条、超了要说）。去重表 `RuleState.injected` 与召回的 `surfaced` 同族，压缩/`/clear` 后由装配层的事件监听器一并清（判据 `events.CONTEXT_REWRITING`）。已知豁口：bash 里的 `cat` 不算「碰到」（同 D#52） |
-| `core/recall.py` | 可用 | 按查询召回：manifest → 侧查询（`max_tokens=4096`——推理模型的 reasoning 计进该上限，实测 256 会静默截断）→ 防御式 JSON 解析（分得清「没说话」与「明确不选」）→ 白名单（容忍 `[type]` 装饰、取最长匹配）→ ≤5 篇 → `<system-reminder>` 注入块；空目录短路、`surfaced` 去重（上下文被压缩/`/clear` 改写即清，10 遗留 6）、单篇 4000 字符上限（超了截断并说出来）、连续 3 次失败停用并发 `RecallFailed` |
-| `core/tools/memory_tool.py` | 可用 | `remember(name, description, fact, type)` 一事一文件带 frontmatter，同名即更新；写完重建 `MEMORY.md`（原子写）；name 白名单校验挡路径穿越；目录/通知/会话 id 走注入点 |
-| `core/permissions.py` | 可用 | 规则解析 + 七步求值链（deny → 危险路径 → 显式 ask → bypass → acceptEdits → allow → 兜底；顺序不许改 D#46）；兜底是工作目录边界函数不是常量（D#51），且认 `Tool.boundary_exempt` 豁免位（D#73，目前只有 skill）；权限模式四态（D#53）；两层 `settings.json` |
-| `core/boundary.py` | 可用 | 工作目录边界：启动 cwd 锚点 + `additionalDirectories`；前缀比到分隔符（`/tmp/proj-evil` 不算界内）；符号链接双路径；危险路径清单（shell 配置 / `.git/hooks` / `~/.ssh` / pai 自己的 settings / `.pai/skills` 段——feature 28 问 1：写 skills 即写后续指挥权） |
-| `core/hooks.py` | 可用 | 外部命令 hook：退出码 0/2/其他 三态、多 hook 取最严；超时/起不来 → deny（fail-closed，D#54），其他退出码维持非阻断；`load_hooks` 读两层配置 |
-| `core/gate.py` | 可用 | 装配 `before_tool_call`：规则 + hook + ask 解析（有真人问真人；无真人 = `dontAsk` 模式，两者合流 D#48/D#53）。loop 因此不认识 ask |
-| `core/tools/` 的 matcher | 可用 | `Tool.matcher` + `matcher_for`；bash 拆分隔符/剥包装器/词边界，fs 三件套认 `//`、`~/`、`/`（锚到规则来源）、裸名任意深度。另有 `get_path`/`access` 声明供边界判定用（bash 两个都不声明，故结构上不参与边界 D#52） |
-| `core/streaming.py` | 可用 | 流式装配：按 `index` 归并 tool_calls（`id`/`name` 只在首块）、`arguments` 拼完才解析（实测逐字符分片）、usage 每块都看（两种协议形状都取得到 D#58）、中断即停并如实回空 usage。一次响应装配成一条 assistant 消息（D#57，拒绝 CC 的 block 级记录） |
-| `core/scheduler.py` | 可用 | 保序贪心分批（照 CC `partitionToolCalls`）：连续的并发安全工具合批并行、其余串行、结果按输入顺序回填；单调用批不起线程池（于是 bash 永远在主线程）。`MAX_TOOL_WORKERS=8` 是未实测经验值 |
-| `modes/echo.py` | 可用 | 增量上屏：`MessageDelta` 不换行逐字写、每条消息只戴一次 `🤖`；最终答案不打两遍——按 `AgentEnd.reason` 分流（`final` 已流过不重打，`budget`/`max_steps`/`interrupted` 是 loop 合成的必须打） |
-| `tui/component.py` | 可用 | `Component.render(width) -> list[str]` 纯函数契约 + `invalidate()`；`Container` 递归；`CURSOR_MARKER`（APC，零宽，`display_width` 已会剥） |
-| `tui/renderer.py` | 可用 | 唯一碰终端的地方：dock 整块重绘（相对光标移动 + `CSI 2K`，包在同步输出里）、变矮先清再收缩、`commit()` 把内容上交 scrollback、提取 `CURSOR_MARKER` 摆硬件光标（IME 锚点）。绝不发 `2J`/`3J`——pai 不持有整份文档，清掉就画不回来 |
-| `tui/keys.py` | 可用 | 字节 → 按键，带状态（多字节字符与转义序列会被拆成两次 read 送达）；未识别序列丢弃但留 `unknown`；bracketed paste 整段进 |
-| `tui/editor.py` | 可用 | 行编辑器（纯状态机）：插入/删除/词跳/Ctrl-U-K-W/历史↑↓/`\` 续行/中文宽度感知光标；超宽按显示列折行（feature 21，CURSOR_MARKER 与选区反显跨行存活）。`Ctrl+R` 是已知回退 |
-| `tui/arbiter.py` | 可用 | 输入归属仲裁：输入框非空即压住对话框，停手 1500ms 放行（常量抄自 CC，来源写在旁边），`is_suppressing()` 可被问出来（不许静默） |
-| `tui/dialog.py` | 可用 | 权限 ask 与 AskUserQuestion 共用；`handoff()` 把 `!`/`/` 交回主循环执行（08 铁证的修法）；Esc 取消 |
-| `tui/dock.py` | 可用 | 活动区（按动作聚合计数）/ 队列区 / 状态行（转圈 + 已用时 + token + 模式 + 待决数）；`AgentEnd` 吐一行摘要给 commit |
-| `tui/history.py` | 可用 | 回放项的类型 + 活轮次与回放共用的两个条目工厂（`user_entry` 从 `_submitted` 抽出、`compacted_entry`）；渲染本体在 `TuiApp.replay`（feature 48） |
-| `tui/groups.py` | 可用 | 工具组（feature 50，照 CC `collapseReadSearchGroups`）：`ToolGroup` 收 ToolStart/ToolEnd、按动作词表出摘要（现在时/过去时）、`group_entry` 做成可展开条目（活跃时带 `⎿` 提示，展开铺全部输出 + `TOOL_BG` 暗底）；断组与定格的状态机在 `TuiApp`（AssistantMessage 非空 / 写改文件 / AgentEnd / 用户再说话） |
-| `tui/transcript.py` | 可用 | alt 屏下 pai 自己持有的会话文档：存条目不存行（按 `(内容, 宽度)` 缓存），于是 resize 后历史能按新宽度重排 |
-| `tui/scroll.py` | 可用 | 滚动状态机（纯状态零 IO）：follow-end、手动上滚就关掉跟随、视口变化保位、翻页留 4 行重叠 |
-| `tui/altscreen.py` | 可用 | 备用屏渲染器：整屏帧 + 行 diff + 绝对定位；绝不发 `2J`、绝不重发 `?1049h`（实测两条硬约束）；`SIGWINCH` 重入保护 |
-| `core/settings.py` | 可用 | 两层 `settings.json` 通用读取（`tui.altScreen` 开关）。`permissions.py` 自己那份刻意没动 |
-| `tui/mouse.py` | 可用 | SGR 1006 事件（`button&3==3` 是「没按键的移动」不是拖动）+ 按批合并（wheel 累加、drag 留最后一条） |
-| `tui/selection.py` | 可用 | transcript 选区：锚在逻辑行号不是屏幕行号（于是 CC 那套「滚出视口的行要另存」整块不需要）；按显示列取文本、剥净转义序列 |
-| `tui/clipboard.py` | 可用 | 复制双路径：本地 `pbcopy`/`wl-copy`/`xclip`/`xsel`（看退出码）→ ssh 或全失败时 OSC 52。OSC 52 实测会静默失败，故那条路径的提示语只说「已尝试复制」 |
-| `tui/app.py` / `tui/driver.py` | 可用 | app 粘合各组件（可测）；driver 读真 stdin（`select` 轮询，空闲时靠 `needs_tick()` 不白刷）。driver 无单测，靠 playground 冒烟顶着 |
-| `tui/theme.py` / `tui/logo.py` | 可用 | 配色与字形（不用 emoji，D#63：字体缺字 + 宽度不确定；有测试遍历所有字形卡死「码位 < U+1F000 且非宽字符且宽度为 1」）；启动 logo 与流光动画（同一份字形每帧只改配色，于是动画离线可测） |
-| `tui/screen.py` | 可用 | 最小终端模拟器（字节 → 屏幕，含 SGR 配色跟踪）。测试断言与回放出图共用同一份——分成两份的话「测试全绿」与「图上是对的」会各说各话 |
-| `tui/record.py` / `tui/replay.py` | 可用 | `PAI_TUI_RECORD=<路径>` 录下写给终端的字节（含尺寸与 resize）；`pai-replay <文件> -o 图.png` 回放成 PNG，让 AI 自己看得见界面（feature 14） |
-| `tui/terminal.py` | 可用 | raw mode 进出、进出备用屏（`?1049h` + `?7l`，退出无条件复原且顺序不能反）、`SIGWINCH` 同步不去抖 + 同尺寸丢弃、非 tty 闸门（判 stdout）、非主线程明确告警 |
-| `core/mcp.py` | 可用 | MCP client（feature 29，四问拍板全 A）：`MCPSession` 手写 stdio JSON-RPC 显式状态机（newline 分帧、id 配对、脏 stdout 容忍、超时/进程死/isError 收敛 MCPError、close 幂等 SIGTERM→SIGKILL、不重连——死了摘除）；桥接 `mcp__<server>__<tool>`（小写归一+超长 sha256 兜底、(server,raw) 存闭包不反解、Unicode 清洗（NFKC+剥 Cf/Co/Cn）+描述 2048 截断 + 输出 100k 字符预算、MCPError→`错误：`字符串——D#74 schema 同源显式破例）；配置 settings `mcpServers` 两层自读项目赢 + `mcp_trusted` 信任门禁（28 模式）；权限零引擎改动（默认 ask 落兜底、`mcp__s__*` fnmatch 白拿）。v1 刻意不做的八条见 TODO「feature 29 遗留」 |
-| `core/skills.py` | 可用 | skills（feature 25）：`scan_skills` 两级目录（`~/.pai/skills` 与 `<git根>/.pai/skills`，项目赢 D#72；缺/坏 frontmatter 跳过并 warn——刻意不抄 CC 的回退首段）、`render_catalog`（name+description 不给路径，每条 500 字符 + 总 8000 字节双上限）、`render_loaded_skills` + `make_instructions`（压缩后重挂：最近优先、单篇 2 万字符截头保留、总 10 万装不下整条丢，预算是 CC 5k/25k token 的换算值未实测校准）；feature 28：`apply_project_trust` 项目级信任门禁（CC 工作区信任对位——interactive 真人确认持久化、once 未信任不加载+warn，标记在项目身份目录）、`user_skill_link_roots` 用户级软链真身进边界（项目级刻意不解） |
-| `core/tools/skill.py` | 可用 | `skill(name)` 工具（D#71）：现读磁盘剥 frontmatter 回 `<skill_content>` + 相对路径基准；未知与被隐藏说同一句话（不泄露）；不进路径边界——`boundary_exempt` 显式豁免位（feature 27，D#73：入参无路径语义、路径来自装配层扫描，CC/dsh 同构；deny/用户 ask 规则照常在前），子目录启动与软链正文由此可用；once/interactive 装配把用户级 skills 根加进 WorkingDirs.additional（附属文件的 read_file 仍走既有边界），`/skill` 命令走展开注入（REPL 空闲即跑轮次，TUI 忙碌期进 steering 队列） |
-| `evals` | 可用 | 评测（feature 32，方案 C 最小合体；套件在仓库根 `evals/`、可离线单测的逻辑在 `src/pai/evals/`）：`./eval.sh` 独立入口（testpaths 不动，与 ./test.sh 口径隔离）；`src/pai/evals/artifacts.py` 工件索引（runs.jsonl 逐 case 一行 + 会话快照）、`src/pai/evals/replay.py` 派生器（v1 会话 → fake_provider 脚本；v0/坏文件/含 compaction/无 user 四类拒绝）；evals/ 下回放评测（真 pai 子进程 + 外部世界断言）与真模型冒烟（--llm 双门槛）各一条。比较机器/模型 judge 是 spec 非目标 |
+| `cli.py` / `config.py` | 可用 | 参数分发与 OpenAI 兼容 client；CLI 默认每轮任务 50 万 token、20 步，预算在下一次请求前检查 |
+| `core/loop.py` / `core/scheduler.py` | 可用 | 流式循环、保序分批调度、工具结果配对、预算与压缩接线；client/model/tools 可注入 |
+| `core/tools/` | 可用 | 签名生成 schema；读写编辑、搜索、目录、测试、只读 git、shell，以及按装配条件提供的记忆/提问/skill 工具 |
+| `core/compaction.py` | 可用 | 真实 usage 锚定、触发/切点/摘要/重建/熔断；摘要与保留预算未实测校准 |
+| `core/permissions.py` / `core/boundary.py` / `core/hooks.py` / `core/gate.py` | 可用 | deny→ask→allow、四模式、目录边界、危险写与 PreToolUse；bash 不参与路径边界 |
+| `core/memory.py` / `core/recall.py` / `core/rules.py` / `core/paths.py` | 可用 | 分层指令、记忆索引与侧查询召回、路径规则、用户级路径；上下文改写后清理注入去重状态 |
+| `core/session.py` | 可用 | 格式 v1、append-only、压缩重建、默认恢复到原文件；旧 v0 明确拒读 |
+| `core/streaming.py` | 可用 | SSE 装配、tool_call id 归一与 usage 收集；摘要和召回侧查询仍非流式 |
+| `core/skills.py` / `core/tools/skill.py` | 可用 | 两级目录与信任、按需正文加载、压缩重挂、显式 /skill；运行中增删 skill 不重新扫描 |
+| `core/mcp.py` | 可用 | stdio JSON-RPC、工具桥接、信任与权限接线、失败隔离；无 HTTP/OAuth/自动重连 |
+| `core/events.py` / `core/trace.py` / `core/queue.py` / `core/interrupt.py` / `core/heartbeat.py` / `core/protocols.py` | 可用 | 事件、观测落盘、用户插话、中断、工具阻塞期心跳与客户端协议类型 |
+| `core/settings.py` | 可用 | 用户/项目两层设置、权限规则合并、通用信任标记 |
+| `modes/assembly.py` / `modes/once.py` / `modes/interactive.py` / `modes/commands.py` / `modes/resume.py` | 可用 | 共用装配；once、REPL、TUI；/命令与 !shell；恢复回放、会话内切换与 fork |
+| `tui/app.py` / `tui/driver.py` / `tui/dock.py` / `tui/editor.py` | 可用 | 输入与对话框仲裁、折行、忙时输入、等人暂停计时、footer 路径压缩 |
+| `tui/transcript.py` / `tui/groups.py` / `tui/markdown.py` / `tui/altscreen.py` | 可用 | transcript、连续工具分组、编辑 diff 默认展开、Markdown 与英文词边界折行、整屏重绘 |
+| `tui/mouse.py` / `tui/selection.py` / `tui/clipboard.py` / `tui/record.py` / `tui/replay.py` | 可用 | 鼠标与选区、剪贴板、终端字节录制及 PNG 回放；真机体验仍有待验收项 |
+| `viz/` | 可用 | 本地结构图、事件时间线与代码跳转；页面纯观察 |
+| `evals` | 可用 | 独立回放与真模型入口、工件索引、单步工具选择测量；完整任务效果尚无稳定测量 |
 
-## compaction.py 里有什么
+## 最近交付
 
-| 函数 | 干什么 | 接进 loop 了吗 |
-|---|---|---|
-| `estimate_tokens` | 单条消息 token 估算，中英文分别按官方系数（0.6 / 0.3） | 间接 |
-| `estimate_conversation_tokens` | 整段消息求和 | 间接 |
-| `estimate_request_tokens` | 加上工具 schema，对齐 provider 的 prompt_tokens 口径 | 间接 |
-| `context_tokens` | 以真实 usage 为锚 + 增量估算，误差 1.3% | ✅ 每步算，落盘，且是压缩触发判断的输入 |
-| `should_compact` | 阈值判断（`tokens > window - reserve_tokens`） | ✅ 每步触发检查 |
-| `find_cut_point` | 在哪下刀，按锚点真实差值反推，绝不切在孤儿 tool_result 上 | ✅ 触发时调用；单锚（刚压完只有 1 个真实点）时如实返回「无可压」，走警告分支——这条约束在 e2e 写夹具时被撞出来，见下方遗留 |
-| `serialize_conversation` | 拍平成文本喂摘要模型 | ✅ 经 `summarize` 调用 |
-| `summarize` | 调模型生成摘要，`style` 默认 `flat`（D#37 实测裁决） | ✅ 经 `compact` 调用 |
-| `compact` | 切 + 摘 + 重建，调用方随后 reset 锚并置 `awaiting_verify` | ✅ 触发且有可压时调用 |
-| `CompactionState` / `verify_compaction` / `MAX_COMPACT_FAILURES` | 熔断状态机，成败只认压缩后首次真实 usage（D#34） | ✅ 每步 verify，熔断后触发块整体跳过 |
-| `CompactionSettings` | `reserve_tokens=16384`、`enabled=True`、`keep_recent_tokens=20000` | ✅ `once.run_once` 默认值透传 |
+- [55：审计基线收口](features/55-20261022-baseline-consistency/README.md)：81 条决策与 55 个档案索引对齐；核销、拆分和合并有证据的 TODO，开放 217 条；加强索引、生命周期和唯一当前测试数字校验。
 
-## 实测数据（真实跑出来的，非推测）
+- [48：恢复历史上屏](features/48-20260910-resume-transcript-replay/README.md)、[49：原文件追加与 /resume](features/49-20260911-resume-same-file-and-slash-resume/README.md)：模型历史与屏幕回放接通，当前环境重装配；fork 另建文件。
+- [50：工具分组](features/50-20260912-tool-group-collapse/README.md)：连续读/搜/看/跑折成摘要，写改默认展示 diff；界面保持中文，组摘要按用户指定用英文。
+- [52：英文折行](features/52-20260913-word-wrap/README.md)：保住 ASCII 单词，长路径与代码块仍有刻意保留的硬断行为。
+- [53：四项真用摩擦](features/53-20260913-four-frictions/README.md)：预算 50 万及撞顶提示、等人暂停计时、长 cwd footer、权限理由文案。
 
-- 上下文估算误差：无锚 -33% → 锚定后 -1.3%
-- 缓存命中率：单次会话 91.6%，全天统计 84.7%
-- `deepseek-v4-flash`：上下文 1M、输出上限 384K；缓存命中 0.02 元/M vs 未命中 1 元/M（50 倍）
-- 按 `reserve_tokens=16384`，压缩触发点是 983,616 token——以当前用量（全天 3 万）几乎不会触发
+## 实测基线与验证边界
 
-## 测试
+- 2026-10-22，Python 3.9.6，全量离线实际输出：`1927 passed, 8 deselected in 194.15s (0:03:14)`。8 项为默认排除的真实 LLM 测试。
+- 运行命令为 `python3 -B -m pytest -m 'not llm' -p no:cacheprovider --basetemp=<临时目录> -q`，使用项目虚拟环境；与 `./test.sh` 的用例筛选相同，缓存关闭、临时产物放在 `/private/tmp`。
+- 首轮沙箱禁止监听本机端口，失败不归为项目回归；获准在沙箱外重跑得到上述结果。本次没有重跑真实模型或真人交互验收。
+- `./eval.sh` 是独立评测入口，本次未运行；历史测量见 [feature 47](features/47-20260827-tool-choice-eval/README.md)，不能把单步工具选择分数推广成整条任务的收益。
 
-共收集 1072 项（阶段 2 REPL 8 task + 阶段 3 记忆 7 task + 交付后五个补漏 + 文档一致性
-+ 阶段 4 权限 task 1-7 + feature 10 记忆召回 7 task + feature 11 流式 task 1-6
-+ feature 12 TUI task 1-9 + feature 14 录制与回放 + feature 15 假 provider + e2e
-+ feature 13 alt-screen task 1-7 + feature 16 鼠标与选区 task 1-9
-+ feature 17 viz-flow task 1-3.5（事件落盘 + RecallInjected/ConversationCleared + 装配））：
+## 重要边界与未完成验证
 
-- `./test.sh` → 1503 passed, 5 deselected，全部离线，约 3 分钟（179s）。这是默认路径。
-  （5 deselected 全是 `llm` 标记的真跑冒烟，默认不花钱；`./test.sh --llm` 才跑。）
-- `./test.sh --fast` → 跳过 pty e2e 的快循环（feature 35，15 遗留）：
-  1449 passed + 1 skipped / 37s，4.4×。31 条 e2e 占掉 78% 的墙钟。
-  标记由 conftest 按文件名（`test_e2e_*.py`）自动挂，不靠人记。
-  交付前仍必须跑全量——快循环只用于改一行看一眼。
-- `./eval.sh` → 评测另一条入口（feature 32，不进上面的收集范围）：默认无密钥
-  回放评测；`--llm` 追加真模型评测。工件落 `evals/.eval/<时间戳>/`。
-  可选并行 `./test.sh -n auto`（xdist）：实测 2:07 全绿，10 核仅 1.35× 且
-  挂死旧账观察期未过，默认仍串行（feature 30 问 3·A，观察期记录见 TODO）。
-  R4#26 已修（2026-08-22）：Pillow 进 dev 依赖并已装，此前常驻的那条 skip 归零；
-  今后 Pillow 缺席相关测试直接红（带修法提示），不再静默 skip。
-  两套假 provider 分工是硬的：`tests/fake_llm.py` 注入的假客户端测装配与逻辑；
-  `tests/fake_provider.py` 起一个真 HTTP 服务，让真 pai 进程经 `PAI_BASE_URL` 打进来——
-  于是 `tests/test_e2e_tui.py` 能在真 pty 里跑完整回合（真 SSE、真 gate、真 TUI），
-  录制回放后断言屏幕上有什么。feature 12 被用户打回的三条 bug 各钉了一条。
-- `./test.sh --llm` → 额外跑打真实 API 的冒烟测试，会产生费用。
-  需同时满足有 `DEEPSEEK_API_KEY` 且 `PAI_RUN_LLM_TESTS=1`——花钱的副作用不能是默认行为。
-
-两份真实轨迹夹具内联在 `tests/test_compaction.py`：
-`REAL_TRAJECTORY`（含一条真实的 sed 失败）、`REAL_USAGE_TRAJECTORY` + `REAL_USAGE_STEPS`。
-
-## 已知缺陷（详细条目在 [archive/devlog-2026-08.md](archive/devlog-2026-08.md)）
-
-0. `bash` 不参与工作目录边界，且这是本功能的主要失效模式（D#52，feature 09 复盘质疑一）。
-   洞不在默认路径上——bash 默认 ask，已是最保守的一档；洞在用户为了可用性
-   必然要走的那条路上：once 下 bash 全被 deny，用户只能配 allow 白名单或开
-   `--dangerously-skip-permissions`，而一旦配了 `allow=["Bash(cat *)"]`，
-   `cat ../../etc/passwd` 就畅通无阻。CC 靠分类器模型解决，pai 明确不做分类器。
-   已登记 TODO：`/permissions` 与首启应明确提示这条。
-   另两个已知洞：`Bash(devbox run *)` 会放行 `devbox run rm -rf .`；
-   命令拆分是正则不是 shell 词法（方向偏保守，非安全洞）。均有测试钉住当前行为。
-   ~~权限层不配置就等于不存在~~ / ~~符号链接绕得开 deny~~ 两条已由 feature 09 关闭。
-
-1. 锚与压缩天然冲突，重置后有读数盲区——且接进 loop 后暴露出比原评审更具体的一条约束
-   （评审 R#7，D#34 已裁决熔断器只认真实 usage，本条按接线后的实况改写）。
-   `compact()` 重置锚点簿之后，下一次真实 usage 回来前只有 0 或 1 个锚点；
-   `find_cut_point` 严格要求 ≥2 个锚才能算出真实差值（`test_returns_1_when_nothing_can_be_cut`
-   已钉死单锚恒返回 1）。后果：压缩后若仍处于超线状态，下一步的触发检查必然先撞见
-   「无可压」警告，要再等一步真实 usage 落盘才能凑够两个锚点、算出下一次真实切点——
-   e2e 测试 `test_breaker_stops_auto_compaction` 把这条约束从「设计推论」变成了「跑出来的
-   事实」：每个熔断周期在脚本层面是 warn-turn + build-turn，不是简报原稿设想的
-   「一超线就压」单轮节奏。这不是 bug，是锚定法必然的代价，只是此前没人把它摆到台面。
-2. `estimate_tokens` 系统性低估约 1.5 倍（chat template 框架开销 + 工具 schema）。
-   仍不修，理由见 decisions 第 19 条（划掉保留）与第 32 条（改用真实 usage 差值定切点）。
-   补充实测：偏差不均匀——短 tool 结果低估 4-5 倍，长消息只低估约 2%。
-3. `reserve_tokens=16384` / `keep_recent_tokens=20000` 仍无真实生产数据校准，只在
-   loop 接线阶段用 e2e 夹具反推确认过阈值公式本身正确（`tokens > window - reserve`，
-   `test_should_compact_threshold_is_strictly_greater` 钉死）；真实摘要长度、真实触发频率
-   要等 `PAI_RUN_LLM_TESTS=1` 或生产使用后才能校准，登记见 TODO P1。
-   2026-08-26 追记（feature 38）：整条压缩链路现在至少在真进程 + 真 pty 里跑到过一次
-   （`test_automatic_compaction_really_happens_in_a_real_process`），
-   此前它在所有 e2e 里结构上不可达——假 provider 的固定 usage 让相邻锚差值恒为 0。
-   但那条 e2e 用的配置处在已知退化区（窗口 20000 配 reserve 16384，阈值只剩 3616），
-   所以它验的是「链路能跑通」，不是「正常配置下会被恰当触发」。
-4. `should_compact` 的退化情形（`window <= reserve_tokens` 时恒为 True）已有上层熔断器
-   兜底——`MAX_COMPACT_FAILURES=3` 接进 loop 触发块，连续压缩后仍超线会 tripped，
-   不再无限重试（`test_breaker_stops_auto_compaction` 覆盖）。此前记的「尚未实现」已过时。
-5. 拍平 vs 原样发（decisions 第 12/16 条）：已实测裁决，默认 `style="flat"`（D#37），
-   loop 调 `compact` 不传 style，用默认值。原样发的不听话率数据留档见
-   `evidence/20260809-拍平vs原样发实测/`。
-6. `pai_playground/sessions/` 被 .gitignore 排除，而测试夹具的原始出处在那里——溯源链断了。
+- 权限是工具调用策略：bash 不声明路径语义，allow 白名单或 bypass 不构成系统级文件隔离。危险写保护只覆盖能声明并判定路径的工具调用。
+- [feature 16](features/16-20260811-mouse-and-selection/README.md) 已交付；拖选卡顿成因仍未确诊。pty e2e 偶发挂死有超时与回收硬化，根因仍待复现证据。
+- [真人手工清单](features/45-20260827-first-real-use/evidence/手工清单-收紧版.md) 未有完整验收记录：中文 IME、resize、主题、真鼠标与权限文案体验仍需真人确认。
+- 压缩 reserve/keep_recent、skills/MCP 预算及默认任务预算缺少充分校准数据；离线压缩链路跑通不代表实际触发频率合理。
+- resume 后 system 在内存重装配，磁盘仍保留首次 system；!命令的活轮次与回放展示仍有差异。细项与范围限制见 TODO 的 feature 48—53 小节。
 
 ## 下一步
 
-主线：roadmap 阶段 1-7 全部有交付（压缩 / REPL+TUI / 记忆 / 权限与边界 /
-流式 / skills+MCP client / evals 第一梯队）。阶段性主线走完，下一程由
-真实使用驱动：日常真用 pai 攒数据 → 校准类欠账（reserve/keep_recent、
-skills 四常量、MCP 输出预算）与评测任务集扩容（32 遗留 3）才有输入。
-两条悬案已于 2026-08-24 一轮拍板清掉：matcher 签名追认 4 参（D#49 追记）、
-「干完再看」手势不做等真实使用（D#68 追记）。
-
-主线之外，接手者值得先知道的旧账（全部在 TODO，这里只挑影响判断的）：
-
-1. ★ 拖选卡顿成因至今未确诊（feature 16 停在「实现中」的原因）：离线复现不了，
-   feature 20 已推翻第一版处方——下一步是真机复现定位，不是再猜一个原因。
-2. ★ pty e2e 偶发挂死（不报错不超时就是不回来）：复现即中奖，攒线索阶段。
-3. 校准类欠账一批：压缩的 reserve/keep_recent、skills 四常量（25 遗留 3）、
-   MCP 输出字符预算（29 复核质疑：对中文偏大约一倍）——都等真实使用数据。
-
-各 feature 的遗留细目一律见 TODO 对应小节（05/06/07/09/11/12/13/16/24/25/29 等），
-不在此复述——本节只保「现在该往哪看」。
+1. 按 TODO 的近期阅读入口安排真人验收；有复现证据再处理交互问题。
+2. 建立少量真实任务的重复测量，区分成功率、耗时、弹窗与 token 消耗，再决定工具/提示词调整。
+3. 用真实使用数据校准预算；MCP 新传输、ToolSearch、代码重构等按既有触发条件评估。

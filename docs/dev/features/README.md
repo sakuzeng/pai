@@ -84,6 +84,32 @@
 
 | 功能 | 状态 | 一句话结果 |
 |---|---|---|
+| [55-20261022-baseline-consistency](55-20261022-baseline-consistency/README.md) | 已交付 | 审计后补齐两个索引、按证据整理 TODO、补记 54 偏差并加强文档校验 |
+| [30-20260824-config-and-trust-dedup](30-20260824-config-and-trust-dedup/README.md) | 已交付 | settings 读取和信任标记共用，pytest-xdist 作为可选测试路径 |
+| [24-20260822-session-format-and-resume](24-20260822-session-format-and-resume/README.md) | 已交付 | 会话 v1 统一信封、条目身份与压缩重建，线性 --resume；追加原文件由 49 后续交付 |
+| [23-20260822-model-visible-is-recorded](23-20260822-model-visible-is-recorded/README.md) | 已交付 | 模型可见消息与落盘入账收口，补回放不变量；会话身份由 24 后续补齐 |
+| [22-20260822-system-prompt-assembly](22-20260822-system-prompt-assembly/README.md) | 已交付 | system prompt 按实际工具集装配，保留直接调用的旧常量路径 |
+| [21-20260822-input-line-overflow](21-20260822-input-line-overflow/README.md) | 已交付 | 输入框按显示行折行；后续点击定位与上下移动由 33 补齐 |
+| [20-20260819-e2e-for-seams](20-20260819-e2e-for-seams/README.md) | 已交付 | 为 TUI 接缝补 e2e、收紧弱断言；验证拖选节流不能解释真机卡顿 |
+| [19-20260819-tui-input-and-signals](19-20260819-tui-input-and-signals/README.md) | 已交付 | SIGWINCH 只置标志、方向键拆包等待与粘贴自愈，修复输入/信号接缝 |
+| [09-20260810-working-dir-boundary](09-20260810-working-dir-boundary/README.md) | 已交付 | 工作目录与软链双路径边界、危险写清单和四种权限模式；bash 路径边界刻意不做 |
+| [08-20260810-storage-layout](08-20260810-storage-layout/README.md) | 已交付 | 会话与记忆迁到用户级项目目录，可读 slug；项目不再承载运行期数据 |
+| [07-20260810-permissions](07-20260810-permissions/README.md) | 已交付 | 三态权限、匹配器、两层配置与外部 hook；目录策略后续由 09 补齐 |
+| [06-20260810-memory](06-20260810-memory/README.md) | 已交付 | 分层指令、自动记忆索引、remember 写回与压缩后重注入；召回后续由 10 补齐 |
+| [05-20260810-repl](05-20260810-repl/README.md) | 已验收 | 交互 REPL、命令、历史、中断、提问与状态行；后续 TUI 沿该入口演化 |
+| [54-20261022-current-docs-alignment](54-20261022-current-docs-alignment/README.md) | 已交付 | 当前入口文档对账：默认预算、61 行状态快照、TODO 章节归属、需求池与交付索引；源码与测试不变 |
+| [53-20260913-four-frictions](53-20260913-four-frictions/README.md) | 已交付 | 默认预算 50 万与撞顶出路、等人暂停计时、长 cwd footer 压缩、权限理由文案 |
+| [52-20260913-word-wrap](52-20260913-word-wrap/README.md) | 已交付 | Markdown 折行保住 ASCII 单词；避头与补词按顺序作用，长路径仍可在分隔符处断 |
+| [50-20260912-tool-group-collapse](50-20260912-tool-group-collapse/README.md) | 已交付 | 连续读/搜/看/跑合成可展开工具组，写改默认展示 diff；回放复用同一状态机 |
+| [49-20260911-resume-same-file-and-slash-resume](49-20260911-resume-same-file-and-slash-resume/README.md) | 已交付 | 恢复默认追加原会话文件；--fork-session 另建；/resume 在会话内选择或直达切换 |
+| [48-20260910-resume-transcript-replay](48-20260910-resume-transcript-replay/README.md) | 已交付 | 恢复的用户/答案/工具历史回放上屏；system 与指令按当前环境重装配 |
+| [47-20260827-tool-choice-eval](47-20260827-tool-choice-eval/README.md) | 已交付 | 18 案例多次采样的单步工具选择测量；发现确定性假设不成立、引导仍有 bash 回归 |
+| [46-20260827-tool-steering](46-20260827-tool-steering/README.md) | 已交付 | 条件化工具引导、cwd 与项目结构注入、list_dir；search_files 支持单文件 |
+| [45-20260827-first-real-use](45-20260827-first-real-use/README.md) | 已交付 | 首次真进程、真 pty、真模型做实际任务；产出发现与真人清单，未冒充真人验收 |
+| [44-20260826-markdown-rendering](44-20260826-markdown-rendering/README.md) | 已交付 | TUI Markdown、表格与宽度重排；REPL/once 保留流式原文 |
+| [43-20260826-edit-and-diff](43-20260826-edit-and-diff/README.md) | 已交付 | edit_file 的 near_line 消歧、编辑 diff 回执、默认根解析收口 |
+| [42-20260826-tests-and-git-tools](42-20260826-tests-and-git-tools/README.md) | 已交付 | EXEC 权限语义、run_tests 与只读 git_read，把固定执行任务从任意 shell 中拆出 |
+| [41-20260826-daily-driver](41-20260826-daily-driver/README.md) | 已交付 | read_file 的 offset/limit 分段读取与 search_files 工具 |
 | [40-20260826-old-debts](40-20260826-old-debts/README.md) | 已交付 | 还三类旧账（用户点名），共同点是判据早就写下来而没人回来查。①共享测试夹具层：跨测试文件的 import 归零（此前 5 处、两种写法），`tests/helpers.py`（动作）与 `tests/trajectories.py`（数据）分家，`_OPEN` 5 份→1 份、reader 5 个变体→1 个；②拆文件一个不拆一个真拆——`compaction.py` 重估后不拆（触发条件字面满足，但条目自带的参照 pi 893 行与 AGENTS「一个阶段一个模块」都不支持），`interactive.py` 1365 → 1007 抽出 `modes/commands.py`（判据是「谁在共用」不是「哪块最大」），中断三件套搬回 `core/interrupt.py`；③方法论欠账清 6 条（green-but-which-path、todo-drift 两篇新的 + 注入反证第五坑、raw mode 接管清单两处追记）。全程不改行为：1503 passed 一个数字没动 |
 | [39-20260826-busy-heartbeat](39-20260826-busy-heartbeat/README.md) | 已交付 | 干活期间的键盘不再像死了（用户从四处体验候选里点名；12 复盘质疑二，登记后挂了十五天）：`core/heartbeat.py` 进程级心跳 + `shell._wait` 每轮一跳 + TUI 的 `pump_keys()` 由事件路径与心跳共用。顺带照出并修掉一个谁也没登记过的真 bug：TUI 里 `!命令` 期间 Ctrl+C 停不下来（raw mode 关了 ISIG，而那时没人读键盘）。两条 e2e 先红后绿；三处注入反证里有两处没红，照出的都是我自己写坏的地方（多余的 refresh、心跳装卸不对称）。1500 passed |
 | [38-20260826-offline-real-gap](38-20260826-offline-real-gap/README.md) | 已交付 | 缩小「离线全绿」与「真实使用」的差距（用户指示）。动手前的发现就是引子：假 provider 对每轮回固定 usage，而锚点簿记的正是这个数、切点靠相邻锚的差值反推——差值恒为 0 意味着自动压缩在所有 e2e 里结构上走不到，而没有任何测试会因此变红（2026-08-10 用户真跑报告过「压缩一次都没触发」，两边十几天没接上头）。三类差距各自兑现：①假 provider 的 usage 改成随对话增长 → 自动压缩第一次在真进程 + 真 pty 里跑到（屏幕上有「压缩：切于 2」、摘要请求真的发出去了，顺带把「两步节奏」从设计推论变成事实）+ 流中途 Ctrl+C e2e；②remember→召回全链、规则模型听不听写成 `--llm` 冒烟（默认跳过）；③IME/resize/颜色/鼠标做成手工清单（六节，如实写明尚未被人跑过）。外加仓库自己成为 feature 36 的第一个用户（`.pai/rules/tests.md`）。知识回流：instruments-lie 从四种骗法扩到五种。1492 passed |
@@ -109,7 +135,7 @@
 | [10-20260811-memory-recall](10-20260811-memory-recall/README.md) | 已交付 | 记忆召回层：一事一文件 + frontmatter、索引改投影、相对时间与陈旧警告、每轮侧查询选 ≤5 篇注入，458 passed |
 | [15-20260811-fake-provider](15-20260811-fake-provider/README.md) | 已交付 | 本地假 provider（真 HTTP + OpenAI 兼容协议）+ 真 pty e2e：「需要模型开口」的功能也能自动测了，用户打回的三条 bug 各钉一条，769 passed |
 | [14-20260811-session-capture](14-20260811-session-capture/README.md) | 已交付 | `PAI_TUI_RECORD` 录终端字节 + `pai-replay` 回放成 PNG——让 AI 自己看得见界面，不必每次让用户截图；终端模拟器升为一等公民，回放与测试共用同一份，756 passed |
-| [16-20260811-mouse-and-selection](16-20260811-mouse-and-selection/README.md) | 实现中 | 接管鼠标：滚轮滚自己的 transcript、拖选复制、点击展开、输入框选区。9 task 全实现，剩一条「从后往前拖选不复制」未修故不标已交付 |
+| [16-20260811-mouse-and-selection](16-20260811-mouse-and-selection/README.md) | 已交付 | 接管鼠标：滚轮滚自己的 transcript、拖选复制、点击展开、输入框选区。9 task 全实现，剩一条「从后往前拖选不复制」未修故不标已交付 |
 | [13-20260811-alt-screen](13-20260811-alt-screen/README.md) | 已交付 | 让 pai 拥有整屏（备用屏 DECSET 1049）：像新开一个窗口 ✅、transcript 键盘可滚 ✅、不接管鼠标（保住终端原生拖选复制）故「可点」留下一轮。阶段 2 原则 2 被拆开而非推翻 |
 | [12-20260811-tui](12-20260811-tui/README.md) | 已交付 | 阶段 2 后半程 TUI：scrollback + dock、输入归属仲裁（关掉 08 那条真实事故）、`/mode` + shift+tab、干活时打字排队、并发可见，8 task TDD，680 passed |
 | [11-20260811-streaming](11-20260811-streaming/README.md) | 已交付 | 阶段 5 流式：逐字上屏 + 工具能力标志 + 保序并发调度 + 权限按批前置；反向对照推翻了「usage 重复累加」那条必修前提，509 passed |

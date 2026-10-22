@@ -1,7 +1,6 @@
 """文档一致性校验（评审 R2#5）：把前置精读机制里机械可判的部分交给代码。
 
-只判三件可判定的事：勾选的前置精读链接必须存在、knowledge 笔记必须登记、
-笔记必须带 pai 锚点。「人是否真读了」判不了——诚实边界见 AGENTS.md「知识沉淀」。
+检查前置精读链接、knowledge 登记与锚点、档案结构、索引覆盖及当前测试基线。「人是否真读了」判不了——诚实边界见 AGENTS.md「知识沉淀」。
 """
 import re
 import subprocess
@@ -75,13 +74,93 @@ def test_no_empty_dirs_under_features():
             assert any(d.iterdir()), f"空目录占位: {d}"
 
 
-def test_decisions_index_matches_entries():
-    """decisions 头部索引与正文条目一一对应——索引是同一事实的第二个家，必须机器钉住。"""
+def _decision_numbers(text: str) -> list[int]:
+    return [int(n) for n in re.findall(r"^(?:## )?(\d+)\. ", text, re.M)]
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("1. 历史格式\n", [1]),
+    ("## 70. 新格式\n", [70]),
+    ("69. 历史尾部\n## 70. 后续决策\n", [69, 70]),
+])
+def test_decision_numbers_support_both_record_formats(text: str, expected: list[int]) -> None:
+    assert _decision_numbers(text) == expected
+
+
+def test_decisions_index_matches_entries() -> None:
     text = (ROOT / "docs" / "dev" / "decisions.md").read_text(encoding="utf-8")
-    body = sorted({int(n) for n in re.findall(r"^(\d+)\. ", text, re.M)})
-    index = sorted({int(n) for n in re.findall(r"^\| (\d+) \| ", text, re.M)})
-    assert index, "decisions.md 缺头部索引表（| n | 标题 |）"
-    assert index == body, f"索引与正文条目漂移：索引 {len(index)} 条 vs 正文 {len(body)} 条"
+    body = _decision_numbers(text)
+    index = [int(n) for n in re.findall(r"^\| (\d+) \| ", text, re.M)]
+    assert index, "decisions.md 缺头部索引表"
+    assert len(body) == len(set(body)), "decisions 正文有重复编号"
+    assert len(index) == len(set(index)), "decisions 索引有重复编号"
+    assert sorted(index) == sorted(body), (
+        f"决策索引缺项 {sorted(set(body) - set(index))}；"
+        f"失效项 {sorted(set(index) - set(body))}"
+    )
+
+
+def _assert_feature_index(entries: list[str], archives: set[str]) -> None:
+    assert len(entries) == len(set(entries)), "交付总览有重复档案条目"
+    assert set(entries) == archives, (
+        f"交付总览缺项 {sorted(archives - set(entries))}；"
+        f"失效项 {sorted(set(entries) - archives)}"
+    )
+
+
+@pytest.mark.parametrize("entries, archives, reason", [
+    (["a"], {"a", "b"}, "缺项"),
+    (["a", "b"], {"a"}, "失效项"),
+    (["a", "a"], {"a"}, "重复"),
+])
+def test_feature_index_rejects_missing_stale_and_duplicate_entries(
+    entries: list[str], archives: set[str], reason: str,
+) -> None:
+    with pytest.raises(AssertionError, match=reason):
+        _assert_feature_index(entries, archives)
+
+
+def test_feature_index_covers_every_archive() -> None:
+    archives = {d.name for d in FEATURES.iterdir()
+                if d.is_dir() and d.name != "_template"}
+    text = (FEATURES / "README.md").read_text(encoding="utf-8")
+    entries = re.findall(
+        r"^\| \[[^\]]+\]\((\d{2}-\d{8}-[^/]+)/README\.md\) \|", text, re.M)
+    _assert_feature_index(entries, archives)
+
+
+def test_feature_index_status_matches_archives() -> None:
+    text = (FEATURES / "README.md").read_text(encoding="utf-8")
+    entries = re.findall(
+        r"^\| \[[^\]]+\]\((\d{2}-\d{8}-[^/]+)/README\.md\) \| ([^|]+)\|", text, re.M)
+    mismatches: list[tuple[str, str, str]] = []
+    for name, indexed in entries:
+        archive = (FEATURES / name / "README.md").read_text(encoding="utf-8")
+        actual = re.search(r"^状态：[^\S\n]*([^\s（]+)", archive, re.M)
+        assert actual is not None, f"{name} 缺档案状态"
+        if indexed.strip() != actual.group(1):
+            mismatches.append((name, indexed.strip(), actual.group(1)))
+    assert not mismatches, f"交付总览状态与档案头部不一致：{mismatches}"
+
+
+def _status_passed_count(text: str) -> int:
+    matches = re.findall(r"\b(\d+) passed\b", text)
+    assert len(matches) == 1, "STATUS 必须且只能有一处当前通过数；历史数字放交付档案"
+    return int(matches[0])
+
+
+@pytest.mark.parametrize("text", ["没有测试数字", "3 passed\n4 passed", "3 passed\n3 passed"])
+def test_status_rejects_missing_or_multiple_current_counts(text: str) -> None:
+    with pytest.raises(AssertionError, match="只能有一处"):
+        _status_passed_count(text)
+
+
+def test_status_accepts_one_current_count() -> None:
+    assert _status_passed_count("全量：1914 passed, 8 deselected") == 1914
+
+
+def test_status_has_one_current_result() -> None:
+    _status_passed_count((ROOT / "docs/dev/STATUS.md").read_text(encoding="utf-8"))
 
 
 def test_devlog_milestone_section_is_one_liners():
@@ -127,7 +206,7 @@ def test_delivered_features_have_a_retrospective():
             f"{d.name} 的 复盘.md 缺「我现在质疑什么」节——这一节是必答，留空视为没做"
 
 
-def test_status_reports_the_current_test_count(request):
+def test_status_reports_the_current_test_count(request: pytest.FixtureRequest) -> None:
     """STATUS 的测试数字漂了三次（R#2 是「严重」级别的旧账，2026-08-10 又漂两次）。
 
     人肉对账靠不住：每次补完一个漏就该回头改 STATUS，而那正是最容易忘的一步。
@@ -143,13 +222,9 @@ def test_status_reports_the_current_test_count(request):
         pytest.skip("只在标准入口 ./test.sh 的口径下对账")
 
     text = (ROOT / "docs" / "dev" / "STATUS.md").read_text(encoding="utf-8")
-    # 不认加粗：AGENTS.md 的 Markdown 规约禁掉了 `**…**`，而这条对账原先
-    # 硬要求 `**N passed`——规约一改，机器校验当场失灵且报的是「找不到数字」，
-    # 与真正的漂移长得一样。校验点是那个数字，不是它的字重。
-    m = re.search(r"(\d+) passed", text)
-    assert m, "STATUS 里应有「N passed」这样的测试数字"
-    assert int(m.group(1)) == request.session.testscollected, (
-        f"STATUS 写着 {m.group(1)} passed，实际选中 {request.session.testscollected} 条——"
+    reported = _status_passed_count(text)
+    assert reported == request.session.testscollected, (
+        f"STATUS 写着 {reported} passed，实际选中 {request.session.testscollected} 条——"
         "补完漏别忘了回头改 STATUS"
     )
 

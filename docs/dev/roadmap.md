@@ -7,6 +7,8 @@
 （tests/test_docs_consistency.py 校验链接可达），不能证明人真的读了——这条判不了，如实声明。
 官方文档全景归属见 [knowledge/overview/claude-docs-map.md](../../knowledge/overview/claude-docs-map.md)。
 
+2026-10-22 对账：阶段 1—7 均已有交付，阶段 7 仅完成基础评测；未勾选的反向对照与校准事项仍未完成。当前验证边界见 STATUS，后续任务见 TODO，不据此补勾精读清单。
+
 每阶段五要素：目标 / 范围 / 参照 / 前置精读 / 流程级别（superpowers 全链路 or 简述直做）。
 
 ## 「参照」这一栏可以填谁（2026-08-13 起三家，D#69）
@@ -216,7 +218,7 @@ feature 12 又撞出六条，其中一条改写了一条已登记遗留的定性
   dsh `packages/mcp/mcp-client/`（源码）+ `.agents/notes/implemented/feature/
   2026-07-07-mcp-client-plugin.zh.md` 与 `2026-08-06-…-auto-reconnect.zh.md`（设计意图）+
   包 README.zh.md（活文档）；pi 无 MCP（显式产品决策，作反例参照）。
-- 前置精读（skills 子阶段四篇已落 2026-08-22；MCP 子阶段动工那天再补，不预先囤）：
+- 前置精读（skills 四篇已落 2026-08-22；MCP 笔记与两轮反向对照已于 2026-08-23 落地）：
   - [x] 官方 skills 章节 → [knowledge/skills/claude-skills.md](../../knowledge/skills/claude-skills.md)
         （渐进式披露、列表预算窗口 1%、压缩重挂 5k/25k；含 2.1.239 真实探针两条出入）
   - [x] pi skills 源码走读 → [knowledge/skills/pi-skills.md](../../knowledge/skills/pi-skills.md)
@@ -257,9 +259,12 @@ feature 12 又撞出六条，其中一条改写了一条已登记遗留的定性
 - 流程：superpowers 全链路，两个子阶段各一轮。skills 档案：
   [features/25-20260822-skills/](features/25-20260822-skills/README.md)。
 
-## 阶段 7 · evals
+## 阶段 7 · evals（基础评测已交付 2026-08-24，feature 32）
 
-- 目标：真实会话轨迹回放评测 + 跑批（evals/ 目录已预留）。
+- 目标：真实会话轨迹回放评测 + 跑批。
+- 已有：[feature 32](features/32-20260824-evals/README.md) 的独立入口、回放/真模型两条纵切与工件；
+  [feature 47](features/47-20260827-tool-choice-eval/README.md) 后续增加单步工具选择测量。
+  完整任务重复测量与多场景反向对照仍未完成，下面未勾选项保留。
 - 参照：pi `packages/evals/`（vitest-evals 驱动，打真模型的行为评测）；
   dsh `docs/testing.zh.md` + `packages/test-support/llm-replay`（分层车道 +
   会话 JSONL 回放，D#69 补记 2026-08-24——两家正好各占「跑批」与「回放」半边）；
