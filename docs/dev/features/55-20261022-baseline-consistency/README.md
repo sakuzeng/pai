@@ -58,7 +58,7 @@
 审计原件见 [evidence/20261022-audit.json](evidence/20261022-audit.json)，
 TODO 前后映射见 [evidence/todo-reconciliation.json](evidence/todo-reconciliation.json)，
 实际红绿输出见 evidence，详细过程见 [devlog.md](devlog.md)，交付复盘见 [复盘.md](复盘.md)。
-版本定位：包含本档案的基线提交可用 `git log -1 --format=%H -- docs/dev/features/55-20261022-baseline-consistency/README.md` 查询。基线随本次提交固定在当前分支，未合并 main、未推送。
+版本定位：文档与校验内容基线为 `585ac97`；后续提交只追加操作授权与版本说明。当前整合版本用 `git log -1 --format=%H main` 查询，远端同步以获取最新引用后的 `main...origin/main` 对比为准。
 
 ## 遗留问题
 
@@ -75,3 +75,13 @@ TODO 前后映射见 [evidence/todo-reconciliation.json](evidence/todo-reconcili
 用户回复原文：「可以」。本次据此固定当前分支的文档与校验基线，不扩大为合并 main 或推送。
 54 与 55 的改动一起提交，保留原文档、审计原件、前后映射和红绿证据；不倒造两个历史提交。
 原有本地 `.codex/hooks.json` 仍为未跟踪配置，不纳入本次项目提交。
+
+## 2026-10-22 · 合并与远端同步授权
+
+用户原话：「合并并推送到远端吧」。这是一项后续明确授权，覆盖上一节仅固定本地提交时
+尚未包含的合并与推送；历史授权记录保留，不把它改写成当时已经获准。
+
+准备核对：git fetch origin 成功后，本地 main 与 origin/main 均为 6f6d055，分歧为 0/0；
+运行时代码没有变化，文档与校验内容基线为 585ac97。整合目标为 main，推送目标为 origin/main。
+本次将保留独立 merge 记录，并在推送后比较本地 main、远端跟踪引用与服务器 main 的提交号。
+原有未跟踪的 .codex/hooks.json 继续保留在本地，不参与合并提交或推送。

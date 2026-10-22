@@ -92,3 +92,17 @@ fix/55-baseline-consistency，不合并 main、不推送。提交前核对暂存
 此前未暂存时的 git diff --check 没有覆盖未跟踪证据文件，这是检查范围遗漏。
 现将逐字 stdout 存入 evidence/raw-test-output.json，Markdown 展示副本仅剥离行尾空白并注明原件入口；
 不修改失败信息或测试代码。提交前检查以完整暂存区为准，JSON 原件可解析并与临时原输出逐字一致。
+
+## 2026-10-22 · 接收合并推送授权并核对远端
+
+用户原话：「合并并推送到远端吧」。本次在既有基线后追加操作记录，原 585ac97 不改写。
+git fetch origin 成功；本地 main 与 origin/main 同为 6f6d055，rev-list 分歧为 0/0，
+当前功能分支为 585ac97。已跟踪工作区干净，唯一未跟踪项是原有本地 .codex/hooks.json。
+
+本步更新 STATUS 与档案的当前版本定位，记录用户后续授权，避免整合后仍写「尚未合并」；
+保留此前各步的历史状态。准备以非快进合并保留需求分支边界，再推送 origin/main。
+验证方式：推送后比较 main、origin/main 与 git ls-remote origin main，并复核工作区状态。
+运行时与测试实现均不变；全量离线基线仍为 1927 项通过，操作元数据更新后跑文档/viz 子集。
+
+整合前文档/viz 复核实际为 `40 passed, 1 skipped in 0.73s`，git diff --check 通过；
+本次仅 5 个操作文档变更，src/tests 均无变更。

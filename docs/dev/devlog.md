@@ -142,3 +142,4 @@
 - 2026-10-22 基线审计整改开工——用户在明确整改建议后「继续」，补齐索引、按证据整理 TODO 并加强文档校验；独立交付承接 54 收尾 → [features/55](features/55-20261022-baseline-consistency/README.md)
 - 2026-10-22 基线审计整改交付——决策 81 条、档案 55 个索引对齐，TODO 核销/合并后开放 217 条，54 偏差如实补记；校验两轮先红后绿，全量 1927 passed、8 deselected，复盘已写 → [features/55](features/55-20261022-baseline-consistency/README.md)
 - 2026-10-22 固定文档基线——用户同意后将 54/55 的文档与一致性校验共同提交到 fix/55-baseline-consistency；运行时代码沿用 6f6d055，基线版本由包含 STATUS 的提交定位 → [features/55](features/55-20261022-baseline-consistency/README.md)
+- 2026-10-22 文档基线整合授权——用户明确要求合并并推送；fetch 确认 main 与 origin/main 无分歧，更新当前版本定位，按分支合并记录整合并核对远端引用 → [features/55](features/55-20261022-baseline-consistency/README.md)

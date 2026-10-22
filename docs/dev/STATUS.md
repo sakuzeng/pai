@@ -1,7 +1,7 @@
 # 当前状态快照
 
 最后核对：2026-10-22（运行时代码沿用 `6f6d055`；文档基线为包含本快照的提交，涵盖 [54 文档对齐](features/54-20261022-current-docs-alignment/README.md)与[55 审计收口](features/55-20261022-baseline-consistency/README.md)）。
-版本定位：`git log -1 --format=%H -- docs/dev/STATUS.md`；基线位于 `fix/55-baseline-consistency`，尚未合并 main。
+版本定位：文档与校验内容基线为 `585ac97`；默认开发主线为 `main`，远端为 `origin/main`。本轮整合/同步授权见 55 档案，最新整合版本用 `git log -1 --format=%H main` 查询。
 
 阶段 1—7 均已有交付：压缩、REPL/TUI、记忆、权限、流式、skills/MCP 与基础 evals。
 当前重点是实际使用验收、效果测量与参数校准；交付不等于全部真人验收完成。
