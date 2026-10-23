@@ -77,3 +77,13 @@ T3 先加入六个真实历史案例的参数化契约，再建立各题材料�
 本轮状态同步后的文档/可视化数据检查实际输出 40 passed、1 skipped in 0.75s；跳过项仅标准完整入口适用，已在交付全量通过。完整验收沿用刚完成的 1997 passed、8 deselected，运行实现与冻结材料未变。
 
 提交前核对 132 个暂存文件，真实 key 扫描 0 命中，.codex/.env/pai_playground 均未暂存。暂存区 whitespace 告警仅来自原始 pytest/JUnit 证据；保留这些原始字节与既有哈希，不为消除告警清洗证据。排除 evidence 后其余暂存内容的 git diff --cached --check 通过。
+
+## 2026-10-23 · 自动审批拦截与缩小范围后推送成功
+
+57 功能提交为 0d2de04f5f98be25a018e49ad2c0c903ca4426d7。首次计划的 main/56/57 三分支原子推送被自动审批拒绝，原因原文摘要：origin 归属未验证，且用户“推送到远端”未明确列出三个分支。该次命令未执行，前述三分支同步计划不代表用户逐条明确授权。
+
+随后通过 GitHub 连接的 get_profile/get_repo 只读验证：认证用户与仓库 owner 同为 sakuzeng、id 同为 75898519；目标仓库 public，账号 push/admin 权限为 true，与 origin URL 一致。基于新的归属证据，将范围严格缩小为仅当前 feat/57-project-task-evals 的普通推送；未改用其他写入路径绕过审批。
+
+缩小后的 git push --set-upstream origin feat/57-project-task-evals 成功，跟踪关系建立。随后的 git ls-remote 实际核对：57 为 0d2de04f5f98be25a018e49ad2c0c903ca4426d7，main 仍为 9937c0288b731f5ae3fd333a7e422642c1e045d9，未有 origin 的 56 同名分支。57 历史已包含 c473de0/861cec7，因此 56 内容也已上传；这不等于更新 main 引用或合并 57。
+
+本次追加同步状态记录，再以文档提交推送同一 57 分支；最终最新 SHA 以远端引用为准，不改运行实现/冻结材料或重新调用模型。原有 .codex/hooks.json 仍仅本地未跟踪。
