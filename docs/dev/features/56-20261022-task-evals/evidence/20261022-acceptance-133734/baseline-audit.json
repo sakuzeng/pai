@@ -1,0 +1,92 @@
+{
+  "archivedFilesVerified": 152,
+  "runtimeHashMatches": true,
+  "caseHashesMatch": true,
+  "summaryRecomputed": true,
+  "trialChecks": [
+    {
+      "trial": "locate-1",
+      "metricsMatch": true,
+      "promptMatches": true,
+      "boundsMatch": true,
+      "changedFiles": [
+        "answer.json"
+      ]
+    },
+    {
+      "trial": "locate-2",
+      "metricsMatch": true,
+      "promptMatches": true,
+      "boundsMatch": true,
+      "changedFiles": [
+        "answer.json"
+      ]
+    },
+    {
+      "trial": "locate-3",
+      "metricsMatch": true,
+      "promptMatches": true,
+      "boundsMatch": true,
+      "changedFiles": [
+        "answer.json"
+      ]
+    },
+    {
+      "trial": "fix-1",
+      "metricsMatch": true,
+      "promptMatches": true,
+      "boundsMatch": true,
+      "changedFiles": [
+        "pagination.py"
+      ]
+    },
+    {
+      "trial": "fix-2",
+      "metricsMatch": true,
+      "promptMatches": true,
+      "boundsMatch": true,
+      "changedFiles": [
+        "pagination.py"
+      ]
+    },
+    {
+      "trial": "fix-3",
+      "metricsMatch": true,
+      "promptMatches": true,
+      "boundsMatch": true,
+      "changedFiles": [
+        "pagination.py"
+      ]
+    },
+    {
+      "trial": "tests-1",
+      "metricsMatch": true,
+      "promptMatches": true,
+      "boundsMatch": true,
+      "changedFiles": [
+        "tests/test_ranges.py"
+      ]
+    },
+    {
+      "trial": "tests-2",
+      "metricsMatch": true,
+      "promptMatches": true,
+      "boundsMatch": true,
+      "changedFiles": [
+        "tests/test_ranges.py"
+      ]
+    },
+    {
+      "trial": "tests-3",
+      "metricsMatch": true,
+      "promptMatches": true,
+      "boundsMatch": true,
+      "changedFiles": [
+        "tests/test_ranges.py"
+      ]
+    }
+  ],
+  "measuredSuiteBodiesUnchanged": true,
+  "historicalModelTrials": 9,
+  "newModelCallsInThisAudit": 0
+}

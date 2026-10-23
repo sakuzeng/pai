@@ -1,0 +1,1 @@
+已新增 `tests/test_ranges.py`，共 25 个用例，全部通过；生产代码和已有文件均未改动。用例分三组：普通值（区间内原样返回、低于下界夹到 lower、高于上界夹到 upper，含负数/浮点）、两端边界（value==lower / value==upper 原样返回、lower==upper 的退化区间、超大整数）、非法范围（lower>upper 抛 ValueError，含 value 落在两者之间的情形）。

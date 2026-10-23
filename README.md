@@ -8,7 +8,7 @@ pi 的可读源码（github.com/earendil-works/pi，MIT）、Claude Code 的反�
 功能全貌：agent loop（流式、并发工具调度、预算熔断）、上下文自动压缩、
 REPL 与整屏 TUI（鼠标、选区、输入折行）、分层指令与自动记忆（含按查询召回）、
 权限三态与工作目录边界、skills（渐进式披露）、MCP client（stdio）、
-会话落盘与 `--resume`、回放评测与真模型冒烟（`./eval.sh`）、
+会话落盘与 `--resume`、回放/真模型冒烟与任务级评测（`./eval.sh`）、
 本地可视化（`pai-viz`）。
 
 ## 安装与运行
@@ -224,8 +224,12 @@ pai 自身的会话、记忆、历史与信任标记写入用户目录（布局�
 ./test.sh --llm        # 追加打真实 API 的冒烟，会产生费用（需 key + 显式开关）
 
 ./eval.sh              # 评测：真轨迹回放（无密钥、确定性，判分走外部世界断言）
-./eval.sh --llm        # 追加真模型评测；工件落 evals/.eval/<时间戳>/runs.jsonl
+./eval.sh --llm        # 追加原有真模型评测；工件落 evals/.eval/<时间戳>/runs.jsonl
+./eval.sh --tasks      # 三个固定开发任务的离线评分预检
+./eval.sh --tasks --llm # deepseek-flash 三任务各三次真实基线，会产生费用
 ```
+
+任务基线的权限、预算、判分和工件说明见 [evals](evals/README.md)。真人弹窗在单次模式下不适用；固定小题结果不外推真实项目能力。
 
 准确的测试数字与验证日期见 [STATUS](docs/dev/STATUS.md)。校验覆盖唯一当前通过数、
 标准入口收集口径、决策及档案索引与状态；正文行为仍须对照代码与实际验收。README 不重复维护数字。
@@ -286,9 +290,9 @@ src/pai/
                         dock / transcript / scroll / selection / mouse / clipboard /
                         sanitize / screen（模拟器）/ record / replay / theme / logo / app / driver
                         markdown（答案的 md 渲染：表格按显示列宽对齐、超宽压缩）
-  evals/                评测的可复用逻辑：runs.jsonl 工件索引、轨迹→回放脚本派生
+  evals/                评测逻辑：工件索引、轨迹回放、任务评分/指标、隔离 worker 与串行跑批
   viz/                  pai-viz 网页与数据装配
-evals/                  评测套件本体（./eval.sh 跑；fixtures/ 是签入的真实轨迹）
+evals/                  评测套件（fixtures/ 为真实轨迹；tasks/ 为固定小仓库与评分材料）
 tests/                  pytest 全离线；fake_llm（注入式假客户端）与 fake_provider
                         （真 HTTP 假服务）分工是硬的，另有 fake_mcp_server
 docs/dev/               开发记录：decisions / devlog / STATUS / TODO / roadmap / features 档案

@@ -1,0 +1,109 @@
+.....FF..FF......F.......                                                [100%]
+=================================== FAILURES ===================================
+________ TestClipNormalValues.test_outside_range_is_clamped[-5-0-10-0] _________
+
+self = <test_ranges.TestClipNormalValues object at 0x107fe0b50>, value = -5
+lower = 0, upper = 10, expected = 0
+
+    @pytest.mark.parametrize(
+        "value, lower, upper, expected",
+        [
+            (-5, 0, 10, 0),      # 低于下界
+            (-1, 0, 10, 0),      # 刚好低于下界
+            (11, 0, 10, 10),     # 高于上界
+            (100, -10, -5, -5),  # 区间为负数时高于上界
+            (-11, -10, -5, -10),  # 区间为负数时低于下界
+            (2.0, 3.0, 5.0, 3.0),  # 浮点低于下界
+        ],
+    )
+    def test_outside_range_is_clamped(self, value, lower, upper, expected):
+>       assert clip(value, lower, upper) == expected
+E       assert -5 == 0
+E        +  where -5 = clip(-5, 0, 10)
+
+tests/test_ranges.py:39: AssertionError
+________ TestClipNormalValues.test_outside_range_is_clamped[-1-0-10-0] _________
+
+self = <test_ranges.TestClipNormalValues object at 0x10833ddc0>, value = -1
+lower = 0, upper = 10, expected = 0
+
+    @pytest.mark.parametrize(
+        "value, lower, upper, expected",
+        [
+            (-5, 0, 10, 0),      # 低于下界
+            (-1, 0, 10, 0),      # 刚好低于下界
+            (11, 0, 10, 10),     # 高于上界
+            (100, -10, -5, -5),  # 区间为负数时高于上界
+            (-11, -10, -5, -10),  # 区间为负数时低于下界
+            (2.0, 3.0, 5.0, 3.0),  # 浮点低于下界
+        ],
+    )
+    def test_outside_range_is_clamped(self, value, lower, upper, expected):
+>       assert clip(value, lower, upper) == expected
+E       assert -1 == 0
+E        +  where -1 = clip(-1, 0, 10)
+
+tests/test_ranges.py:39: AssertionError
+______ TestClipNormalValues.test_outside_range_is_clamped[-11--10--5--10] ______
+
+self = <test_ranges.TestClipNormalValues object at 0x1080e13d0>, value = -11
+lower = -10, upper = -5, expected = -10
+
+    @pytest.mark.parametrize(
+        "value, lower, upper, expected",
+        [
+            (-5, 0, 10, 0),      # 低于下界
+            (-1, 0, 10, 0),      # 刚好低于下界
+            (11, 0, 10, 10),     # 高于上界
+            (100, -10, -5, -5),  # 区间为负数时高于上界
+            (-11, -10, -5, -10),  # 区间为负数时低于下界
+            (2.0, 3.0, 5.0, 3.0),  # 浮点低于下界
+        ],
+    )
+    def test_outside_range_is_clamped(self, value, lower, upper, expected):
+>       assert clip(value, lower, upper) == expected
+E       assert -11 == -10
+E        +  where -11 = clip(-11, -10, -5)
+
+tests/test_ranges.py:39: AssertionError
+_____ TestClipNormalValues.test_outside_range_is_clamped[2.0-3.0-5.0-3.0] ______
+
+self = <test_ranges.TestClipNormalValues object at 0x1080e14c0>, value = 2.0
+lower = 3.0, upper = 5.0, expected = 3.0
+
+    @pytest.mark.parametrize(
+        "value, lower, upper, expected",
+        [
+            (-5, 0, 10, 0),      # 低于下界
+            (-1, 0, 10, 0),      # 刚好低于下界
+            (11, 0, 10, 10),     # 高于上界
+            (100, -10, -5, -5),  # 区间为负数时高于上界
+            (-11, -10, -5, -10),  # 区间为负数时低于下界
+            (2.0, 3.0, 5.0, 3.0),  # 浮点低于下界
+        ],
+    )
+    def test_outside_range_is_clamped(self, value, lower, upper, expected):
+>       assert clip(value, lower, upper) == expected
+E       assert 2.0 == 3.0
+E        +  where 2.0 = clip(2.0, 3.0, 5.0)
+
+tests/test_ranges.py:39: AssertionError
+________ TestClipBoundaries.test_lower_equals_upper_returns_that_value _________
+
+self = <test_ranges.TestClipBoundaries object at 0x108050d60>
+
+    def test_lower_equals_upper_returns_that_value(self):
+        # 退化区间：lower == upper，任何输入都被夹到该值
+>       assert clip(3, 5, 5) == 5
+E       assert 3 == 5
+E        +  where 3 = clip(3, 5, 5)
+
+tests/test_ranges.py:61: AssertionError
+- generated xml file: /Users/sakuzeng/improve/coding/agent/projects/pai/pai_playground/task-evals/20261022T124706Z-5be434f3/tests-1/grading/560d9624c8a74747afc95ddd61706974/below/junit.xml -
+=========================== short test summary info ============================
+FAILED ../../../../../../../../../../../../../../dev/test_ranges.py::TestClipNormalValues::test_outside_range_is_clamped[-5-0-10-0]
+FAILED ../../../../../../../../../../../../../../dev/test_ranges.py::TestClipNormalValues::test_outside_range_is_clamped[-1-0-10-0]
+FAILED ../../../../../../../../../../../../../../dev/test_ranges.py::TestClipNormalValues::test_outside_range_is_clamped[-11--10--5--10]
+FAILED ../../../../../../../../../../../../../../dev/test_ranges.py::TestClipNormalValues::test_outside_range_is_clamped[2.0-3.0-5.0-3.0]
+FAILED ../../../../../../../../../../../../../../dev/test_ranges.py::TestClipBoundaries::test_lower_equals_upper_returns_that_value
+5 failed, 20 passed in 0.03s

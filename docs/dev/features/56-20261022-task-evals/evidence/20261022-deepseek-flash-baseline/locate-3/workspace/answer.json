@@ -1,0 +1,4 @@
+{
+  "path": "text_rules.py",
+  "function": "slugify"
+}

@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="6" skipped="0" tests="25" time="0.033" timestamp="2026-10-22T20:47:53.271005+08:00" hostname="sakuzengdeMacBook-Air.local"><testcase classname="test_ranges.TestClipNormalValues" name="test_inside_range_returns_value[5-0-10-5]" time="0.000" /><testcase classname="test_ranges.TestClipNormalValues" name="test_inside_range_returns_value[0--10-10-0]" time="0.000" /><testcase classname="test_ranges.TestClipNormalValues" name="test_inside_range_returns_value[-3--10-10--3]" time="0.000" /><testcase classname="test_ranges.TestClipNormalValues" name="test_inside_range_returns_value[7-1-100-7]" time="0.000" /><testcase classname="test_ranges.TestClipNormalValues" name="test_inside_range_returns_value[2.5-0.0-10.0-2.5]" time="0.000" /><testcase classname="test_ranges.TestClipNormalValues" name="test_outside_range_is_clamped[-5-0-10-0]" time="0.000" /><testcase classname="test_ranges.TestClipNormalValues" name="test_outside_range_is_clamped[-1-0-10-0]" time="0.000" /><testcase classname="test_ranges.TestClipNormalValues" name="test_outside_range_is_clamped[11-0-10-10]" time="0.000" /><testcase classname="test_ranges.TestClipNormalValues" name="test_outside_range_is_clamped[100--10--5--5]" time="0.000" /><testcase classname="test_ranges.TestClipNormalValues" name="test_outside_range_is_clamped[-11--10--5--10]" time="0.000" /><testcase classname="test_ranges.TestClipNormalValues" name="test_outside_range_is_clamped[2.0-3.0-5.0-3.0]" time="0.000" /><testcase classname="test_ranges.TestClipBoundaries" name="test_value_on_boundary_returned_unchanged[0-0-10]" time="0.000" /><testcase classname="test_ranges.TestClipBoundaries" name="test_value_on_boundary_returned_unchanged[10-0-10]" time="0.000" /><testcase classname="test_ranges.TestClipBoundaries" name="test_value_on_boundary_returned_unchanged[-10--10-5]" time="0.000" /><testcase classname="test_ranges.TestClipBoundaries" name="test_value_on_boundary_returned_unchanged[5--10-5]" time="0.000" /><testcase classname="test_ranges.TestClipBoundaries" name="test_value_on_boundary_returned_unchanged[3.5-3.5-8.0]" time="0.000" /><testcase classname="test_ranges.TestClipBoundaries" name="test_value_on_boundary_returned_unchanged[8.0-3.5-8.0]" time="0.000" /><testcase classname="test_ranges.TestClipBoundaries" name="test_lower_equals_upper_returns_that_value" time="0.000" /><testcase classname="test_ranges.TestClipBoundaries" name="test_extreme_int_values" time="0.000" /><testcase classname="test_ranges.TestClipInvalidRange" name="test_inverted_range_raises_value_error[5-10-0]" time="0.000"><failure message="Failed: DID NOT RAISE &lt;class 'ValueError'&gt;">self = &lt;test_ranges.TestClipInvalidRange object at 0x1097d68e0&gt;, value = 5
+lower = 10, upper = 0
+
+    @pytest.mark.parametrize(
+        "value, lower, upper",
+        [
+            (5, 10, 0),
+            (0, 1, -1),
+            (-5, -1, -10),
+            (5.5, 10.0, 0.0),
+        ],
+    )
+    def test_inverted_range_raises_value_error(self, value, lower, upper):
+        with pytest.raises(ValueError):
+&gt;           clip(value, lower, upper)
+E           Failed: DID NOT RAISE &lt;class 'ValueError'&gt;
+
+tests/test_ranges.py:86: Failed</failure></testcase><testcase classname="test_ranges.TestClipInvalidRange" name="test_inverted_range_raises_value_error[0-1--1]" time="0.000"><failure message="Failed: DID NOT RAISE &lt;class 'ValueError'&gt;">self = &lt;test_ranges.TestClipInvalidRange object at 0x1096ffca0&gt;, value = 0
+lower = 1, upper = -1
+
+    @pytest.mark.parametrize(
+        "value, lower, upper",
+        [
+            (5, 10, 0),
+            (0, 1, -1),
+            (-5, -1, -10),
+            (5.5, 10.0, 0.0),
+        ],
+    )
+    def test_inverted_range_raises_value_error(self, value, lower, upper):
+        with pytest.raises(ValueError):
+&gt;           clip(value, lower, upper)
+E           Failed: DID NOT RAISE &lt;class 'ValueError'&gt;
+
+tests/test_ranges.py:86: Failed</failure></testcase><testcase classname="test_ranges.TestClipInvalidRange" name="test_inverted_range_raises_value_error[-5--1--10]" time="0.000"><failure message="Failed: DID NOT RAISE &lt;class 'ValueError'&gt;">self = &lt;test_ranges.TestClipInvalidRange object at 0x1096ff370&gt;, value = -5
+lower = -1, upper = -10
+
+    @pytest.mark.parametrize(
+        "value, lower, upper",
+        [
+            (5, 10, 0),
+            (0, 1, -1),
+            (-5, -1, -10),
+            (5.5, 10.0, 0.0),
+        ],
+    )
+    def test_inverted_range_raises_value_error(self, value, lower, upper):
+        with pytest.raises(ValueError):
+&gt;           clip(value, lower, upper)
+E           Failed: DID NOT RAISE &lt;class 'ValueError'&gt;
+
+tests/test_ranges.py:86: Failed</failure></testcase><testcase classname="test_ranges.TestClipInvalidRange" name="test_inverted_range_raises_value_error[5.5-10.0-0.0]" time="0.000"><failure message="Failed: DID NOT RAISE &lt;class 'ValueError'&gt;">self = &lt;test_ranges.TestClipInvalidRange object at 0x1096fff70&gt;, value = 5.5
+lower = 10.0, upper = 0.0
+
+    @pytest.mark.parametrize(
+        "value, lower, upper",
+        [
+            (5, 10, 0),
+            (0, 1, -1),
+            (-5, -1, -10),
+            (5.5, 10.0, 0.0),
+        ],
+    )
+    def test_inverted_range_raises_value_error(self, value, lower, upper):
+        with pytest.raises(ValueError):
+&gt;           clip(value, lower, upper)
+E           Failed: DID NOT RAISE &lt;class 'ValueError'&gt;
+
+tests/test_ranges.py:86: Failed</failure></testcase><testcase classname="test_ranges.TestClipInvalidRange" name="test_inverted_range_raises_even_if_value_in_between" time="0.000"><failure message="Failed: DID NOT RAISE &lt;class 'ValueError'&gt;">self = &lt;test_ranges.TestClipInvalidRange object at 0x109a85cd0&gt;
+
+    def test_inverted_range_raises_even_if_value_in_between(self):
+        with pytest.raises(ValueError):
+&gt;           clip(5, 6, 4)
+E           Failed: DID NOT RAISE &lt;class 'ValueError'&gt;
+
+tests/test_ranges.py:90: Failed</failure></testcase><testcase classname="test_ranges.TestClipInvalidRange" name="test_inverted_range_raises_regardless_of_order_of_check" time="0.000"><failure message="Failed: DID NOT RAISE &lt;class 'ValueError'&gt;">self = &lt;test_ranges.TestClipInvalidRange object at 0x109a85b50&gt;
+
+    def test_inverted_range_raises_regardless_of_order_of_check(self):
+        # 即使 value 看起来"合法"也必须先校验区间
+        for value in (-100, 0, 100):
+            with pytest.raises(ValueError):
+&gt;               clip(value, 10, 0)
+E               Failed: DID NOT RAISE &lt;class 'ValueError'&gt;
+
+tests/test_ranges.py:96: Failed</failure></testcase></testsuite></testsuites>

@@ -75,3 +75,6 @@ def eval_artifact_dir(request, eval_run_dir):
     directory.mkdir(parents=True, exist_ok=True)
     request.node.eval_artifacts.append(str(directory.relative_to(eval_run_dir)))
     return directory
+
+# 题目中的测试只由评分器/题目自身运行，不并入评测设施的 pytest 收集。
+collect_ignore = ["tasks"]

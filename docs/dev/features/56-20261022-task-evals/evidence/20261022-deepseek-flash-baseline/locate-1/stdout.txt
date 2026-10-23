@@ -1,0 +1,1 @@
+该行为的实现是 `text_rules.py` 中的 `slugify`：`"-".join(label.strip().lower().split())`；已按要求创建 answer.json，未改动其他文件。

@@ -1,0 +1,40 @@
+{
+  "case": "locate",
+  "execution": "completed",
+  "agentEnd": "final",
+  "grade": {
+    "status": "pass",
+    "details": [
+      {
+        "check": "answer",
+        "actual": {
+          "path": "text_rules.py",
+          "function": "slugify"
+        }
+      }
+    ]
+  },
+  "cleanupVerified": true,
+  "durationMs": 4703,
+  "returncode": 0,
+  "metrics": {
+    "tokens": {
+      "prompt": 8325,
+      "completion": 267,
+      "total": 8592,
+      "reasoning": 10,
+      "cacheHit": 5760
+    },
+    "usageCoverage": "complete",
+    "requestsWithUsage": 4,
+    "assistantResponses": 4,
+    "toolAttempts": 5,
+    "toolsStarted": 5,
+    "permissionDenials": 0,
+    "agentEnd": "final",
+    "humanPrompts": null,
+    "humanPromptsReason": "once has no human asker"
+  },
+  "gradingDurationMs": 1,
+  "totalDurationMs": 4728
+}

@@ -1,0 +1,9 @@
+{"schemaVersion": 1, "case": "locate-1", "status": "passed", "durationMs": 4728, "artifacts": ["locate-1"]}
+{"schemaVersion": 1, "case": "locate-2", "status": "passed", "durationMs": 6291, "artifacts": ["locate-2"]}
+{"schemaVersion": 1, "case": "locate-3", "status": "passed", "durationMs": 4067, "artifacts": ["locate-3"]}
+{"schemaVersion": 1, "case": "fix-1", "status": "passed", "durationMs": 7081, "artifacts": ["fix-1"]}
+{"schemaVersion": 1, "case": "fix-2", "status": "passed", "durationMs": 6401, "artifacts": ["fix-2"]}
+{"schemaVersion": 1, "case": "fix-3", "status": "passed", "durationMs": 6698, "artifacts": ["fix-3"]}
+{"schemaVersion": 1, "case": "tests-1", "status": "passed", "durationMs": 11447, "artifacts": ["tests-1"]}
+{"schemaVersion": 1, "case": "tests-2", "status": "passed", "durationMs": 8772, "artifacts": ["tests-2"]}
+{"schemaVersion": 1, "case": "tests-3", "status": "passed", "durationMs": 11474, "artifacts": ["tests-3"]}

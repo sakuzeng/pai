@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="4" skipped="0" tests="25" time="0.033" timestamp="2026-10-22T21:45:56.759824+08:00" hostname="sakuzengdeMacBook-Air.local"><testcase classname="test_ranges.TestClipNormalValues" name="test_inside_range_returns_value[5-0-10-5]" time="0.000" /><testcase classname="test_ranges.TestClipNormalValues" name="test_inside_range_returns_value[0--10-10-0]" time="0.000" /><testcase classname="test_ranges.TestClipNormalValues" name="test_inside_range_returns_value[-3--10-10--3]" time="0.000" /><testcase classname="test_ranges.TestClipNormalValues" name="test_inside_range_returns_value[7-1-100-7]" time="0.000" /><testcase classname="test_ranges.TestClipNormalValues" name="test_inside_range_returns_value[2.5-0.0-10.0-2.5]" time="0.000" /><testcase classname="test_ranges.TestClipNormalValues" name="test_outside_range_is_clamped[-5-0-10-0]" time="0.000" /><testcase classname="test_ranges.TestClipNormalValues" name="test_outside_range_is_clamped[-1-0-10-0]" time="0.000" /><testcase classname="test_ranges.TestClipNormalValues" name="test_outside_range_is_clamped[11-0-10-10]" time="0.000"><failure message="assert 11 == 10&#10; +  where 11 = clip(11, 0, 10)">self = &lt;test_ranges.TestClipNormalValues object at 0x105b7f340&gt;, value = 11
+lower = 0, upper = 10, expected = 10
+
+    @pytest.mark.parametrize(
+        "value, lower, upper, expected",
+        [
+            (-5, 0, 10, 0),      # 低于下界
+            (-1, 0, 10, 0),      # 刚好低于下界
+            (11, 0, 10, 10),     # 高于上界
+            (100, -10, -5, -5),  # 区间为负数时高于上界
+            (-11, -10, -5, -10),  # 区间为负数时低于下界
+            (2.0, 3.0, 5.0, 3.0),  # 浮点低于下界
+        ],
+    )
+    def test_outside_range_is_clamped(self, value, lower, upper, expected):
+&gt;       assert clip(value, lower, upper) == expected
+E       assert 11 == 10
+E        +  where 11 = clip(11, 0, 10)
+
+tests/test_ranges.py:39: AssertionError</failure></testcase><testcase classname="test_ranges.TestClipNormalValues" name="test_outside_range_is_clamped[100--10--5--5]" time="0.000"><failure message="assert 100 == -5&#10; +  where 100 = clip(100, -10, -5)">self = &lt;test_ranges.TestClipNormalValues object at 0x105b7ff40&gt;, value = 100
+lower = -10, upper = -5, expected = -5
+
+    @pytest.mark.parametrize(
+        "value, lower, upper, expected",
+        [
+            (-5, 0, 10, 0),      # 低于下界
+            (-1, 0, 10, 0),      # 刚好低于下界
+            (11, 0, 10, 10),     # 高于上界
+            (100, -10, -5, -5),  # 区间为负数时高于上界
+            (-11, -10, -5, -10),  # 区间为负数时低于下界
+            (2.0, 3.0, 5.0, 3.0),  # 浮点低于下界
+        ],
+    )
+    def test_outside_range_is_clamped(self, value, lower, upper, expected):
+&gt;       assert clip(value, lower, upper) == expected
+E       assert 100 == -5
+E        +  where 100 = clip(100, -10, -5)
+
+tests/test_ranges.py:39: AssertionError</failure></testcase><testcase classname="test_ranges.TestClipNormalValues" name="test_outside_range_is_clamped[-11--10--5--10]" time="0.000" /><testcase classname="test_ranges.TestClipNormalValues" name="test_outside_range_is_clamped[2.0-3.0-5.0-3.0]" time="0.000" /><testcase classname="test_ranges.TestClipBoundaries" name="test_value_on_boundary_returned_unchanged[0-0-10]" time="0.000" /><testcase classname="test_ranges.TestClipBoundaries" name="test_value_on_boundary_returned_unchanged[10-0-10]" time="0.000" /><testcase classname="test_ranges.TestClipBoundaries" name="test_value_on_boundary_returned_unchanged[-10--10-5]" time="0.000" /><testcase classname="test_ranges.TestClipBoundaries" name="test_value_on_boundary_returned_unchanged[5--10-5]" time="0.000" /><testcase classname="test_ranges.TestClipBoundaries" name="test_value_on_boundary_returned_unchanged[3.5-3.5-8.0]" time="0.000" /><testcase classname="test_ranges.TestClipBoundaries" name="test_value_on_boundary_returned_unchanged[8.0-3.5-8.0]" time="0.000" /><testcase classname="test_ranges.TestClipBoundaries" name="test_lower_equals_upper_returns_that_value" time="0.000"><failure message="assert 7 == 5&#10; +  where 7 = clip(7, 5, 5)">self = &lt;test_ranges.TestClipBoundaries object at 0x105aefd90&gt;
+
+    def test_lower_equals_upper_returns_that_value(self):
+        # 退化区间：lower == upper，任何输入都被夹到该值
+        assert clip(3, 5, 5) == 5
+        assert clip(5, 5, 5) == 5
+&gt;       assert clip(7, 5, 5) == 5
+E       assert 7 == 5
+E        +  where 7 = clip(7, 5, 5)
+
+tests/test_ranges.py:63: AssertionError</failure></testcase><testcase classname="test_ranges.TestClipBoundaries" name="test_extreme_int_values" time="0.000"><failure message="assert 1000000000000000001 == 1000000000000000000&#10; +  where 1000000000000000001 = clip((1000000000000000000 + 1), -1000000000000000000, 1000000000000000000)">self = &lt;test_ranges.TestClipBoundaries object at 0x105aefd00&gt;
+
+    def test_extreme_int_values(self):
+        big = 10**18
+        assert clip(-big, -big, big) == -big
+        assert clip(big, -big, big) == big
+&gt;       assert clip(big + 1, -big, big) == big
+E       assert 1000000000000000001 == 1000000000000000000
+E        +  where 1000000000000000001 = clip((1000000000000000000 + 1), -1000000000000000000, 1000000000000000000)
+
+tests/test_ranges.py:69: AssertionError</failure></testcase><testcase classname="test_ranges.TestClipInvalidRange" name="test_inverted_range_raises_value_error[5-10-0]" time="0.000" /><testcase classname="test_ranges.TestClipInvalidRange" name="test_inverted_range_raises_value_error[0-1--1]" time="0.000" /><testcase classname="test_ranges.TestClipInvalidRange" name="test_inverted_range_raises_value_error[-5--1--10]" time="0.000" /><testcase classname="test_ranges.TestClipInvalidRange" name="test_inverted_range_raises_value_error[5.5-10.0-0.0]" time="0.000" /><testcase classname="test_ranges.TestClipInvalidRange" name="test_inverted_range_raises_even_if_value_in_between" time="0.000" /><testcase classname="test_ranges.TestClipInvalidRange" name="test_inverted_range_raises_regardless_of_order_of_check" time="0.000" /></testsuite></testsuites>

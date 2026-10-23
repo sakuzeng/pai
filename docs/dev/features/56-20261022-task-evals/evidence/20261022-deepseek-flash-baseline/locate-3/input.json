@@ -1,0 +1,24 @@
+{
+  "prompt": "在当前小项目中定位这样一个行为的实现：移除标签首尾空白、转换成小写，并把中间连续空白合并为单个连字符。创建 answer.json，内容为 JSON 对象，只有 path（相对文件路径）和 function（函数名）两个字段。只能新增 answer.json，不要改其他文件。完成后简短确认。",
+  "model": "deepseek-flash",
+  "max_steps": 20,
+  "max_tokens": 200000,
+  "seconds": 180,
+  "trace": "/Users/sakuzeng/improve/coding/agent/projects/pai/pai_playground/task-evals/20261022T124706Z-5be434f3/locate-3/trace.jsonl",
+  "result": "/Users/sakuzeng/improve/coding/agent/projects/pai/pai_playground/task-evals/20261022T124706Z-5be434f3/locate-3/worker.json",
+  "workspace": "/var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pai-task-yem5pwva/workspace",
+  "home": "/var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pai-task-yem5pwva/home",
+  "permissionMode": "acceptEdits",
+  "limits": {
+    "steps": 20,
+    "tokens": 200000,
+    "seconds": 180,
+    "batch_seconds": 1200
+  },
+  "baseline": {
+    "routing.py": "568d8e464922b15274de47ca9f8445c5392d212a330643994476dde4af09d003",
+    "text_rules.py": "99032df3e45de81045c67d1df0af45d003771072060b2b80c249a10b09c62418",
+    "ui_labels.py": "5971fd90c9c0856f0a37f222b683f524a9e46177b89dfeaee3e3cc4b0ba188ee"
+  },
+  "backendRevision": "unknown"
+}

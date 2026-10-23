@@ -143,3 +143,7 @@
 - 2026-10-22 基线审计整改交付——决策 81 条、档案 55 个索引对齐，TODO 核销/合并后开放 217 条，54 偏差如实补记；校验两轮先红后绿，全量 1927 passed、8 deselected，复盘已写 → [features/55](features/55-20261022-baseline-consistency/README.md)
 - 2026-10-22 固定文档基线——用户同意后将 54/55 的文档与一致性校验共同提交到 fix/55-baseline-consistency；运行时代码沿用 6f6d055，基线版本由包含 STATUS 的提交定位 → [features/55](features/55-20261022-baseline-consistency/README.md)
 - 2026-10-22 文档基线整合授权——用户明确要求合并并推送；fetch 确认 main 与 origin/main 无分歧，更新当前版本定位，按分支合并记录整合并核对远端引用 → [features/55](features/55-20261022-baseline-consistency/README.md)
+- 2026-10-22 任务级评测立项——独立分支 feat/56-task-evals，阶段 7 前置核对完成；用户确认三任务与 3×3 真跑预算，spec 草案待拍板，现有离线基础 `9 passed in 0.57s` → [features/56](features/56-20261022-task-evals/README.md)
+- 2026-10-22 任务级评测交付——逐项拍板后 TDD，标准完整离线 1965 passed、8 deselected；三固定任务真实基线完整成功 9/9，107291 token、5 次 bash 拒绝均恢复；原始工件、D#82 与复盘已归档，尚未提交/推送 → [features/56](features/56-20261022-task-evals/README.md)
+- 2026-10-22 任务级评测自动化验收——用户选择复用真实记录；本轮全量 1965 passed、8 deselected，包含新增 38 项；两个离线入口通过，152 个工件核对及九份历史产物独立重判 9/9，本轮新增模型调用 0；56 状态同步为已验收 → [验收报告](features/56-20261022-task-evals/evidence/20261022-acceptance-133734/README.md)
+- 2026-10-23 任务评测本地收口——用户同意先整合 56 再做真实项目评测；复核 78 passed、1 skipped，152 工件及九次指标一致，无新增模型调用；本地提交/合并结果由 Git 引用定位，未推送 → [features/56](features/56-20261022-task-evals/README.md)

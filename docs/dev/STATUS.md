@@ -1,7 +1,7 @@
 # 当前状态快照
 
-最后核对：2026-10-22（运行时代码沿用 `6f6d055`；文档基线为包含本快照的提交，涵盖 [54 文档对齐](features/54-20261022-current-docs-alignment/README.md)与[55 审计收口](features/55-20261022-baseline-consistency/README.md)）。
-版本定位：文档与校验内容基线为 `585ac97`；默认开发主线为 `main`，远端为 `origin/main`。本轮整合/同步授权见 55 档案，最新整合版本用 `git log -1 --format=%H main` 查询。
+最后核对：2026-10-23。上次固定文档基线涵盖 [54 文档对齐](features/54-20261022-current-docs-alignment/README.md)与[55 审计收口](features/55-20261022-baseline-consistency/README.md)；feature 56 已验收，本地整合基线由 main 引用定位，agent 主循环与工具沿用原实现。
+版本定位：文档与校验内容基线为 `585ac97`；默认开发主线为 `main`，远端为 `origin/main`。54/55 的远端同步授权见 55 档案；56 的本地收口见 56 日志，最新整合版本用 `git log -1 --format=%H main` 查询。
 
 阶段 1—7 均已有交付：压缩、REPL/TUI、记忆、权限、流式、skills/MCP 与基础 evals。
 当前重点是实际使用验收、效果测量与参数校准；交付不等于全部真人验收完成。
@@ -31,9 +31,13 @@
 | `tui/transcript.py` / `tui/groups.py` / `tui/markdown.py` / `tui/altscreen.py` | 可用 | transcript、连续工具分组、编辑 diff 默认展开、Markdown 与英文词边界折行、整屏重绘 |
 | `tui/mouse.py` / `tui/selection.py` / `tui/clipboard.py` / `tui/record.py` / `tui/replay.py` | 可用 | 鼠标与选区、剪贴板、终端字节录制及 PNG 回放；真机体验仍有待验收项 |
 | `viz/` | 可用 | 本地结构图、事件时间线与代码跳转；页面纯观察 |
-| `evals` | 可用 | 独立回放与真模型入口、工件索引、单步工具选择测量；完整任务效果尚无稳定测量 |
+| `evals` | 可用 | 独立回放与真模型入口、工件索引、单步工具选择及三固定任务重复测量；泛化与改进收益仍未验证 |
+
+本地已验收：[56 任务级评测](features/56-20261022-task-evals/README.md)，分支 `feat/56-task-evals`；用户指定复用原始真实记录，完整离线与九份产物独立重判通过；本地提交与合并结果由 Git 引用定位，尚未推送。
 
 ## 最近交付
+
+- [56：任务级评测](features/56-20261022-task-evals/README.md)：真实 once 三任务各三次，外部判分完整成功 9/9；主请求 107291 token、5 次 bash 请求被拒后任务仍完整成功，其中修 bug 三次的额外检查未执行；真人弹窗不适用。固定小题结果不外推实际项目能力。
 
 - [55：审计基线收口](features/55-20261022-baseline-consistency/README.md)：81 条决策与 55 个档案索引对齐；核销、拆分和合并有证据的 TODO，开放 217 条；加强索引、生命周期和唯一当前测试数字校验。
 
@@ -44,10 +48,11 @@
 
 ## 实测基线与验证边界
 
-- 2026-10-22，Python 3.9.6，全量离线实际输出：`1927 passed, 8 deselected in 194.15s (0:03:14)`。8 项为默认排除的真实 LLM 测试。
-- 运行命令为 `python3 -B -m pytest -m 'not llm' -p no:cacheprovider --basetemp=<临时目录> -q`，使用项目虚拟环境；与 `./test.sh` 的用例筛选相同，缓存关闭、临时产物放在 `/private/tmp`。
-- 首轮沙箱禁止监听本机端口，失败不归为项目回归；获准在沙箱外重跑得到上述结果。本次没有重跑真实模型或真人交互验收。
-- `./eval.sh` 是独立评测入口，本次未运行；历史测量见 [feature 47](features/47-20260827-tool-choice-eval/README.md)，不能把单步工具选择分数推广成整条任务的收益。
+- 2026-10-22，Python 3.9.6，本轮验收标准 ./test.sh 完整离线实际输出：`1965 passed, 8 deselected in 203.74s (0:03:23)`。8 项为默认排除的真实 LLM 测试；红→绿原始输出见 [56 日志](features/56-20261022-task-evals/devlog.md)。
+- 运行命令为 `PATH=<项目虚拟环境>/bin:$PATH PYTHONDONTWRITEBYTECODE=1 ./test.sh -p no:cacheprovider --basetemp=<临时目录> -q`，实际解释器为 Python 3.9.6，临时产物位于 `/private/tmp`。
+- 完整离线回归获准在沙箱外执行，以支持 localhost 假 provider、pty 和 ps 进程图反证；真人交互验收本轮未做。
+- 本轮验收重跑两个离线入口、重判九份原始产物；完整输出与范围见 [56 验收报告](features/56-20261022-task-evals/evidence/20261022-acceptance-133734/README.md)。
+- 首次交付时，默认回放、新任务离线入口与真实基线均已执行；原始输出见 [56 证据](features/56-20261022-task-evals/evidence/20261022-deepseek-flash-baseline/README.md)。真实入口含预检共 69.12 秒；没有额外补跑或原有 LLM 套件跑批。
 
 ## 重要边界与未完成验证
 
@@ -60,5 +65,5 @@
 ## 下一步
 
 1. 按 TODO 的近期阅读入口安排真人验收；有复现证据再处理交互问题。
-2. 建立少量真实任务的重复测量，区分成功率、耗时、弹窗与 token 消耗，再决定工具/提示词调整。
+2. 在 56 的固定小题基线上扩充实际项目场景与保留集；改工具/提示词前先冻结新判据做重复对照，不能把 9/9 当泛化收益。
 3. 用真实使用数据校准预算；MCP 新传输、ToolSearch、代码重构等按既有触发条件评估。

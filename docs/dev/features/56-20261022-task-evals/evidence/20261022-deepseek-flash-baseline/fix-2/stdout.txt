@@ -1,0 +1,1 @@
+已修复：将 `total // size + 1` 改为向上取整的 `-(-total // size)`，这样 `total=0` 时返回 0，整除时也不会多出一页；参数校验（`total<0` 或 `size<=0` 抛 `ValueError`）保持不变。现有 pytest 测试通过（1 passed）。

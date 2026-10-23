@@ -1,0 +1,4 @@
+{
+  "id": "tests",
+  "prompt": "为 ranges.py 的 clip(value, lower, upper) 补充 pytest 测试。约定：lower<=upper 时，value 小于 lower 返回 lower，大于 upper 返回 upper，否则原样返回 value；lower>upper 抛 ValueError。请覆盖普通值、两端边界和非法范围。只能在 tests/ 下新增 test_*.py，不能修改生产代码或其他已有文件。可以用 run_tests 运行 pytest。完成后简短说明。"
+}

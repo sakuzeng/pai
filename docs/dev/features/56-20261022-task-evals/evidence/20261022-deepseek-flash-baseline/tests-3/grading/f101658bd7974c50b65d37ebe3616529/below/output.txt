@@ -1,0 +1,79 @@
+......FF..F..........F.                                                  [100%]
+=================================== FAILURES ===================================
+_________________ test_clip_outside_range_is_clamped[0-1-10-1] _________________
+
+value = 0, lower = 1, upper = 10, expected = 1
+
+    @pytest.mark.parametrize(
+        "value, lower, upper, expected",
+        [
+            (0, 1, 10, 1),        # 低于下界
+            (-100, -10, 10, -10), # 负数低于下界
+            (11, 1, 10, 10),      # 高于上界
+            (1_000_000, 0, 100, 100),
+            (-5, 0, 0, 0),        # 退化区间越界
+        ],
+    )
+    def test_clip_outside_range_is_clamped(value, lower, upper, expected):
+>       assert clip(value, lower, upper) == expected
+E       assert 0 == 1
+E        +  where 0 = clip(0, 1, 10)
+
+tests/test_ranges.py:41: AssertionError
+_____________ test_clip_outside_range_is_clamped[-100--10-10--10] ______________
+
+value = -100, lower = -10, upper = 10, expected = -10
+
+    @pytest.mark.parametrize(
+        "value, lower, upper, expected",
+        [
+            (0, 1, 10, 1),        # 低于下界
+            (-100, -10, 10, -10), # 负数低于下界
+            (11, 1, 10, 10),      # 高于上界
+            (1_000_000, 0, 100, 100),
+            (-5, 0, 0, 0),        # 退化区间越界
+        ],
+    )
+    def test_clip_outside_range_is_clamped(value, lower, upper, expected):
+>       assert clip(value, lower, upper) == expected
+E       assert -100 == -10
+E        +  where -100 = clip(-100, -10, 10)
+
+tests/test_ranges.py:41: AssertionError
+_________________ test_clip_outside_range_is_clamped[-5-0-0-0] _________________
+
+value = -5, lower = 0, upper = 0, expected = 0
+
+    @pytest.mark.parametrize(
+        "value, lower, upper, expected",
+        [
+            (0, 1, 10, 1),        # 低于下界
+            (-100, -10, 10, -10), # 负数低于下界
+            (11, 1, 10, 10),      # 高于上界
+            (1_000_000, 0, 100, 100),
+            (-5, 0, 0, 0),        # 退化区间越界
+        ],
+    )
+    def test_clip_outside_range_is_clamped(value, lower, upper, expected):
+>       assert clip(value, lower, upper) == expected
+E       assert -5 == 0
+E        +  where -5 = clip(-5, 0, 0)
+
+tests/test_ranges.py:41: AssertionError
+________________________ test_clip_result_within_bounds ________________________
+
+    def test_clip_result_within_bounds():
+        lower, upper = -7, 13
+        for value in range(-20, 21):
+            result = clip(value, lower, upper)
+>           assert lower <= result <= upper
+E           assert -7 <= -20
+
+tests/test_ranges.py:84: AssertionError
+- generated xml file: /Users/sakuzeng/improve/coding/agent/projects/pai/pai_playground/task-evals/20261022T124706Z-5be434f3/tests-3/grading/f101658bd7974c50b65d37ebe3616529/below/junit.xml -
+=========================== short test summary info ============================
+FAILED ../../../../../../../../../../../../../../dev/test_ranges.py::test_clip_outside_range_is_clamped[0-1-10-1]
+FAILED ../../../../../../../../../../../../../../dev/test_ranges.py::test_clip_outside_range_is_clamped[-100--10-10--10]
+FAILED ../../../../../../../../../../../../../../dev/test_ranges.py::test_clip_outside_range_is_clamped[-5-0-0-0]
+FAILED ../../../../../../../../../../../../../../dev/test_ranges.py::test_clip_result_within_bounds
+4 failed, 19 passed in 0.03s

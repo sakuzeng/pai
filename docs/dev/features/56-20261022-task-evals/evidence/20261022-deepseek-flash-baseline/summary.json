@@ -1,0 +1,76 @@
+{
+  "planned": 9,
+  "started": 9,
+  "completeSuccesses": 9,
+  "completeSuccessRate": 1.0,
+  "productPassRate": 1.0,
+  "productPasses": 9,
+  "executionCounts": {
+    "completed": 9
+  },
+  "agentEndCounts": {
+    "final": 9
+  },
+  "gradingCounts": {
+    "pass": 9
+  },
+  "byCase": {
+    "fix": {
+      "planned": 3,
+      "completeSuccesses": 3,
+      "productPasses": 3,
+      "completeSuccessRate": 1.0,
+      "productPassRate": 1.0,
+      "durationMs": {
+        "n": 3,
+        "median": 6344,
+        "min": 6044,
+        "max": 6726
+      },
+      "totalTokens": {
+        "n": 3,
+        "median": 11746,
+        "min": 9368,
+        "max": 11787
+      }
+    },
+    "locate": {
+      "planned": 3,
+      "completeSuccesses": 3,
+      "productPasses": 3,
+      "completeSuccessRate": 1.0,
+      "productPassRate": 1.0,
+      "durationMs": {
+        "n": 3,
+        "median": 4703,
+        "min": 4039,
+        "max": 6263
+      },
+      "totalTokens": {
+        "n": 3,
+        "median": 8592,
+        "min": 8569,
+        "max": 14028
+      }
+    },
+    "tests": {
+      "planned": 3,
+      "completeSuccesses": 3,
+      "productPasses": 3,
+      "completeSuccessRate": 1.0,
+      "productPassRate": 1.0,
+      "durationMs": {
+        "n": 3,
+        "median": 10036,
+        "min": 7381,
+        "max": 10062
+      },
+      "totalTokens": {
+        "n": 3,
+        "median": 15785,
+        "min": 10433,
+        "max": 16983
+      }
+    }
+  }
+}
