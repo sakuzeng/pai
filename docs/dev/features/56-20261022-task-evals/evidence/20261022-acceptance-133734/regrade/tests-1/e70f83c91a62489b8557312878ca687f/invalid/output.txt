@@ -1,0 +1,113 @@
+...................FFFFFF                                                [100%]
+=================================== FAILURES ===================================
+_____ TestClipInvalidRange.test_inverted_range_raises_value_error[5-10-0] ______
+
+self = <test_ranges.TestClipInvalidRange object at 0x105d1a8e0>, value = 5
+lower = 10, upper = 0
+
+    @pytest.mark.parametrize(
+        "value, lower, upper",
+        [
+            (5, 10, 0),
+            (0, 1, -1),
+            (-5, -1, -10),
+            (5.5, 10.0, 0.0),
+        ],
+    )
+    def test_inverted_range_raises_value_error(self, value, lower, upper):
+        with pytest.raises(ValueError):
+>           clip(value, lower, upper)
+E           Failed: DID NOT RAISE <class 'ValueError'>
+
+tests/test_ranges.py:86: Failed
+_____ TestClipInvalidRange.test_inverted_range_raises_value_error[0-1--1] ______
+
+self = <test_ranges.TestClipInvalidRange object at 0x105c42ca0>, value = 0
+lower = 1, upper = -1
+
+    @pytest.mark.parametrize(
+        "value, lower, upper",
+        [
+            (5, 10, 0),
+            (0, 1, -1),
+            (-5, -1, -10),
+            (5.5, 10.0, 0.0),
+        ],
+    )
+    def test_inverted_range_raises_value_error(self, value, lower, upper):
+        with pytest.raises(ValueError):
+>           clip(value, lower, upper)
+E           Failed: DID NOT RAISE <class 'ValueError'>
+
+tests/test_ranges.py:86: Failed
+____ TestClipInvalidRange.test_inverted_range_raises_value_error[-5--1--10] ____
+
+self = <test_ranges.TestClipInvalidRange object at 0x105c42e80>, value = -5
+lower = -1, upper = -10
+
+    @pytest.mark.parametrize(
+        "value, lower, upper",
+        [
+            (5, 10, 0),
+            (0, 1, -1),
+            (-5, -1, -10),
+            (5.5, 10.0, 0.0),
+        ],
+    )
+    def test_inverted_range_raises_value_error(self, value, lower, upper):
+        with pytest.raises(ValueError):
+>           clip(value, lower, upper)
+E           Failed: DID NOT RAISE <class 'ValueError'>
+
+tests/test_ranges.py:86: Failed
+__ TestClipInvalidRange.test_inverted_range_raises_value_error[5.5-10.0-0.0] ___
+
+self = <test_ranges.TestClipInvalidRange object at 0x105c42ee0>, value = 5.5
+lower = 10.0, upper = 0.0
+
+    @pytest.mark.parametrize(
+        "value, lower, upper",
+        [
+            (5, 10, 0),
+            (0, 1, -1),
+            (-5, -1, -10),
+            (5.5, 10.0, 0.0),
+        ],
+    )
+    def test_inverted_range_raises_value_error(self, value, lower, upper):
+        with pytest.raises(ValueError):
+>           clip(value, lower, upper)
+E           Failed: DID NOT RAISE <class 'ValueError'>
+
+tests/test_ranges.py:86: Failed
+___ TestClipInvalidRange.test_inverted_range_raises_even_if_value_in_between ___
+
+self = <test_ranges.TestClipInvalidRange object at 0x105fcacd0>
+
+    def test_inverted_range_raises_even_if_value_in_between(self):
+        with pytest.raises(ValueError):
+>           clip(5, 6, 4)
+E           Failed: DID NOT RAISE <class 'ValueError'>
+
+tests/test_ranges.py:90: Failed
+_ TestClipInvalidRange.test_inverted_range_raises_regardless_of_order_of_check _
+
+self = <test_ranges.TestClipInvalidRange object at 0x105fcab50>
+
+    def test_inverted_range_raises_regardless_of_order_of_check(self):
+        # 即使 value 看起来"合法"也必须先校验区间
+        for value in (-100, 0, 100):
+            with pytest.raises(ValueError):
+>               clip(value, 10, 0)
+E               Failed: DID NOT RAISE <class 'ValueError'>
+
+tests/test_ranges.py:96: Failed
+- generated xml file: /Users/sakuzeng/improve/coding/agent/projects/pai/pai_playground/feature56-acceptance/20261022T133734Z/regrade/tests-1/e70f83c91a62489b8557312878ca687f/invalid/junit.xml -
+=========================== short test summary info ============================
+FAILED ../../../../../../../../../../../../../../dev/test_ranges.py::TestClipInvalidRange::test_inverted_range_raises_value_error[5-10-0]
+FAILED ../../../../../../../../../../../../../../dev/test_ranges.py::TestClipInvalidRange::test_inverted_range_raises_value_error[0-1--1]
+FAILED ../../../../../../../../../../../../../../dev/test_ranges.py::TestClipInvalidRange::test_inverted_range_raises_value_error[-5--1--10]
+FAILED ../../../../../../../../../../../../../../dev/test_ranges.py::TestClipInvalidRange::test_inverted_range_raises_value_error[5.5-10.0-0.0]
+FAILED ../../../../../../../../../../../../../../dev/test_ranges.py::TestClipInvalidRange::test_inverted_range_raises_even_if_value_in_between
+FAILED ../../../../../../../../../../../../../../dev/test_ranges.py::TestClipInvalidRange::test_inverted_range_raises_regardless_of_order_of_check
+6 failed, 19 passed in 0.03s

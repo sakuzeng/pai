@@ -1,0 +1,4 @@
+{
+  "id": "fix",
+  "prompt": "修复 pagination.py 的 page_count(total, size)。约定：total 是非负整数，size 是正整数；返回容纳 total 项所需的最少页数，total=0 时是 0；total<0 或 size<=0 时抛 ValueError。只能修改 pagination.py，保留接口和其他文件。可以用 run_tests 运行现有 pytest 测试；完成后简短说明。"
+}

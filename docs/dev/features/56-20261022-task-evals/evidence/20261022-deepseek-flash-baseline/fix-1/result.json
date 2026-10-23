@@ -1,0 +1,42 @@
+{
+  "case": "fix",
+  "execution": "completed",
+  "agentEnd": "final",
+  "grade": {
+    "status": "pass",
+    "details": [
+      {
+        "check": "external_tests",
+        "returncode": 0,
+        "collected": 8,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "assertionFailures": 0
+      }
+    ]
+  },
+  "cleanupVerified": true,
+  "durationMs": 6726,
+  "returncode": 0,
+  "metrics": {
+    "tokens": {
+      "prompt": 11265,
+      "completion": 522,
+      "total": 11787,
+      "reasoning": 113,
+      "cacheHit": 8704
+    },
+    "usageCoverage": "complete",
+    "requestsWithUsage": 5,
+    "assistantResponses": 5,
+    "toolAttempts": 5,
+    "toolsStarted": 4,
+    "permissionDenials": 1,
+    "agentEnd": "final",
+    "humanPrompts": null,
+    "humanPromptsReason": "once has no human asker"
+  },
+  "gradingDurationMs": 327,
+  "totalDurationMs": 7081
+}

@@ -1,0 +1,1 @@
+已创建 `answer.json`：目标行为在 `text_rules.py` 中的 `slugify` 函数（`"-".join(label.strip().lower().split())`），未改动其他文件。

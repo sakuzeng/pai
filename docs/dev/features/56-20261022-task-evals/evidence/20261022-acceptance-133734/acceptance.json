@@ -1,0 +1,16 @@
+{
+  "verdict": "passed",
+  "scope": "offline and archived live artifact verification",
+  "fullOfflinePassed": 1965,
+  "llmDeselected": 8,
+  "newFeatureTestsIncluded": 38,
+  "archivedFilesVerified": 152,
+  "historicalProductsRegraded": 9,
+  "productsPassed": 9,
+  "newModelCalls": 0,
+  "runtimeHashMatchesFreeze": true,
+  "sourceOrTestLogicModified": false,
+  "featureStatus": "已验收",
+  "committed": false,
+  "pushed": false
+}

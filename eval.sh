@@ -11,6 +11,16 @@
 # 与被评测进程的会话 JSONL 快照（gitignore，含 prompt 与工具输出）。
 set -euo pipefail
 
+if [[ "${1:-}" == "--tasks" ]]; then
+    shift
+    if [[ "${1:-}" == "--llm" ]]; then
+        shift
+        echo "⚠️  将执行任务基线：3 个任务各 3 次真实 API 调用过程，会产生费用"
+        PAI_RUN_LLM_TESTS=1 exec python3 -m pytest evals/task_suite.py "$@"
+    fi
+    exec python3 -m pytest evals/task_suite.py -m "not llm" "$@"
+fi
+
 if [[ "${1:-}" == "--llm" ]]; then
     shift
     echo "⚠️  将打真实 API，会产生费用"

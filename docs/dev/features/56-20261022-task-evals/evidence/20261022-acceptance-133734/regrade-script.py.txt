@@ -1,0 +1,20 @@
+import json
+from pathlib import Path
+from pai.evals.task_grading import grade, load_case
+
+ROOT=Path('/Users/sakuzeng/improve/coding/agent/projects/pai')
+archive=ROOT/'docs/dev/features/56-20261022-task-evals/evidence/20261022-deepseek-flash-baseline'
+out=ROOT/'pai_playground/feature56-acceptance/20261022T133734Z'
+rows=[json.loads(line) for line in (archive/'task-results.jsonl').read_text().splitlines()]
+results=[]
+for row in rows:
+    old=archive/row['artifact']
+    config=json.loads((old/'input.json').read_text())
+    case=load_case(ROOT/'evals/tasks'/row['case'])
+    result=grade(case,old/'workspace',config['baseline'],out/'regrade'/row['artifact'],timeout=20)
+    results.append({'trial':row['artifact'],'originalStatus':row['grade']['status'],
+                    'regradedStatus':result.status,'details':result.details})
+(out/'regrade-results.json').write_text(json.dumps({'newModelCalls':0,'trials':results},ensure_ascii=False,indent=2))
+passed=sum(r['regradedStatus']=='pass' for r in results)
+print(json.dumps({'regraded':len(results),'passed':passed,'newModelCalls':0},ensure_ascii=False))
+assert passed==9,results

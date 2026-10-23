@@ -1,0 +1,18 @@
+{
+  "model": "deepseek-flash",
+  "permissionMode": "acceptEdits",
+  "repetitions": 3,
+  "limits": {
+    "steps": 20,
+    "tokens": 200000,
+    "seconds": 180,
+    "batch_seconds": 1200
+  },
+  "codeHash": "0a478c0379f19fe498d854d88859ce2f792ed64d990ab9b9fffa0c804b36f4f4",
+  "caseHashes": {
+    "locate": "688390dc0839bca95372f7a419b7f8b349f88b10401e62399f125c85eb52ac94",
+    "fix": "c03e225f0c8cedc3caa7f8a9a5d4614d3b7a03fcdd9b592141a7846165fc13ff",
+    "tests": "dd54f69c100410d94b21ce6e52654aa10ab65e721d055bce2d398d2672b96ca7"
+  },
+  "note": "真跑前记录；代码未提交，以 codeHash 与案例哈希定位；请求温度/thinking 未额外覆盖，后端修订号 unknown。"
+}

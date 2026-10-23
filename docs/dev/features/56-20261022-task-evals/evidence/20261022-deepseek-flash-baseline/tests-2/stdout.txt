@@ -1,0 +1,1 @@
+已在 `tests/test_ranges.py` 新增 12 个测试（覆盖区间内普通值、等于上下界、超出两端、负数区间、退化区间、`lower > upper` 抛 `ValueError`），全部通过；未改动生产代码或其他文件。

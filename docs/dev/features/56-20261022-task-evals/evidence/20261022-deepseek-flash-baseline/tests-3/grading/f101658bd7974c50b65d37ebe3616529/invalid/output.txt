@@ -1,0 +1,94 @@
+................FFFFF..                                                  [100%]
+=================================== FAILURES ===================================
+______________ test_clip_invalid_range_raises_value_error[5-10-1] ______________
+
+value = 5, lower = 10, upper = 1
+
+    @pytest.mark.parametrize(
+        "value, lower, upper",
+        [
+            (5, 10, 1),      # 上下界颠倒
+            (0, 1, 0),       # 相差 1
+            (-5, 3, 2),
+            (0, -1, -2),     # 全负数颠倒
+        ],
+    )
+    def test_clip_invalid_range_raises_value_error(value, lower, upper):
+        with pytest.raises(ValueError):
+>           clip(value, lower, upper)
+E           Failed: DID NOT RAISE <class 'ValueError'>
+
+tests/test_ranges.py:71: Failed
+______________ test_clip_invalid_range_raises_value_error[0-1-0] _______________
+
+value = 0, lower = 1, upper = 0
+
+    @pytest.mark.parametrize(
+        "value, lower, upper",
+        [
+            (5, 10, 1),      # 上下界颠倒
+            (0, 1, 0),       # 相差 1
+            (-5, 3, 2),
+            (0, -1, -2),     # 全负数颠倒
+        ],
+    )
+    def test_clip_invalid_range_raises_value_error(value, lower, upper):
+        with pytest.raises(ValueError):
+>           clip(value, lower, upper)
+E           Failed: DID NOT RAISE <class 'ValueError'>
+
+tests/test_ranges.py:71: Failed
+______________ test_clip_invalid_range_raises_value_error[-5-3-2] ______________
+
+value = -5, lower = 3, upper = 2
+
+    @pytest.mark.parametrize(
+        "value, lower, upper",
+        [
+            (5, 10, 1),      # 上下界颠倒
+            (0, 1, 0),       # 相差 1
+            (-5, 3, 2),
+            (0, -1, -2),     # 全负数颠倒
+        ],
+    )
+    def test_clip_invalid_range_raises_value_error(value, lower, upper):
+        with pytest.raises(ValueError):
+>           clip(value, lower, upper)
+E           Failed: DID NOT RAISE <class 'ValueError'>
+
+tests/test_ranges.py:71: Failed
+_____________ test_clip_invalid_range_raises_value_error[0--1--2] ______________
+
+value = 0, lower = -1, upper = -2
+
+    @pytest.mark.parametrize(
+        "value, lower, upper",
+        [
+            (5, 10, 1),      # 上下界颠倒
+            (0, 1, 0),       # 相差 1
+            (-5, 3, 2),
+            (0, -1, -2),     # 全负数颠倒
+        ],
+    )
+    def test_clip_invalid_range_raises_value_error(value, lower, upper):
+        with pytest.raises(ValueError):
+>           clip(value, lower, upper)
+E           Failed: DID NOT RAISE <class 'ValueError'>
+
+tests/test_ranges.py:71: Failed
+____________________ test_clip_invalid_range_error_message _____________________
+
+    def test_clip_invalid_range_error_message():
+        with pytest.raises(ValueError, match="invalid bounds"):
+>           clip(5, 10, 1)
+E           Failed: DID NOT RAISE <class 'ValueError'>
+
+tests/test_ranges.py:76: Failed
+- generated xml file: /Users/sakuzeng/improve/coding/agent/projects/pai/pai_playground/task-evals/20261022T124706Z-5be434f3/tests-3/grading/f101658bd7974c50b65d37ebe3616529/invalid/junit.xml -
+=========================== short test summary info ============================
+FAILED ../../../../../../../../../../../../../../dev/test_ranges.py::test_clip_invalid_range_raises_value_error[5-10-1]
+FAILED ../../../../../../../../../../../../../../dev/test_ranges.py::test_clip_invalid_range_raises_value_error[0-1-0]
+FAILED ../../../../../../../../../../../../../../dev/test_ranges.py::test_clip_invalid_range_raises_value_error[-5-3-2]
+FAILED ../../../../../../../../../../../../../../dev/test_ranges.py::test_clip_invalid_range_raises_value_error[0--1--2]
+FAILED ../../../../../../../../../../../../../../dev/test_ranges.py::test_clip_invalid_range_error_message
+5 failed, 18 passed in 0.03s

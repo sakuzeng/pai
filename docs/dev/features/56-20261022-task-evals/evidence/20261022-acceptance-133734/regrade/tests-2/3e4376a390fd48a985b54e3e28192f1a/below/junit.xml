@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="3" skipped="0" tests="12" time="0.026" timestamp="2026-10-22T21:45:58.500723+08:00" hostname="sakuzengdeMacBook-Air.local"><testcase classname="test_ranges" name="test_value_inside_range_is_returned_unchanged" time="0.000" /><testcase classname="test_ranges" name="test_value_below_lower_returns_lower" time="0.000"><failure message="assert -3 == 0&#10; +  where -3 = clip(-3, 0, 10)">def test_value_below_lower_returns_lower():
+&gt;       assert clip(-3, 0, 10) == 0
+E       assert -3 == 0
+E        +  where -3 = clip(-3, 0, 10)
+
+tests/test_ranges.py:17: AssertionError</failure></testcase><testcase classname="test_ranges" name="test_value_above_upper_returns_upper" time="0.000" /><testcase classname="test_ranges" name="test_value_equal_to_lower_is_returned_unchanged" time="0.000" /><testcase classname="test_ranges" name="test_value_equal_to_upper_is_returned_unchanged" time="0.000" /><testcase classname="test_ranges" name="test_works_with_negative_bounds" time="0.000"><failure message="assert -10 == -5&#10; +  where -10 = clip(-10, -5, -1)">def test_works_with_negative_bounds():
+&gt;       assert clip(-10, -5, -1) == -5
+E       assert -10 == -5
+E        +  where -10 = clip(-10, -5, -1)
+
+tests/test_ranges.py:33: AssertionError</failure></testcase><testcase classname="test_ranges" name="test_degenerate_range_single_value" time="0.000"><failure message="assert 1 == 3&#10; +  where 1 = clip(1, 3, 3)">def test_degenerate_range_single_value():
+        assert clip(7, 3, 3) == 3
+&gt;       assert clip(1, 3, 3) == 3
+E       assert 1 == 3
+E        +  where 1 = clip(1, 3, 3)
+
+tests/test_ranges.py:40: AssertionError</failure></testcase><testcase classname="test_ranges" name="test_lower_greater_than_upper_raises_value_error" time="0.000" /><testcase classname="test_ranges" name="test_invalid_range_raises_regardless_of_value[-100]" time="0.000" /><testcase classname="test_ranges" name="test_invalid_range_raises_regardless_of_value[0]" time="0.000" /><testcase classname="test_ranges" name="test_invalid_range_raises_regardless_of_value[5]" time="0.000" /><testcase classname="test_ranges" name="test_invalid_range_raises_regardless_of_value[100]" time="0.000" /></testsuite></testsuites>

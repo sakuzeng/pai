@@ -1,0 +1,4 @@
+...........................................................s............ [ 91%]
+.......                                                                  [100%]
+- generated xml file: /Users/sakuzeng/improve/coding/agent/projects/pai/docs/dev/features/56-20261022-task-evals/evidence/20261023-local-integration/checks.junit.xml -
+78 passed, 1 skipped in 20.45s

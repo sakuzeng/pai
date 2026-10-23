@@ -1,0 +1,1 @@
+已修复 `pagination.py`：把 `total // size + 1` 改为向上取整的 `-(-total // size)`，使 `total=0` 返回 0、整除与有余数情形都正确，`total<0` 或 `size<=0` 仍抛 `ValueError`；未改动接口和其他文件，现有测试通过。

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="5" skipped="0" tests="12" time="0.027" timestamp="2026-10-22T21:45:58.851400+08:00" hostname="sakuzengdeMacBook-Air.local"><testcase classname="test_ranges" name="test_value_inside_range_is_returned_unchanged" time="0.000" /><testcase classname="test_ranges" name="test_value_below_lower_returns_lower" time="0.000" /><testcase classname="test_ranges" name="test_value_above_upper_returns_upper" time="0.000" /><testcase classname="test_ranges" name="test_value_equal_to_lower_is_returned_unchanged" time="0.000" /><testcase classname="test_ranges" name="test_value_equal_to_upper_is_returned_unchanged" time="0.000" /><testcase classname="test_ranges" name="test_works_with_negative_bounds" time="0.000" /><testcase classname="test_ranges" name="test_degenerate_range_single_value" time="0.000" /><testcase classname="test_ranges" name="test_lower_greater_than_upper_raises_value_error" time="0.000"><failure message="Failed: DID NOT RAISE &lt;class 'ValueError'&gt;">def test_lower_greater_than_upper_raises_value_error():
+        with pytest.raises(ValueError):
+&gt;           clip(1, 10, 0)
+E           Failed: DID NOT RAISE &lt;class 'ValueError'&gt;
+
+tests/test_ranges.py:46: Failed</failure></testcase><testcase classname="test_ranges" name="test_invalid_range_raises_regardless_of_value[-100]" time="0.000"><failure message="Failed: DID NOT RAISE &lt;class 'ValueError'&gt;">value = -100
+
+    @pytest.mark.parametrize("value", [-100, 0, 5, 100])
+    def test_invalid_range_raises_regardless_of_value(value):
+        with pytest.raises(ValueError):
+&gt;           clip(value, 10, 0)
+E           Failed: DID NOT RAISE &lt;class 'ValueError'&gt;
+
+tests/test_ranges.py:52: Failed</failure></testcase><testcase classname="test_ranges" name="test_invalid_range_raises_regardless_of_value[0]" time="0.000"><failure message="Failed: DID NOT RAISE &lt;class 'ValueError'&gt;">value = 0
+
+    @pytest.mark.parametrize("value", [-100, 0, 5, 100])
+    def test_invalid_range_raises_regardless_of_value(value):
+        with pytest.raises(ValueError):
+&gt;           clip(value, 10, 0)
+E           Failed: DID NOT RAISE &lt;class 'ValueError'&gt;
+
+tests/test_ranges.py:52: Failed</failure></testcase><testcase classname="test_ranges" name="test_invalid_range_raises_regardless_of_value[5]" time="0.000"><failure message="Failed: DID NOT RAISE &lt;class 'ValueError'&gt;">value = 5
+
+    @pytest.mark.parametrize("value", [-100, 0, 5, 100])
+    def test_invalid_range_raises_regardless_of_value(value):
+        with pytest.raises(ValueError):
+&gt;           clip(value, 10, 0)
+E           Failed: DID NOT RAISE &lt;class 'ValueError'&gt;
+
+tests/test_ranges.py:52: Failed</failure></testcase><testcase classname="test_ranges" name="test_invalid_range_raises_regardless_of_value[100]" time="0.000"><failure message="Failed: DID NOT RAISE &lt;class 'ValueError'&gt;">value = 100
+
+    @pytest.mark.parametrize("value", [-100, 0, 5, 100])
+    def test_invalid_range_raises_regardless_of_value(value):
+        with pytest.raises(ValueError):
+&gt;           clip(value, 10, 0)
+E           Failed: DID NOT RAISE &lt;class 'ValueError'&gt;
+
+tests/test_ranges.py:52: Failed</failure></testcase></testsuite></testsuites>

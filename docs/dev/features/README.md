@@ -84,6 +84,7 @@
 
 | 功能 | 状态 | 一句话结果 |
 |---|---|---|
+| [56-20261022-task-evals](56-20261022-task-evals/README.md) | 已验收 | 命令行任务评测自动化验收通过；首轮 9/9 产物独立重判通过，本轮无新增模型调用 |
 | [55-20261022-baseline-consistency](55-20261022-baseline-consistency/README.md) | 已交付 | 审计后补齐两个索引、按证据整理 TODO、补记 54 偏差并加强文档校验 |
 | [30-20260824-config-and-trust-dedup](30-20260824-config-and-trust-dedup/README.md) | 已交付 | settings 读取和信任标记共用，pytest-xdist 作为可选测试路径 |
 | [24-20260822-session-format-and-resume](24-20260822-session-format-and-resume/README.md) | 已交付 | 会话 v1 统一信封、条目身份与压缩重建，线性 --resume；追加原文件由 49 后续交付 |

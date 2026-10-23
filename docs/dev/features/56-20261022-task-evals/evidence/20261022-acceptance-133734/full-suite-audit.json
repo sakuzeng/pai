@@ -1,0 +1,14 @@
+{
+  "fullPassed": 1965,
+  "newFeaturePassed": 38,
+  "byModule": {
+    "test_task_entry": 10,
+    "test_task_grading": 10,
+    "test_task_metrics": 9,
+    "test_task_runner": 9
+  },
+  "failures": 0,
+  "errors": 0,
+  "skippedInSelectedTests": 0,
+  "llmDeselected": 8
+}

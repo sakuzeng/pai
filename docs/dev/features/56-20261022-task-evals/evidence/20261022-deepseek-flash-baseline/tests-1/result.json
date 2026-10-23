@@ -1,0 +1,69 @@
+{
+  "case": "tests",
+  "execution": "completed",
+  "agentEnd": "final",
+  "grade": {
+    "status": "pass",
+    "details": [
+      {
+        "check": "correct",
+        "returncode": 0,
+        "collected": 25,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "assertionFailures": 0
+      },
+      {
+        "check": "above",
+        "returncode": 1,
+        "collected": 25,
+        "failures": 4,
+        "errors": 0,
+        "skipped": 0,
+        "assertionFailures": 4
+      },
+      {
+        "check": "below",
+        "returncode": 1,
+        "collected": 25,
+        "failures": 5,
+        "errors": 0,
+        "skipped": 0,
+        "assertionFailures": 5
+      },
+      {
+        "check": "invalid",
+        "returncode": 1,
+        "collected": 25,
+        "failures": 6,
+        "errors": 0,
+        "skipped": 0,
+        "assertionFailures": 6
+      }
+    ]
+  },
+  "cleanupVerified": true,
+  "durationMs": 10036,
+  "returncode": 0,
+  "metrics": {
+    "tokens": {
+      "prompt": 14260,
+      "completion": 1525,
+      "total": 15785,
+      "reasoning": 237,
+      "cacheHit": 11648
+    },
+    "usageCoverage": "complete",
+    "requestsWithUsage": 5,
+    "assistantResponses": 5,
+    "toolAttempts": 5,
+    "toolsStarted": 5,
+    "permissionDenials": 0,
+    "agentEnd": "final",
+    "humanPrompts": null,
+    "humanPromptsReason": "once has no human asker"
+  },
+  "gradingDurationMs": 1385,
+  "totalDurationMs": 11447
+}

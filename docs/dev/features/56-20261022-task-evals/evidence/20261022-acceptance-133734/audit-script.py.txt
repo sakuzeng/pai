@@ -1,0 +1,62 @@
+import ast
+from collections import Counter
+import hashlib
+import json
+from pathlib import Path
+
+from pai.evals.task_grading import snapshot
+from pai.evals.task_metrics import measure, summarize
+from pai.evals.task_runner import SRC, _hash_tree
+
+ROOT=Path('/Users/sakuzeng/improve/coding/agent/projects/pai')
+feature=ROOT/'docs/dev/features/56-20261022-task-evals'
+archive=feature/'evidence/20261022-deepseek-flash-baseline'
+output=ROOT/'pai_playground/feature56-acceptance/20261022T133734Z'
+freeze=json.loads((feature/'evidence/pre-live-freeze.json').read_text())
+manifest=json.loads((archive/'manifest.json').read_text())
+index=json.loads((archive/'archive-index.json').read_text())
+issues=[]
+for item in index['files']:
+    path=archive/item['path']
+    if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest()!=item['sha256']:
+        issues.append(item['path'])
+assert not issues,issues
+assert _hash_tree(SRC)==freeze['codeHash']==manifest['codeHash']
+assert {n:_hash_tree(ROOT/'evals/tasks'/n) for n in ('locate','fix','tests')}==freeze['caseHashes']
+rows=[json.loads(line) for line in (archive/'task-results.jsonl').read_text().splitlines()]
+assert len(rows)==9
+assert summarize(rows)==json.loads((archive/'summary.json').read_text())
+checks=[]
+for row in rows:
+    trial=archive/row['artifact']
+    sessions=[p for p in (trial/'sessions').glob('*.jsonl') if not p.name.endswith('.events.jsonl')]
+    assert len(sessions)==1
+    metrics=measure(sessions[0],trial/'trace.events.jsonl')
+    assert metrics==row['metrics'],row['artifact']
+    config=json.loads((trial/'input.json').read_text())
+    expected=next(c['prompt'] for c in manifest['cases'] if c['id']==row['case'])
+    records=[json.loads(line) for line in sessions[0].read_text().splitlines()]
+    users=[r['message']['content'] for r in records if r.get('type')=='message' and r['message']['role']=='user']
+    assert users==[expected]
+    assert config['model']=='deepseek-flash'
+    assert config['permissionMode']=='acceptEdits'
+    assert config['max_steps']==20 and config['max_tokens']==200000 and config['seconds']<=180
+    assert row['durationMs']<180000 and row['metrics']['tokens']['total']<200000
+    assert row['metrics']['humanPrompts'] is None
+    before=config['baseline'];after=snapshot(trial/'workspace')
+    changed=sorted(k for k in set(before)|set(after) if before.get(k)!=after.get(k))
+    if row['case']=='locate':assert changed==['answer.json']
+    elif row['case']=='fix':assert changed==['pagination.py']
+    else:assert changed and all(Path(p).parent==Path('tests') and Path(p).name.startswith('test_') and Path(p).suffix=='.py' and p not in before for p in changed)
+    checks.append({'trial':row['artifact'],'metricsMatch':True,'promptMatches':True,'boundsMatch':True,'changedFiles':changed})
+measured=(feature/'evidence/measured-task-suite.py.txt').read_text()
+current=(ROOT/'evals/task_suite.py').read_text()
+def bodies(source):
+    return [ast.dump(ast.Module(body=n.body,type_ignores=[])) for n in ast.walk(ast.parse(source)) if isinstance(n,ast.FunctionDef)]
+assert bodies(measured)==bodies(current)
+result={'archivedFilesVerified':len(index['files']),'runtimeHashMatches':True,'caseHashesMatch':True,
+        'summaryRecomputed':True,'trialChecks':checks,'measuredSuiteBodiesUnchanged':True,
+        'historicalModelTrials':9,'newModelCallsInThisAudit':0}
+(output/'baseline-audit.json').write_text(json.dumps(result,ensure_ascii=False,indent=2))
+print(json.dumps({'archivedFilesVerified':len(index['files']),'trialsRecomputed':len(checks),
+                  'runtimeAndCasesMatch':True,'newModelCalls':0},ensure_ascii=False))

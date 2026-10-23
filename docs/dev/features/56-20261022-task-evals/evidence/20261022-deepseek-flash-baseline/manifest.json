@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "model": "deepseek-flash",
+  "backendRevision": "unknown",
+  "endpoint": "https://api.deepseek.com",
+  "permissionMode": "acceptEdits",
+  "limits": {
+    "steps": 20,
+    "tokens": 200000,
+    "seconds": 180,
+    "batch_seconds": 1200
+  },
+  "repetitions": 3,
+  "sourceRev": "9937c0288b731f5ae3fd333a7e422642c1e045d9",
+  "dirtyStatus": [
+    " M docs/dev/STATUS.md",
+    " M docs/dev/TODO.md",
+    " M docs/dev/devlog.md",
+    " M docs/dev/features/.active",
+    " M docs/dev/features/README.md",
+    " M docs/dev/roadmap.md",
+    " M \"docs/dev/\\351\\234\\200\\346\\261\\202\\346\\261\\240.md\"",
+    " M eval.sh",
+    " M evals/README.md",
+    " M evals/conftest.py",
+    " M knowledge/README.md",
+    "?? .codex/",
+    "?? docs/dev/features/56-20261022-task-evals/",
+    "?? evals/task_suite.py",
+    "?? evals/tasks/",
+    "?? knowledge/engineering/evaluation-isolation.md",
+    "?? src/pai/evals/task_grading.py",
+    "?? src/pai/evals/task_metrics.py",
+    "?? src/pai/evals/task_runner.py",
+    "?? src/pai/evals/task_worker.py",
+    "?? tests/test_task_entry.py",
+    "?? tests/test_task_grading.py",
+    "?? tests/test_task_metrics.py",
+    "?? tests/test_task_runner.py"
+  ],
+  "codeHash": "0a478c0379f19fe498d854d88859ce2f792ed64d990ab9b9fffa0c804b36f4f4",
+  "python": "3.9.6 (default, Apr 17 2026, 18:15:52) \n[Clang 21.0.0 (clang-2100.1.1.101)]",
+  "dependencies": {
+    "openai": "2.48.0",
+    "python-dotenv": "1.2.1",
+    "pytest": "8.4.2"
+  },
+  "startedAt": "2026-10-22T12:47:06.604164+00:00",
+  "cases": [
+    {
+      "id": "locate",
+      "prompt": "在当前小项目中定位这样一个行为的实现：移除标签首尾空白、转换成小写，并把中间连续空白合并为单个连字符。创建 answer.json，内容为 JSON 对象，只有 path（相对文件路径）和 function（函数名）两个字段。只能新增 answer.json，不要改其他文件。完成后简短确认。",
+      "hash": "688390dc0839bca95372f7a419b7f8b349f88b10401e62399f125c85eb52ac94"
+    },
+    {
+      "id": "fix",
+      "prompt": "修复 pagination.py 的 page_count(total, size)。约定：total 是非负整数，size 是正整数；返回容纳 total 项所需的最少页数，total=0 时是 0；total<0 或 size<=0 时抛 ValueError。只能修改 pagination.py，保留接口和其他文件。可以用 run_tests 运行现有 pytest 测试；完成后简短说明。",
+      "hash": "c03e225f0c8cedc3caa7f8a9a5d4614d3b7a03fcdd9b592141a7846165fc13ff"
+    },
+    {
+      "id": "tests",
+      "prompt": "为 ranges.py 的 clip(value, lower, upper) 补充 pytest 测试。约定：lower<=upper 时，value 小于 lower 返回 lower，大于 upper 返回 upper，否则原样返回 value；lower>upper 抛 ValueError。请覆盖普通值、两端边界和非法范围。只能在 tests/ 下新增 test_*.py，不能修改生产代码或其他已有文件。可以用 run_tests 运行 pytest。完成后简短说明。",
+      "hash": "dd54f69c100410d94b21ce6e52654aa10ab65e721d055bce2d398d2672b96ca7"
+    }
+  ]
+}
