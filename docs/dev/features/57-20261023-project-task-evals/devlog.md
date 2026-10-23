@@ -115,3 +115,13 @@ fetch 后确认 origin/main=9937c02、本地 main=861cec7 均为测试提交祖�
 GitHub get_profile/get_repo 再次验证认证用户与 origin 仓库 owner 同为 sakuzeng、id 75898519，目标 public 且 push/admin 权限为 true；URL 为 github.com/sakuzeng/pai。原有 .codex/hooks.json 与本地 .env/运行副本继续排除。合并/推送是否完成，以后续 Git 命令与 origin/main 引用核对为准；本条记录授权与执行前检查，不预先冒称成功。
 
 整合前文档/可视化数据检查实际 40 passed、1 skipped in 0.77s，原始输出另存 evidence/main-integration-docs-output.txt；跳过项在标准全量中已通过。此次仅文档与测试证据新增，git diff 的 src/tests/evals/两个入口及 pyproject 均为空。
+
+## 2026-10-23 · main 合并与推送完成
+
+先在 57 分支提交测试证据与整合授权，提交 dbe6fbb6d203559667362eeb7ab5299956e03686；再切 main，以 --no-ff 合并得到 2b9b9c078041a94ef44264d5b641622f3b100597。无冲突；main 与 57 功能端的 Git 树相同，且相对已实测 ba56d19 的 src/tests/evals、eval.sh/test.sh/pyproject 无差异，因此未重复完整回归。
+
+git push origin main 实际成功：origin/main 从 9937c02 更新到 2b9b9c0。没有 force，没有模型调用，也未推送 56 同名分支。随后将 57 分支快进到该已合并 main，补写本条真实结果及当前 STATUS，再以文档提交快进回 main 并同步远端；最终最新文档提交由 Git 引用定位，2b9b9c0 仍为实际功能合并提交。
+
+原有未跟踪 .codex/hooks.json 保持，不纳入任何提交；测试阶段 summary.json 的 merged/committed/pushed=false 是当时未整合的历史快照，不回写该证据。
+
+最终同步文档检查实际 40 passed、1 skipped in 0.78s，git diff --check 通过；仅四个状态/日志文档有变化，运行实现、题目与测试材料保持原完整实测版本。
