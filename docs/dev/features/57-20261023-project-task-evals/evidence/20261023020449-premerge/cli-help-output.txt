@@ -1,0 +1,26 @@
+usage: pai [-h] [--max-steps MAX_STEPS] [--max-tokens MAX_TOKENS]
+           [--no-session] [--resume [ID或路径]] [--fork-session]
+           [--permission-mode {default,acceptEdits,dontAsk,bypassPermissions}]
+           [--dangerously-skip-permissions]
+           [task]
+
+最小编码 agent
+
+positional arguments:
+  task                  用自然语言描述任务；不给就进交互模式（REPL）
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --max-steps MAX_STEPS
+  --max-tokens MAX_TOKENS
+                        本次任务的累计 token 预算，超过即停（默认 500000，0 = 不限）
+  --no-session          不落盘会话 JSONL
+  --resume [ID或路径]      恢复会话接着聊（进交互模式）：不带参数 = 本项目最近一次；也可给会话 id 前缀或会话文件路径
+  --fork-session        与 --resume 合用：恢复到一个新会话文件（新 id，header 的 parentSession
+                        指旧会话），不往原文件追加（默认追加，照 CC 同名 flag 的分工）
+  --permission-mode {default,acceptEdits,dontAsk,bypassPermissions}
+                        权限模式（默认读 settings.json 的 defaultMode）：default/acceptEd
+                        its/dontAsk/bypassPermissions
+  --dangerously-skip-permissions
+                        跳过权限确认（等价 --permission-mode=bypassPermissions）；deny
+                        规则、显式 ask 规则与危险路径仍然生效

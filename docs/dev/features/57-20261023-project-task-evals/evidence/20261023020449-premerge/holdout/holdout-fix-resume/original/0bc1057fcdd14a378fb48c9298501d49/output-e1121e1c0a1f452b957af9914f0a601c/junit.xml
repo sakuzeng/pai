@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="4" skipped="0" tests="8" time="0.038" timestamp="2026-10-23T10:05:48.068121+08:00" hostname="sakuzengdeMacBook-Air.local"><testcase classname="test_check_0" name="test_default_skips_newer_foreign_directory" time="0.003"><failure message="AssertionError: assert PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-64/test_default_skips_newer_forei0/foreign.jsonl') == PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-64/test_default_skips_newer_forei0/ours.jsonl')&#10; +  where PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-64/test_default_skips_newer_forei0/foreign.jsonl') = resolve(None, PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-64/test_default_skips_newer_forei0'), PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-64/test_default_skips_newer_forei0/here'))">tmp_path = PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-64/test_default_skips_newer_forei0')
+
+    def test_default_skips_newer_foreign_directory(tmp_path: Path) -&gt; None:
+        (here, other) = (tmp_path / 'here', tmp_path / 'other')
+        wanted = session(tmp_path, 'ours', here, 100)
+        session(tmp_path, 'foreign', other, 200)
+&gt;       assert resolve(None, tmp_path, here) == wanted
+E       AssertionError: assert PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-64/test_default_skips_newer_forei0/foreign.jsonl') == PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-64/test_default_skips_newer_forei0/ours.jsonl')
+E        +  where PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-64/test_default_skips_newer_forei0/foreign.jsonl') = resolve(None, PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-64/test_default_skips_newer_forei0'), PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-64/test_default_skips_newer_forei0/here'))
+
+_external_grading/test_check_0.py:25: AssertionError</failure></testcase><testcase classname="test_check_0" name="test_missing_current_directory_fails_instead_of_foreign" time="0.001"><failure message="Failed: DID NOT RAISE &lt;class 'FileNotFoundError'&gt;">tmp_path = PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-64/test_missing_current_directory0')
+
+    def test_missing_current_directory_fails_instead_of_foreign(tmp_path: Path) -&gt; None:
+        session(tmp_path, 'foreign', tmp_path / 'other', 200)
+        with pytest.raises(FileNotFoundError):
+&gt;           resolve(None, tmp_path, tmp_path / 'here')
+E           Failed: DID NOT RAISE &lt;class 'FileNotFoundError'&gt;
+
+_external_grading/test_check_0.py:30: Failed</failure></testcase><testcase classname="test_check_0" name="test_explicit_id_still_allows_foreign_directory" time="0.001" /><testcase classname="test_check_0" name="test_explicit_path_still_allows_foreign_directory" time="0.000" /><testcase classname="test_check_0" name="test_process_cwd_is_default" time="0.001"><failure message="AssertionError: assert PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-64/test_process_cwd_is_default0/foreign.jsonl') == PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-64/test_process_cwd_is_default0/ours.jsonl')&#10; +  where PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-64/test_process_cwd_is_default0/foreign.jsonl') = resolve_resume_target(None, PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-64/test_process_cwd_is_default0'))">tmp_path = PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-64/test_process_cwd_is_default0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x109f4fe20&gt;
+
+    def test_process_cwd_is_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -&gt; None:
+        here = tmp_path / 'here'
+        here.mkdir()
+        wanted = session(tmp_path, 'ours', here, 100)
+        session(tmp_path, 'foreign', tmp_path / 'other', 200)
+        monkeypatch.chdir(here)
+&gt;       assert resolve_resume_target(None, tmp_path) == wanted
+E       AssertionError: assert PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-64/test_process_cwd_is_default0/foreign.jsonl') == PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-64/test_process_cwd_is_default0/ours.jsonl')
+E        +  where PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-64/test_process_cwd_is_default0/foreign.jsonl') = resolve_resume_target(None, PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-64/test_process_cwd_is_default0'))
+
+/Users/sakuzeng/improve/coding/agent/projects/pai/pai_playground/premerge-57/20261023020449/holdout/holdout-fix-resume/original/0bc1057fcdd14a378fb48c9298501d49/external_and_regressions-0c3eeb569d8c408cb21183308b28268a/_external_grading/test_check_0.py:46: AssertionError</failure></testcase><testcase classname="test_check_0" name="test_broken_header_is_ignored" time="0.001"><failure message="AssertionError: assert PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-64/test_broken_header_is_ignored0/broken.jsonl') == PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-64/test_broken_header_is_ignored0/ours.jsonl')&#10; +  where PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-64/test_broken_header_is_ignored0/broken.jsonl') = resolve(None, PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-64/test_broken_header_is_ignored0'), (PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-64/test_broken_header_is_ignored0') / 'here'))">tmp_path = PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-64/test_broken_header_is_ignored0')
+
+    def test_broken_header_is_ignored(tmp_path: Path) -&gt; None:
+        (tmp_path / 'broken.jsonl').write_text('not json')
+        wanted = session(tmp_path, 'ours', tmp_path / 'here', 100)
+&gt;       assert resolve(None, tmp_path, tmp_path / 'here') == wanted
+E       AssertionError: assert PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-64/test_broken_header_is_ignored0/broken.jsonl') == PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-64/test_broken_header_is_ignored0/ours.jsonl')
+E        +  where PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-64/test_broken_header_is_ignored0/broken.jsonl') = resolve(None, PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-64/test_broken_header_is_ignored0'), (PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-64/test_broken_header_is_ignored0') / 'here'))
+
+_external_grading/test_check_0.py:51: AssertionError</failure></testcase><testcase classname="test_check_1" name="test_resolve_resume_target_by_id_prefix_and_by_path" time="0.001" /><testcase classname="test_check_1" name="test_resolve_resume_target_errors_honestly_when_nothing_matches" time="0.000" /></testsuite></testsuites>

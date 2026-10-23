@@ -151,3 +151,5 @@
 - 2026-10-23 真实项目任务离线交付——六题完整历史快照、开发/保留分组与哈希冻结，相关参考契约通过；完整离线 1997 passed、8 deselected，含新增 32 项；无新增模型调用，D#83/复盘/后续 TODO 已登记，57 未提交或推送 → [features/57](features/57-20261023-project-task-evals/README.md)
 - 2026-10-23 任务评测远端同步授权——用户要求“推送到远端吧”；将 57 提交并推送独立分支，同时同步已整合 56 的 main 与 56 分支；冻结/归档及 1997 项验收证据复核一致，实际结果用远端引用核对 → [features/57](features/57-20261023-project-task-evals/README.md)
 - 2026-10-23 当前功能分支推送成功——57 功能提交 0d2de04 已落 origin/feat/57-project-task-evals；自动审批拒绝三分支范围后，验证账号/仓库归属并缩小为当前分支推送，main 仍为 9937c02，56 历史已随 57 上传 → [features/57](features/57-20261023-project-task-evals/README.md)
+- 2026-10-23 合并前整体离线复核通过——测试 ba56d19；全量 1997 passed、8 deselected，四个 eval 入口/六题冻结通过，九份历史产物重判 9/9，新模型调用 0；main 均为祖先可快进，本轮未合并/提交/推送 → [测试报告](features/57-20261023-project-task-evals/evidence/20261023020449-premerge/README.md)
+- 2026-10-23 主线整合与推送授权——用户在整体离线通过后要求“那合并并推送吧”；提交 57 测试证据并整合 main，确认无分叉、源码/测试材料与全量实测一致，普通推送 origin/main，最终结果由远端 SHA 核对 → [features/57](features/57-20261023-project-task-evals/README.md)

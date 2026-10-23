@@ -1,0 +1,26 @@
+{
+  "testedCommit": "ba56d1914434673f279a5da731f84e30d2e48b01",
+  "fullSuite": {
+    "selected": 1997,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "feature57": 32,
+    "feature56": 38,
+    "e2e": 36,
+    "llmDeselected": 8
+  },
+  "runtimeAndTestMaterialsUnchanged": true,
+  "entrypoints": [
+    "replay",
+    "tasks",
+    "project-development",
+    "project-holdout"
+  ],
+  "historicalProductsRegraded": 9,
+  "historicalProductsPassed": 9,
+  "newModelCalls": 0,
+  "merged": false,
+  "committed": false,
+  "pushed": false
+}

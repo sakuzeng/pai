@@ -1,0 +1,3 @@
+.....                                                                    [100%]
+- generated xml file: /Users/sakuzeng/improve/coding/agent/projects/pai/pai_playground/premerge-57/20261023020449/development/dev-tests-queue/reference/90d70447d4444b67a6be7153faa0593d/output-2f01ec5f1caa4ce3bd42b7fb9970b317/junit.xml -
+5 passed in 0.01s

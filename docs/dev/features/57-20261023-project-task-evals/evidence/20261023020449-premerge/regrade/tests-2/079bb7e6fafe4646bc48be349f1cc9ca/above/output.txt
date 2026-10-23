@@ -1,0 +1,33 @@
+..F..FF.....                                                             [100%]
+=================================== FAILURES ===================================
+_____________________ test_value_above_upper_returns_upper _____________________
+
+    def test_value_above_upper_returns_upper():
+>       assert clip(42, 0, 10) == 10
+E       assert 42 == 10
+E        +  where 42 = clip(42, 0, 10)
+
+tests/test_ranges.py:21: AssertionError
+_______________________ test_works_with_negative_bounds ________________________
+
+    def test_works_with_negative_bounds():
+        assert clip(-10, -5, -1) == -5
+>       assert clip(0, -5, -1) == -1
+E       assert 0 == -1
+E        +  where 0 = clip(0, -5, -1)
+
+tests/test_ranges.py:34: AssertionError
+______________________ test_degenerate_range_single_value ______________________
+
+    def test_degenerate_range_single_value():
+>       assert clip(7, 3, 3) == 3
+E       assert 7 == 3
+E        +  where 7 = clip(7, 3, 3)
+
+tests/test_ranges.py:39: AssertionError
+- generated xml file: /Users/sakuzeng/improve/coding/agent/projects/pai/docs/dev/features/57-20261023-project-task-evals/evidence/20261023020449-premerge/regrade/tests-2/079bb7e6fafe4646bc48be349f1cc9ca/above/junit.xml -
+=========================== short test summary info ============================
+FAILED ../../../../../../../../../../../../../../../../../dev/test_ranges.py::test_value_above_upper_returns_upper
+FAILED ../../../../../../../../../../../../../../../../../dev/test_ranges.py::test_works_with_negative_bounds
+FAILED ../../../../../../../../../../../../../../../../../dev/test_ranges.py::test_degenerate_range_single_value
+3 failed, 9 passed in 0.03s

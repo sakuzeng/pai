@@ -1,0 +1,3 @@
+...........                                                              [100%]
+- generated xml file: /Users/sakuzeng/improve/coding/agent/projects/pai/pai_playground/premerge-57/20261023020449/holdout/holdout-tests-boundary/reference/73157dc23adf48c9b4b42118da27dd95/output-d2869aff19c141ef80418fa93573f3e5/junit.xml -
+11 passed in 0.01s

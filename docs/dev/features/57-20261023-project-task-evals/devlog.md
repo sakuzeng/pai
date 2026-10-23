@@ -87,3 +87,31 @@ T3 先加入六个真实历史案例的参数化契约，再建立各题材料�
 缩小后的 git push --set-upstream origin feat/57-project-task-evals 成功，跟踪关系建立。随后的 git ls-remote 实际核对：57 为 0d2de04f5f98be25a018e49ad2c0c903ca4426d7，main 仍为 9937c0288b731f5ae3fd333a7e422642c1e045d9，未有 origin 的 56 同名分支。57 历史已包含 c473de0/861cec7，因此 56 内容也已上传；这不等于更新 main 引用或合并 57。
 
 本次追加同步状态记录，再以文档提交推送同一 57 分支；最终最新 SHA 以远端引用为准，不改运行实现/冻结材料或重新调用模型。原有 .codex/hooks.json 仍仅本地未跟踪。
+
+## 2026-10-23 · 合并前整体离线测试启动
+
+用户原话：「在合并到main之前可以先做一下整体的测试吗」。本轮只测试与归档，不合并、不提交、不推送，不新增真实模型调用。测试起点为已推送 ba56d1914434673f279a5da731f84e30d2e48b01，分支 feat/57-project-task-evals，原有未跟踪 .codex/hooks.json 保持。
+
+fetch 后确认 origin/main=9937c02、本地 main=861cec7 均为测试提交祖先（分别落后 4/2 条提交），没有分叉；因此当前树可快进整合，不需要先制造合并提交来测试。Python 3.9.6、pytest 8.4.2。启动标准完整 ./test.sh、两个旧 eval 离线入口、默认开发/显式保留入口，另核对六题冻结与归档并重判九份旧真实产物；后者不是新模型运行。
+
+测试命令、运行源码/测试材料逐文件哈希及原始结果保存到 20261023020449-premerge 对应的 evidence 目录；当前尚未宣告测试通过。
+
+## 2026-10-23 · 合并前整体复核通过
+
+标准完整 ./test.sh 本轮实际输出 1997 passed、8 deselected in 221.76s；JUnit 独立统计 1997 选中，failure/error/skip 均为 0，包含 57 新增 32、56 新增 38 与 36 项 pty e2e。两个旧 eval 入口分别 1 passed、5 deselected（2.57s）和 1 passed、1 deselected（2.12s），默认开发/显式保留各三题参考契约全部通过。
+
+六题冻结及原有 62 个归档文件哈希一致；56 首轮真实记录的 152 个工件与九次指标/汇总一致，当前评分器独立重判九份历史产物 9/9，本轮 newModelCalls=0。197 个 Python 文件在内存编译和两份 shell 语法检查通过，pip check 无损坏依赖、pai --help 通过。pip 缓存因不可写自动禁用；pytest/评分沿用 HOME 隔离，未安装依赖或修改用户缓存权限。新生成评分目录的 21 个空目录已清理，不修改输出/判据。
+
+本轮运行实现、测试/任务材料前后哈希一致，测试提交仍为 ba56d19；归档并更新 STATUS/报告，未做代码更改、合并、commit 或 push。完整证据见 evidence/20261023020449-premerge/README.md。36 项 pty e2e 不等于真人 IME/鼠标/主题验收，八项在线 LLM 排除不等于服务在线验证；没有新增问题需要登记 TODO。
+
+本轮报告/状态写入后的文档与可视化数据检查实际 40 passed、1 skipped in 0.78s；仅标准完整入口适用的数量对账在全量已通过。报告链接、98 个本轮证据文件的 key 扫描（0 命中）、运行源码与测试材料哈希均再核对通过。原有 .codex/hooks.json 不动，本轮记录仍未提交或推送。
+
+## 2026-10-23 · 用户明确授权合并 main 并推送
+
+用户在整体测试报告之后原话：「那合并并推送吧」。本轮据此将合并前测试记录先提交到 feat/57-project-task-evals，再保留合并记录整合到本地 main，普通推送 origin/main 并核对远端 SHA；同步 57 分支用于保留完整过程，不另创建/推送 56 同名分支。此次明确 main 的授权与此前笼统“推送”的范围不同。
+
+重新 fetch 成功：本地 main 相对 origin/main ahead 2/behind 0，57 与同名远端无差异，origin/main 是 57 的祖先，无需解冲突。测试起点 ba56d19 的源码/测试/题目逐文件哈希与当前一致；98 个新证据文件的哈希及真实 key 扫描（0 命中）复核通过。完整离线复核沿用实际 1997 passed、8 deselected in 221.76s，运行实现未改，不重复模型调用或全量测试。
+
+GitHub get_profile/get_repo 再次验证认证用户与 origin 仓库 owner 同为 sakuzeng、id 75898519，目标 public 且 push/admin 权限为 true；URL 为 github.com/sakuzeng/pai。原有 .codex/hooks.json 与本地 .env/运行副本继续排除。合并/推送是否完成，以后续 Git 命令与 origin/main 引用核对为准；本条记录授权与执行前检查，不预先冒称成功。
+
+整合前文档/可视化数据检查实际 40 passed、1 skipped in 0.77s，原始输出另存 evidence/main-integration-docs-output.txt；跳过项在标准全量中已通过。此次仅文档与测试证据新增，git diff 的 src/tests/evals/两个入口及 pyproject 均为空。

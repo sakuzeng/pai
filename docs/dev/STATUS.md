@@ -1,7 +1,7 @@
 # 当前状态快照
 
 最后核对：2026-10-23。feature 57 的完整历史任务离线设施已交付，尚未进行新模型评测。上次固定文档基线涵盖 [54 文档对齐](features/54-20261022-current-docs-alignment/README.md)与[55 审计收口](features/55-20261022-baseline-consistency/README.md)；feature 56 已验收，本地整合基线由 main 引用定位，agent 主循环与工具沿用原实现。
-版本定位：文档与校验内容基线为 `585ac97`；默认开发主线为 `main`，远端为 `origin/main`。54/55 的远端同步授权见 55 档案；56 的本地收口见 56 日志，最新整合版本用 `git log -1 --format=%H main` 查询。
+版本定位：文档与校验内容基线为 `585ac97`；默认开发主线为 `main`，远端为 `origin/main`。54/55 的远端同步授权见 55 档案；56/57 的主线整合与推送授权见 57 日志，最新整合版本用 `git log -1 --format=%H main` 查询。
 
 阶段 1—7 均已有交付：压缩、REPL/TUI、记忆、权限、流式、skills/MCP 与基础 evals。
 当前重点是实际使用验收、效果测量与参数校准；交付不等于全部真人验收完成。
@@ -33,11 +33,11 @@
 | `viz/` | 可用 | 本地结构图、事件时间线与代码跳转；页面纯观察 |
 | `evals` | 可用 | 回放/原有真模型入口、三固定任务重复测量；57 增加六题完整历史快照、分组离线参考契约与冻结，未新增真实模型结果 |
 
-本地已验收：[56 任务级评测](features/56-20261022-task-evals/README.md)，分支 `feat/56-task-evals`；用户指定复用原始真实记录，完整离线与九份产物独立重判通过；本地提交 c473de0、合并 main 为 861cec7；本轮这段历史已随 57 分支推送；origin/main 仍为 9937c02，56 的远端同名分支未创建。
+本地已验收：[56 任务级评测](features/56-20261022-task-evals/README.md)，分支 `feat/56-task-evals`；用户指定复用原始真实记录，完整离线与九份产物独立重判通过；本地提交 c473de0、合并 main 为 861cec7；这段历史包含于 57；用户已明确要求把 57 合并并推送 main，最新主线版本由 main/origin/main 引用定位，不另推送 56 同名分支。
 
 ## 最近交付
 
-- [57：真实项目任务离线设施](features/57-20261023-project-task-evals/README.md)：六题完整历史快照、独立评分与哈希冻结；默认三开发题，显式三保留题。参考契约通过不算模型成绩，真实 once 适配与模型基线仍待后续；57 已推送为独立远端分支，包含 56 的提交历史；尚未将 57 合并 main，具体版本用 origin/feat/57-project-task-evals 核对。
+- [57：真实项目任务离线设施](features/57-20261023-project-task-evals/README.md)：六题完整历史快照、独立评分与哈希冻结；默认三开发题，显式三保留题。参考契约通过不算模型成绩，真实 once 适配与模型基线仍待后续；57 的交付分支为 feat/57-project-task-evals，包含 56 的提交历史；合并前整体复核已通过，用户明确授权整合并推送 main，最终整合版本用 main/origin/main 核对。
 
 - [56：任务级评测](features/56-20261022-task-evals/README.md)：真实 once 三任务各三次，外部判分完整成功 9/9；主请求 107291 token、5 次 bash 请求被拒后任务仍完整成功，其中修 bug 三次的额外检查未执行；真人弹窗不适用。固定小题结果不外推实际项目能力。
 
@@ -50,7 +50,7 @@
 
 ## 实测基线与验证边界
 
-- 2026-10-23，Python 3.9.6，本轮标准 ./test.sh 完整离线实际输出：`1997 passed, 8 deselected in 224.05s (0:03:44)`。包含新增 32 项；8 项为真实 LLM 排除。首轮仅 STATUS 数量对账失败的输出也保留，见 [57 交付证据](features/57-20261023-project-task-evals/evidence/README.md)。
+- 2026-10-23，Python 3.9.6，本轮标准 ./test.sh 完整离线实际输出：`1997 passed, 8 deselected in 221.76s (0:03:41)`。本轮为 ba56d19 的合并前整体复核，包含 57 的 32 项、56 的 38 项及 36 项 pty e2e，选中项 failure/error/skip 均为 0；8 项为真实 LLM 排除。见 [合并前报告](features/57-20261023-project-task-evals/evidence/20261023020449-premerge/README.md)，交付时的历史失败输出也保留。
 - 运行命令为 `PATH=<项目虚拟环境>/bin:$PATH PYTHONDONTWRITEBYTECODE=1 ./test.sh -p no:cacheprovider --basetemp=<临时目录> -q`，实际解释器为 Python 3.9.6，临时产物位于 `/private/tmp`。
 - 完整离线回归获准在沙箱外执行，以支持 localhost 假 provider、pty 和 ps 进程图反证；本轮未做真人交互验收或新增真实模型调用。
 - 56 上轮验收重跑两个离线入口、重判九份原始产物；完整输出与范围见 [56 验收报告](features/56-20261022-task-evals/evidence/20261022-acceptance-133734/README.md)。
