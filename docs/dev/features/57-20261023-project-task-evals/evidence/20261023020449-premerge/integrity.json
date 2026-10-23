@@ -1,0 +1,17 @@
+{
+  "frozenCasesVerified": 6,
+  "previousArchivedFilesVerified": 62,
+  "entrySplits": [
+    {
+      "split": "development",
+      "referenceContracts": 3,
+      "newModelCalls": 0
+    },
+    {
+      "split": "holdout",
+      "referenceContracts": 3,
+      "newModelCalls": 0
+    }
+  ],
+  "newModelCalls": 0
+}

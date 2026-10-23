@@ -1,0 +1,224 @@
+{
+  "newModelCalls": 0,
+  "trials": [
+    {
+      "trial": "locate-1",
+      "originalStatus": "pass",
+      "regradedStatus": "pass",
+      "details": [
+        {
+          "check": "answer",
+          "actual": {
+            "path": "text_rules.py",
+            "function": "slugify"
+          }
+        }
+      ]
+    },
+    {
+      "trial": "locate-2",
+      "originalStatus": "pass",
+      "regradedStatus": "pass",
+      "details": [
+        {
+          "check": "answer",
+          "actual": {
+            "path": "text_rules.py",
+            "function": "slugify"
+          }
+        }
+      ]
+    },
+    {
+      "trial": "locate-3",
+      "originalStatus": "pass",
+      "regradedStatus": "pass",
+      "details": [
+        {
+          "check": "answer",
+          "actual": {
+            "path": "text_rules.py",
+            "function": "slugify"
+          }
+        }
+      ]
+    },
+    {
+      "trial": "fix-1",
+      "originalStatus": "pass",
+      "regradedStatus": "pass",
+      "details": [
+        {
+          "check": "external_tests",
+          "returncode": 0,
+          "collected": 8,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "assertionFailures": 0
+        }
+      ]
+    },
+    {
+      "trial": "fix-2",
+      "originalStatus": "pass",
+      "regradedStatus": "pass",
+      "details": [
+        {
+          "check": "external_tests",
+          "returncode": 0,
+          "collected": 8,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "assertionFailures": 0
+        }
+      ]
+    },
+    {
+      "trial": "fix-3",
+      "originalStatus": "pass",
+      "regradedStatus": "pass",
+      "details": [
+        {
+          "check": "external_tests",
+          "returncode": 0,
+          "collected": 8,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "assertionFailures": 0
+        }
+      ]
+    },
+    {
+      "trial": "tests-1",
+      "originalStatus": "pass",
+      "regradedStatus": "pass",
+      "details": [
+        {
+          "check": "correct",
+          "returncode": 0,
+          "collected": 25,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "assertionFailures": 0
+        },
+        {
+          "check": "above",
+          "returncode": 1,
+          "collected": 25,
+          "failures": 4,
+          "errors": 0,
+          "skipped": 0,
+          "assertionFailures": 4
+        },
+        {
+          "check": "below",
+          "returncode": 1,
+          "collected": 25,
+          "failures": 5,
+          "errors": 0,
+          "skipped": 0,
+          "assertionFailures": 5
+        },
+        {
+          "check": "invalid",
+          "returncode": 1,
+          "collected": 25,
+          "failures": 6,
+          "errors": 0,
+          "skipped": 0,
+          "assertionFailures": 6
+        }
+      ]
+    },
+    {
+      "trial": "tests-2",
+      "originalStatus": "pass",
+      "regradedStatus": "pass",
+      "details": [
+        {
+          "check": "correct",
+          "returncode": 0,
+          "collected": 12,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "assertionFailures": 0
+        },
+        {
+          "check": "above",
+          "returncode": 1,
+          "collected": 12,
+          "failures": 3,
+          "errors": 0,
+          "skipped": 0,
+          "assertionFailures": 3
+        },
+        {
+          "check": "below",
+          "returncode": 1,
+          "collected": 12,
+          "failures": 3,
+          "errors": 0,
+          "skipped": 0,
+          "assertionFailures": 3
+        },
+        {
+          "check": "invalid",
+          "returncode": 1,
+          "collected": 12,
+          "failures": 5,
+          "errors": 0,
+          "skipped": 0,
+          "assertionFailures": 5
+        }
+      ]
+    },
+    {
+      "trial": "tests-3",
+      "originalStatus": "pass",
+      "regradedStatus": "pass",
+      "details": [
+        {
+          "check": "correct",
+          "returncode": 0,
+          "collected": 23,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "assertionFailures": 0
+        },
+        {
+          "check": "above",
+          "returncode": 1,
+          "collected": 23,
+          "failures": 3,
+          "errors": 0,
+          "skipped": 0,
+          "assertionFailures": 3
+        },
+        {
+          "check": "below",
+          "returncode": 1,
+          "collected": 23,
+          "failures": 4,
+          "errors": 0,
+          "skipped": 0,
+          "assertionFailures": 4
+        },
+        {
+          "check": "invalid",
+          "returncode": 1,
+          "collected": 23,
+          "failures": 5,
+          "errors": 0,
+          "skipped": 0,
+          "assertionFailures": 5
+        }
+      ]
+    }
+  ]
+}

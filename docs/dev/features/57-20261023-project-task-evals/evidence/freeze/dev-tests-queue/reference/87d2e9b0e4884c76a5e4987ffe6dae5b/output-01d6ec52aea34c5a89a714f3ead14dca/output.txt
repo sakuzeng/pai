@@ -1,0 +1,40 @@
+F.F..                                                                    [100%]
+=================================== FAILURES ===================================
+______ test_matching_messages_are_removed_without_dropping_unmatched[all] ______
+
+mode = 'all'
+
+    @pytest.mark.parametrize('mode', ['all', 'single'])
+    def test_matching_messages_are_removed_without_dropping_unmatched(mode: str) -> None:
+        queue = PendingMessageQueue(mode)
+        values = [{'content': text} for text in ('/help', 'one', '!pwd', 'two')]
+        for value in values:
+            queue.enqueue(value)
+        match = lambda item: not item['content'].startswith(('/', '!'))
+        if mode == 'all':
+>           assert queue.drain(match) == [values[1], values[3]]
+E           AssertionError: assert [{'content': ...tent': 'one'}] == [{'content': ...tent': 'two'}]
+E             
+E             At index 0 diff: {'content': 'two'} != {'content': 'one'}
+E             Use -v to get more diff
+
+_external_grading/test_check_0.py:12: AssertionError
+______________ test_all_keeps_fifo_and_returns_independent_result ______________
+
+    def test_all_keeps_fifo_and_returns_independent_result() -> None:
+        queue = PendingMessageQueue('all')
+        queue.enqueue({'content': 'one'})
+        queue.enqueue({'content': 'two'})
+        result = queue.drain()
+>       assert [v['content'] for v in result] == ['one', 'two']
+E       AssertionError: assert ['two', 'one'] == ['one', 'two']
+E         
+E         At index 0 diff: 'two' != 'one'
+E         Use -v to get more diff
+
+_external_grading/test_check_0.py:26: AssertionError
+- generated xml file: /Users/sakuzeng/improve/coding/agent/projects/pai/pai_playground/project-task-evals/feature57-final-freeze/dev-tests-queue/reference/87d2e9b0e4884c76a5e4987ffe6dae5b/output-01d6ec52aea34c5a89a714f3ead14dca/junit.xml -
+=========================== short test summary info ============================
+FAILED ../../../../../../../../../../../../../../dev/test_check_0.py::test_matching_messages_are_removed_without_dropping_unmatched[all]
+FAILED ../../../../../../../../../../../../../../dev/test_check_0.py::test_all_keeps_fifo_and_returns_independent_result
+2 failed, 3 passed in 0.02s

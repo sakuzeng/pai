@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="5" time="0.027" timestamp="2026-10-23T09:39:46.611678+08:00" hostname="sakuzengdeMacBook-Air.local"><testcase classname="test_check_0" name="test_matching_messages_are_removed_without_dropping_unmatched[all]" time="0.000"><failure message="AssertionError: assert [{'content': ...tent': 'one'}] == [{'content': ...tent': 'two'}]&#10;  &#10;  At index 0 diff: {'content': 'two'} != {'content': 'one'}&#10;  Use -v to get more diff">mode = 'all'
+
+    @pytest.mark.parametrize('mode', ['all', 'single'])
+    def test_matching_messages_are_removed_without_dropping_unmatched(mode: str) -&gt; None:
+        queue = PendingMessageQueue(mode)
+        values = [{'content': text} for text in ('/help', 'one', '!pwd', 'two')]
+        for value in values:
+            queue.enqueue(value)
+        match = lambda item: not item['content'].startswith(('/', '!'))
+        if mode == 'all':
+&gt;           assert queue.drain(match) == [values[1], values[3]]
+E           AssertionError: assert [{'content': ...tent': 'one'}] == [{'content': ...tent': 'two'}]
+E             
+E             At index 0 diff: {'content': 'two'} != {'content': 'one'}
+E             Use -v to get more diff
+
+_external_grading/test_check_0.py:12: AssertionError</failure></testcase><testcase classname="test_check_0" name="test_matching_messages_are_removed_without_dropping_unmatched[single]" time="0.000" /><testcase classname="test_check_0" name="test_all_keeps_fifo_and_returns_independent_result" time="0.000"><failure message="AssertionError: assert ['two', 'one'] == ['one', 'two']&#10;  &#10;  At index 0 diff: 'two' != 'one'&#10;  Use -v to get more diff">def test_all_keeps_fifo_and_returns_independent_result() -&gt; None:
+        queue = PendingMessageQueue('all')
+        queue.enqueue({'content': 'one'})
+        queue.enqueue({'content': 'two'})
+        result = queue.drain()
+&gt;       assert [v['content'] for v in result] == ['one', 'two']
+E       AssertionError: assert ['two', 'one'] == ['one', 'two']
+E         
+E         At index 0 diff: 'two' != 'one'
+E         Use -v to get more diff
+
+_external_grading/test_check_0.py:26: AssertionError</failure></testcase><testcase classname="test_check_0" name="test_empty_queue[all]" time="0.000" /><testcase classname="test_check_0" name="test_empty_queue[single]" time="0.000" /></testsuite></testsuites>

@@ -1,0 +1,19 @@
+............................F..                                          [100%]
+=================================== FAILURES ===================================
+_____________ test_catalog_rejects_grading_paths_outside_snapshot ______________
+
+catalog = (PosixPath('/private/var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-9/test_catalog_rejects_.../var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-9/test_catalog_rejects_grading_p0/catalog'))
+
+    def test_catalog_rejects_grading_paths_outside_snapshot(catalog: tuple[Path, Path]) -> None:
+        path = catalog[1] / "development-locate/case.json"
+        data = json.loads(path.read_text())
+        data["answer"]["path"] = "/etc/passwd"
+        path.write_text(json.dumps(data))
+        with pytest.raises(ValueError):
+>           load_catalog(catalog[1])
+E           Failed: DID NOT RAISE <class 'ValueError'>
+
+tests/test_project_tasks.py:322: Failed
+=========================== short test summary info ============================
+FAILED tests/test_project_tasks.py::test_catalog_rejects_grading_paths_outside_snapshot
+1 failed, 30 passed in 14.91s

@@ -1,0 +1,3 @@
+........                                                                 [100%]
+- generated xml file: /Users/sakuzeng/improve/coding/agent/projects/pai/pai_playground/project-task-evals/feature57-explicit-holdout/holdout-fix-resume/reference/a213a82031354343bcc9eda9f0352ae9/output-bdcaf861785b4c5ea1744e469b84320e/junit.xml -
+8 passed in 0.02s

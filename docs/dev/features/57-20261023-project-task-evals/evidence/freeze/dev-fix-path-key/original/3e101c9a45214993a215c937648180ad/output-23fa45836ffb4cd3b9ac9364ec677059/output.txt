@@ -1,0 +1,70 @@
+.FFFFF................................................                   [100%]
+=================================== FAILURES ===================================
+_____________________ test_path_uses_named_argument[args1] _____________________
+
+args = {'content': 'ordinary text', 'path': 'secret.txt'}
+
+    @pytest.mark.parametrize('args', [{'path': 'secret.txt', 'content': 'ordinary text'}, {'content': 'ordinary text', 'path': 'secret.txt'}, {'new': 'replacement', 'old': 'original', 'path': 'secret.txt'}])
+    def test_path_uses_named_argument(args: dict) -> None:
+>       assert target_path(args, MatchContext(cwd='/project')) == '/project/secret.txt'
+E       AssertionError: assert '/project/ordinary text' == '/project/secret.txt'
+E         
+E         - /project/secret.txt
+E         + /project/ordinary text
+
+_external_grading/test_check_0.py:8: AssertionError
+_____________________ test_path_uses_named_argument[args2] _____________________
+
+args = {'new': 'replacement', 'old': 'original', 'path': 'secret.txt'}
+
+    @pytest.mark.parametrize('args', [{'path': 'secret.txt', 'content': 'ordinary text'}, {'content': 'ordinary text', 'path': 'secret.txt'}, {'new': 'replacement', 'old': 'original', 'path': 'secret.txt'}])
+    def test_path_uses_named_argument(args: dict) -> None:
+>       assert target_path(args, MatchContext(cwd='/project')) == '/project/secret.txt'
+E       AssertionError: assert '/project/replacement' == '/project/secret.txt'
+E         
+E         - /project/secret.txt
+E         + /project/replacement
+
+_external_grading/test_check_0.py:8: AssertionError
+____________ test_empty_or_missing_path_does_not_use_content[args0] ____________
+
+args = {'content': 'secret.txt'}
+
+    @pytest.mark.parametrize('args', [{'content': 'secret.txt'}, {'content': 'secret.txt', 'path': ''}])
+    def test_empty_or_missing_path_does_not_use_content(args: dict) -> None:
+>       assert target_path(args, MatchContext(cwd='/project')) == ''
+E       AssertionError: assert '/project/secret.txt' == ''
+E         
+E         + /project/secret.txt
+
+_external_grading/test_check_0.py:12: AssertionError
+____________ test_empty_or_missing_path_does_not_use_content[args1] ____________
+
+args = {'content': 'secret.txt', 'path': ''}
+
+    @pytest.mark.parametrize('args', [{'content': 'secret.txt'}, {'content': 'secret.txt', 'path': ''}])
+    def test_empty_or_missing_path_does_not_use_content(args: dict) -> None:
+>       assert target_path(args, MatchContext(cwd='/project')) == ''
+E       AssertionError: assert '/project/secret.txt' == ''
+E         
+E         + /project/secret.txt
+
+_external_grading/test_check_0.py:12: AssertionError
+______________________ test_absolute_path_is_not_rebased _______________________
+
+    def test_absolute_path_is_not_rebased() -> None:
+>       assert target_path({'content': 'x', 'path': '/other/file'}, MatchContext(cwd='/project')) == '/other/file'
+E       AssertionError: assert '/project/x' == '/other/file'
+E         
+E         - /other/file
+E         + /project/x
+
+_external_grading/test_check_0.py:15: AssertionError
+- generated xml file: /Users/sakuzeng/improve/coding/agent/projects/pai/pai_playground/project-task-evals/feature57-final-freeze/dev-fix-path-key/original/3e101c9a45214993a215c937648180ad/output-23fa45836ffb4cd3b9ac9364ec677059/junit.xml -
+=========================== short test summary info ============================
+FAILED ../../../../../../../../../../../../../../dev/test_check_0.py::test_path_uses_named_argument[args1]
+FAILED ../../../../../../../../../../../../../../dev/test_check_0.py::test_path_uses_named_argument[args2]
+FAILED ../../../../../../../../../../../../../../dev/test_check_0.py::test_empty_or_missing_path_does_not_use_content[args0]
+FAILED ../../../../../../../../../../../../../../dev/test_check_0.py::test_empty_or_missing_path_does_not_use_content[args1]
+FAILED ../../../../../../../../../../../../../../dev/test_check_0.py::test_absolute_path_is_not_rebased
+5 failed, 49 passed in 0.12s

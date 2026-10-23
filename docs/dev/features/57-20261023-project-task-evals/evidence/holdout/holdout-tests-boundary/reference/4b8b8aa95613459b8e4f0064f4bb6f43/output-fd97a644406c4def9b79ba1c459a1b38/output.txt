@@ -1,0 +1,17 @@
+.......F...                                                              [100%]
+=================================== FAILURES ===================================
+___________ test_path_boundaries[/project/../outside-/project-False] ___________
+
+target = '/project/../outside', root = '/project', inside = False
+
+    @pytest.mark.parametrize('target,root,inside', [('/project', '/project', True), ('/project/src/a.py', '/project', True), ('/project-evil/a.py', '/project', False), ('/other', '/project', False), ('', '/project', False), ('/project', '', False), ('/project/src/../a.py', '/project', True), ('/project/../outside', '/project', False), ('/project/a', '/project/', True), ('/anywhere', '/', True), ('/', '/', True)])
+    def test_path_boundaries(target: str, root: str, inside: bool) -> None:
+>       assert path_in_working_path(target, root) is inside
+E       AssertionError: assert True is False
+E        +  where True = path_in_working_path('/project/../outside', '/project')
+
+_external_grading/test_check_0.py:6: AssertionError
+- generated xml file: /Users/sakuzeng/improve/coding/agent/projects/pai/pai_playground/project-task-evals/feature57-explicit-holdout/holdout-tests-boundary/reference/4b8b8aa95613459b8e4f0064f4bb6f43/output-fd97a644406c4def9b79ba1c459a1b38/junit.xml -
+=========================== short test summary info ============================
+FAILED ../../../../../../../../../../../../../../dev/test_check_0.py::test_path_boundaries[/project/../outside-/project-False]
+1 failed, 10 passed in 0.02s

@@ -1,0 +1,132 @@
+{
+  "kind": "reference_contract",
+  "newModelCalls": 0,
+  "cases": [
+    {
+      "id": "holdout-fix-resume",
+      "kind": "fix",
+      "split": "holdout",
+      "original": {
+        "status": "fail",
+        "details": [
+          {
+            "check": "external_and_regressions",
+            "returncode": 1,
+            "collected": 8,
+            "failures": 4,
+            "errors": 0,
+            "skipped": 0,
+            "assertionFailures": 4
+          }
+        ]
+      },
+      "reference": {
+        "status": "pass",
+        "details": [
+          {
+            "check": "external_and_regressions",
+            "returncode": 0,
+            "collected": 8,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0,
+            "assertionFailures": 0
+          }
+        ]
+      },
+      "referenceContractPassed": true
+    },
+    {
+      "id": "holdout-locate-stream",
+      "kind": "locate",
+      "split": "holdout",
+      "original": {
+        "status": "fail",
+        "details": [
+          {
+            "check": "invalid_artifact",
+            "error": "[Errno 2] No such file or directory: '/Users/sakuzeng/improve/coding/agent/projects/pai/pai_playground/premerge-57/20261023020449/holdout/holdout-locate-stream/workspace/answer.json'"
+          }
+        ]
+      },
+      "reference": {
+        "status": "pass",
+        "details": [
+          {
+            "check": "answer",
+            "actual": {
+              "path": "src/pai/core/streaming.py",
+              "symbol": "assemble"
+            }
+          }
+        ]
+      },
+      "referenceContractPassed": true
+    },
+    {
+      "id": "holdout-tests-boundary",
+      "kind": "tests",
+      "split": "holdout",
+      "original": {
+        "status": "fail",
+        "details": [
+          {
+            "check": "new_tests",
+            "error": "missing or existing file"
+          }
+        ]
+      },
+      "reference": {
+        "status": "pass",
+        "details": [
+          {
+            "check": "candidate_correct",
+            "returncode": 0,
+            "collected": 11,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0,
+            "assertionFailures": 0
+          },
+          {
+            "check": "regressions",
+            "returncode": 0,
+            "collected": 26,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0,
+            "assertionFailures": 0
+          },
+          {
+            "check": "mutant:empty",
+            "returncode": 1,
+            "collected": 11,
+            "failures": 2,
+            "errors": 0,
+            "skipped": 0,
+            "assertionFailures": 2
+          },
+          {
+            "check": "mutant:normalize",
+            "returncode": 1,
+            "collected": 11,
+            "failures": 1,
+            "errors": 0,
+            "skipped": 0,
+            "assertionFailures": 1
+          },
+          {
+            "check": "mutant:prefix",
+            "returncode": 1,
+            "collected": 11,
+            "failures": 1,
+            "errors": 0,
+            "skipped": 0,
+            "assertionFailures": 1
+          }
+        ]
+      },
+      "referenceContractPassed": true
+    }
+  ]
+}

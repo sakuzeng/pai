@@ -36,3 +36,7 @@ API key 只交给模型 client，构造后从 worker 环境移除；测试和评
 
 历史设计见 [feature 32](../docs/dev/features/32-20260824-evals/README.md)，单步工具选择见 [feature 47](../docs/dev/features/47-20260827-tool-choice-eval/README.md)。
 判分沿用 dsh 文档的外部效果验证原则，跑批工件参照 pi 可读源码；来源等级与证据边界见 feature 56 前置记录。
+
+## 完整历史项目任务（feature 57）
+
+`./eval.sh --project-tasks` 默认仅验证三道开发题的冻结与离线参考契约；`--split holdout` / `--split all` 显式选择保留集。此入口拒绝 `--llm`，不产生模型费用；结果不是模型成功率。案例、判分与显式重新冻结规则见 [project_tasks](project_tasks/README.md)。原 `--tasks` 三固定题及旧入口语义保持。

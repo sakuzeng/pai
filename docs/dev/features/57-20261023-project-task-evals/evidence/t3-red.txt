@@ -1,0 +1,250 @@
+................FFFFFF                                                   [100%]
+=================================== FAILURES ===================================
+_____ test_real_historical_task_reference_contract[dev-locate-compaction] ______
+
+case_id = 'dev-locate-compaction'
+tmp_path = PosixPath('/private/var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-4/test_real_historical_task_refe0')
+
+    @pytest.mark.parametrize("case_id", ACTUAL_CASE_IDS)
+    def test_real_historical_task_reference_contract(case_id: str, tmp_path: Path) -> None:
+        from pai.evals.project_tasks import grade_project, install_reference
+>       cases = load_catalog(REPO / "evals/project_tasks")
+
+tests/test_project_tasks.py:224: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+root = PosixPath('/Users/sakuzeng/improve/coding/agent/projects/pai/evals/project_tasks')
+
+    def load_catalog(root: Path) -> list[ProjectCase]:
+        cases: list[ProjectCase] = []
+        families: dict[str, str] = {}
+        for path in sorted(root.glob("*/case.json")):
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if (not re.fullmatch(r"[a-z][a-z0-9-]*", data["id"])
+                    or data["id"] != path.parent.name
+                    or data["kind"] not in ("locate", "fix", "tests")
+                    or data["split"] not in SPLITS[:2]
+                    or not re.fullmatch(r"[0-9a-f]{40}", data["commit"])
+                    or not data["prompt"].strip() or not data["family"]
+                    or not data["allowed"] or not all(safe_relative(p) for p in data["allowed"])):
+                raise ValueError("Invalid historical case: " + str(path))
+            family = data["family"]
+            if family in families and families[family] != data["split"]:
+                raise ValueError("Problem family crosses splits: " + family)
+            families[family] = data["split"]
+            cases.append(ProjectCase(data["id"], data["kind"], data["split"], family,
+                                     data["commit"], data["prompt"], tuple(data["allowed"]),
+                                     path.parent.resolve(), data))
+        if not cases:
+>           raise ValueError("Empty historical catalog")
+E           ValueError: Empty historical catalog
+
+src/pai/evals/project_tasks.py:64: ValueError
+________ test_real_historical_task_reference_contract[dev-fix-path-key] ________
+
+case_id = 'dev-fix-path-key'
+tmp_path = PosixPath('/private/var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-4/test_real_historical_task_refe1')
+
+    @pytest.mark.parametrize("case_id", ACTUAL_CASE_IDS)
+    def test_real_historical_task_reference_contract(case_id: str, tmp_path: Path) -> None:
+        from pai.evals.project_tasks import grade_project, install_reference
+>       cases = load_catalog(REPO / "evals/project_tasks")
+
+tests/test_project_tasks.py:224: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+root = PosixPath('/Users/sakuzeng/improve/coding/agent/projects/pai/evals/project_tasks')
+
+    def load_catalog(root: Path) -> list[ProjectCase]:
+        cases: list[ProjectCase] = []
+        families: dict[str, str] = {}
+        for path in sorted(root.glob("*/case.json")):
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if (not re.fullmatch(r"[a-z][a-z0-9-]*", data["id"])
+                    or data["id"] != path.parent.name
+                    or data["kind"] not in ("locate", "fix", "tests")
+                    or data["split"] not in SPLITS[:2]
+                    or not re.fullmatch(r"[0-9a-f]{40}", data["commit"])
+                    or not data["prompt"].strip() or not data["family"]
+                    or not data["allowed"] or not all(safe_relative(p) for p in data["allowed"])):
+                raise ValueError("Invalid historical case: " + str(path))
+            family = data["family"]
+            if family in families and families[family] != data["split"]:
+                raise ValueError("Problem family crosses splits: " + family)
+            families[family] = data["split"]
+            cases.append(ProjectCase(data["id"], data["kind"], data["split"], family,
+                                     data["commit"], data["prompt"], tuple(data["allowed"]),
+                                     path.parent.resolve(), data))
+        if not cases:
+>           raise ValueError("Empty historical catalog")
+E           ValueError: Empty historical catalog
+
+src/pai/evals/project_tasks.py:64: ValueError
+________ test_real_historical_task_reference_contract[dev-tests-queue] _________
+
+case_id = 'dev-tests-queue'
+tmp_path = PosixPath('/private/var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-4/test_real_historical_task_refe2')
+
+    @pytest.mark.parametrize("case_id", ACTUAL_CASE_IDS)
+    def test_real_historical_task_reference_contract(case_id: str, tmp_path: Path) -> None:
+        from pai.evals.project_tasks import grade_project, install_reference
+>       cases = load_catalog(REPO / "evals/project_tasks")
+
+tests/test_project_tasks.py:224: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+root = PosixPath('/Users/sakuzeng/improve/coding/agent/projects/pai/evals/project_tasks')
+
+    def load_catalog(root: Path) -> list[ProjectCase]:
+        cases: list[ProjectCase] = []
+        families: dict[str, str] = {}
+        for path in sorted(root.glob("*/case.json")):
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if (not re.fullmatch(r"[a-z][a-z0-9-]*", data["id"])
+                    or data["id"] != path.parent.name
+                    or data["kind"] not in ("locate", "fix", "tests")
+                    or data["split"] not in SPLITS[:2]
+                    or not re.fullmatch(r"[0-9a-f]{40}", data["commit"])
+                    or not data["prompt"].strip() or not data["family"]
+                    or not data["allowed"] or not all(safe_relative(p) for p in data["allowed"])):
+                raise ValueError("Invalid historical case: " + str(path))
+            family = data["family"]
+            if family in families and families[family] != data["split"]:
+                raise ValueError("Problem family crosses splits: " + family)
+            families[family] = data["split"]
+            cases.append(ProjectCase(data["id"], data["kind"], data["split"], family,
+                                     data["commit"], data["prompt"], tuple(data["allowed"]),
+                                     path.parent.resolve(), data))
+        if not cases:
+>           raise ValueError("Empty historical catalog")
+E           ValueError: Empty historical catalog
+
+src/pai/evals/project_tasks.py:64: ValueError
+_____ test_real_historical_task_reference_contract[holdout-locate-stream] ______
+
+case_id = 'holdout-locate-stream'
+tmp_path = PosixPath('/private/var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-4/test_real_historical_task_refe3')
+
+    @pytest.mark.parametrize("case_id", ACTUAL_CASE_IDS)
+    def test_real_historical_task_reference_contract(case_id: str, tmp_path: Path) -> None:
+        from pai.evals.project_tasks import grade_project, install_reference
+>       cases = load_catalog(REPO / "evals/project_tasks")
+
+tests/test_project_tasks.py:224: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+root = PosixPath('/Users/sakuzeng/improve/coding/agent/projects/pai/evals/project_tasks')
+
+    def load_catalog(root: Path) -> list[ProjectCase]:
+        cases: list[ProjectCase] = []
+        families: dict[str, str] = {}
+        for path in sorted(root.glob("*/case.json")):
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if (not re.fullmatch(r"[a-z][a-z0-9-]*", data["id"])
+                    or data["id"] != path.parent.name
+                    or data["kind"] not in ("locate", "fix", "tests")
+                    or data["split"] not in SPLITS[:2]
+                    or not re.fullmatch(r"[0-9a-f]{40}", data["commit"])
+                    or not data["prompt"].strip() or not data["family"]
+                    or not data["allowed"] or not all(safe_relative(p) for p in data["allowed"])):
+                raise ValueError("Invalid historical case: " + str(path))
+            family = data["family"]
+            if family in families and families[family] != data["split"]:
+                raise ValueError("Problem family crosses splits: " + family)
+            families[family] = data["split"]
+            cases.append(ProjectCase(data["id"], data["kind"], data["split"], family,
+                                     data["commit"], data["prompt"], tuple(data["allowed"]),
+                                     path.parent.resolve(), data))
+        if not cases:
+>           raise ValueError("Empty historical catalog")
+E           ValueError: Empty historical catalog
+
+src/pai/evals/project_tasks.py:64: ValueError
+_______ test_real_historical_task_reference_contract[holdout-fix-resume] _______
+
+case_id = 'holdout-fix-resume'
+tmp_path = PosixPath('/private/var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-4/test_real_historical_task_refe4')
+
+    @pytest.mark.parametrize("case_id", ACTUAL_CASE_IDS)
+    def test_real_historical_task_reference_contract(case_id: str, tmp_path: Path) -> None:
+        from pai.evals.project_tasks import grade_project, install_reference
+>       cases = load_catalog(REPO / "evals/project_tasks")
+
+tests/test_project_tasks.py:224: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+root = PosixPath('/Users/sakuzeng/improve/coding/agent/projects/pai/evals/project_tasks')
+
+    def load_catalog(root: Path) -> list[ProjectCase]:
+        cases: list[ProjectCase] = []
+        families: dict[str, str] = {}
+        for path in sorted(root.glob("*/case.json")):
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if (not re.fullmatch(r"[a-z][a-z0-9-]*", data["id"])
+                    or data["id"] != path.parent.name
+                    or data["kind"] not in ("locate", "fix", "tests")
+                    or data["split"] not in SPLITS[:2]
+                    or not re.fullmatch(r"[0-9a-f]{40}", data["commit"])
+                    or not data["prompt"].strip() or not data["family"]
+                    or not data["allowed"] or not all(safe_relative(p) for p in data["allowed"])):
+                raise ValueError("Invalid historical case: " + str(path))
+            family = data["family"]
+            if family in families and families[family] != data["split"]:
+                raise ValueError("Problem family crosses splits: " + family)
+            families[family] = data["split"]
+            cases.append(ProjectCase(data["id"], data["kind"], data["split"], family,
+                                     data["commit"], data["prompt"], tuple(data["allowed"]),
+                                     path.parent.resolve(), data))
+        if not cases:
+>           raise ValueError("Empty historical catalog")
+E           ValueError: Empty historical catalog
+
+src/pai/evals/project_tasks.py:64: ValueError
+_____ test_real_historical_task_reference_contract[holdout-tests-boundary] _____
+
+case_id = 'holdout-tests-boundary'
+tmp_path = PosixPath('/private/var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-4/test_real_historical_task_refe5')
+
+    @pytest.mark.parametrize("case_id", ACTUAL_CASE_IDS)
+    def test_real_historical_task_reference_contract(case_id: str, tmp_path: Path) -> None:
+        from pai.evals.project_tasks import grade_project, install_reference
+>       cases = load_catalog(REPO / "evals/project_tasks")
+
+tests/test_project_tasks.py:224: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+root = PosixPath('/Users/sakuzeng/improve/coding/agent/projects/pai/evals/project_tasks')
+
+    def load_catalog(root: Path) -> list[ProjectCase]:
+        cases: list[ProjectCase] = []
+        families: dict[str, str] = {}
+        for path in sorted(root.glob("*/case.json")):
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if (not re.fullmatch(r"[a-z][a-z0-9-]*", data["id"])
+                    or data["id"] != path.parent.name
+                    or data["kind"] not in ("locate", "fix", "tests")
+                    or data["split"] not in SPLITS[:2]
+                    or not re.fullmatch(r"[0-9a-f]{40}", data["commit"])
+                    or not data["prompt"].strip() or not data["family"]
+                    or not data["allowed"] or not all(safe_relative(p) for p in data["allowed"])):
+                raise ValueError("Invalid historical case: " + str(path))
+            family = data["family"]
+            if family in families and families[family] != data["split"]:
+                raise ValueError("Problem family crosses splits: " + family)
+            families[family] = data["split"]
+            cases.append(ProjectCase(data["id"], data["kind"], data["split"], family,
+                                     data["commit"], data["prompt"], tuple(data["allowed"]),
+                                     path.parent.resolve(), data))
+        if not cases:
+>           raise ValueError("Empty historical catalog")
+E           ValueError: Empty historical catalog
+
+src/pai/evals/project_tasks.py:64: ValueError
+=========================== short test summary info ============================
+FAILED tests/test_project_tasks.py::test_real_historical_task_reference_contract[dev-locate-compaction]
+FAILED tests/test_project_tasks.py::test_real_historical_task_reference_contract[dev-fix-path-key]
+FAILED tests/test_project_tasks.py::test_real_historical_task_reference_contract[dev-tests-queue]
+FAILED tests/test_project_tasks.py::test_real_historical_task_reference_contract[holdout-locate-stream]
+FAILED tests/test_project_tasks.py::test_real_historical_task_reference_contract[holdout-fix-resume]
+FAILED tests/test_project_tasks.py::test_real_historical_task_reference_contract[holdout-tests-boundary]
+6 failed, 16 passed in 6.17s

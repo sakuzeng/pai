@@ -1,0 +1,62 @@
+.......FFFFF                                                             [100%]
+=================================== FAILURES ===================================
+_______________ test_lower_greater_than_upper_raises_value_error _______________
+
+    def test_lower_greater_than_upper_raises_value_error():
+        with pytest.raises(ValueError):
+>           clip(1, 10, 0)
+E           Failed: DID NOT RAISE <class 'ValueError'>
+
+tests/test_ranges.py:46: Failed
+_____________ test_invalid_range_raises_regardless_of_value[-100] ______________
+
+value = -100
+
+    @pytest.mark.parametrize("value", [-100, 0, 5, 100])
+    def test_invalid_range_raises_regardless_of_value(value):
+        with pytest.raises(ValueError):
+>           clip(value, 10, 0)
+E           Failed: DID NOT RAISE <class 'ValueError'>
+
+tests/test_ranges.py:52: Failed
+_______________ test_invalid_range_raises_regardless_of_value[0] _______________
+
+value = 0
+
+    @pytest.mark.parametrize("value", [-100, 0, 5, 100])
+    def test_invalid_range_raises_regardless_of_value(value):
+        with pytest.raises(ValueError):
+>           clip(value, 10, 0)
+E           Failed: DID NOT RAISE <class 'ValueError'>
+
+tests/test_ranges.py:52: Failed
+_______________ test_invalid_range_raises_regardless_of_value[5] _______________
+
+value = 5
+
+    @pytest.mark.parametrize("value", [-100, 0, 5, 100])
+    def test_invalid_range_raises_regardless_of_value(value):
+        with pytest.raises(ValueError):
+>           clip(value, 10, 0)
+E           Failed: DID NOT RAISE <class 'ValueError'>
+
+tests/test_ranges.py:52: Failed
+______________ test_invalid_range_raises_regardless_of_value[100] ______________
+
+value = 100
+
+    @pytest.mark.parametrize("value", [-100, 0, 5, 100])
+    def test_invalid_range_raises_regardless_of_value(value):
+        with pytest.raises(ValueError):
+>           clip(value, 10, 0)
+E           Failed: DID NOT RAISE <class 'ValueError'>
+
+tests/test_ranges.py:52: Failed
+- generated xml file: /Users/sakuzeng/improve/coding/agent/projects/pai/docs/dev/features/57-20261023-project-task-evals/evidence/20261023020449-premerge/regrade/tests-2/079bb7e6fafe4646bc48be349f1cc9ca/invalid/junit.xml -
+=========================== short test summary info ============================
+FAILED ../../../../../../../../../../../../../../../../../dev/test_ranges.py::test_lower_greater_than_upper_raises_value_error
+FAILED ../../../../../../../../../../../../../../../../../dev/test_ranges.py::test_invalid_range_raises_regardless_of_value[-100]
+FAILED ../../../../../../../../../../../../../../../../../dev/test_ranges.py::test_invalid_range_raises_regardless_of_value[0]
+FAILED ../../../../../../../../../../../../../../../../../dev/test_ranges.py::test_invalid_range_raises_regardless_of_value[5]
+FAILED ../../../../../../../../../../../../../../../../../dev/test_ranges.py::test_invalid_range_raises_regardless_of_value[100]
+5 failed, 7 passed in 0.03s

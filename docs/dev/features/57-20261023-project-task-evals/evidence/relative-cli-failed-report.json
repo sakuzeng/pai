@@ -1,0 +1,180 @@
+{
+  "kind": "reference_contract",
+  "newModelCalls": 0,
+  "cases": [
+    {
+      "id": "dev-fix-path-key",
+      "kind": "fix",
+      "split": "development",
+      "original": {
+        "status": "fail",
+        "details": [
+          {
+            "check": "external_and_regressions",
+            "returncode": 4,
+            "collected": 0,
+            "failures": 0,
+            "errors": 1,
+            "assertionFailures": 0
+          }
+        ]
+      },
+      "reference": {
+        "status": "fail",
+        "details": [
+          {
+            "check": "external_and_regressions",
+            "returncode": 4,
+            "collected": 0,
+            "failures": 0,
+            "errors": 1,
+            "assertionFailures": 0
+          }
+        ]
+      },
+      "referenceContractPassed": false
+    },
+    {
+      "id": "dev-locate-compaction",
+      "kind": "locate",
+      "split": "development",
+      "original": {
+        "status": "fail",
+        "details": [
+          {
+            "check": "invalid_artifact",
+            "error": "[Errno 2] No such file or directory: 'pai_playground/project-task-evals/feature57-initial-freeze/dev-locate-compaction/workspace/answer.json'"
+          }
+        ]
+      },
+      "reference": {
+        "status": "pass",
+        "details": [
+          {
+            "check": "answer",
+            "actual": {
+              "path": "src/pai/core/compaction.py",
+              "symbol": "find_cut_point"
+            }
+          }
+        ]
+      },
+      "referenceContractPassed": true
+    },
+    {
+      "id": "dev-tests-queue",
+      "kind": "tests",
+      "split": "development",
+      "original": {
+        "status": "fail",
+        "details": [
+          {
+            "check": "new_tests",
+            "error": "missing or existing file"
+          }
+        ]
+      },
+      "reference": {
+        "status": "fail",
+        "details": [
+          {
+            "check": "candidate_correct",
+            "returncode": 4,
+            "collected": 0,
+            "failures": 0,
+            "errors": 1,
+            "assertionFailures": 0
+          }
+        ]
+      },
+      "referenceContractPassed": false
+    },
+    {
+      "id": "holdout-fix-resume",
+      "kind": "fix",
+      "split": "holdout",
+      "original": {
+        "status": "fail",
+        "details": [
+          {
+            "check": "external_and_regressions",
+            "returncode": 4,
+            "collected": 0,
+            "failures": 0,
+            "errors": 1,
+            "assertionFailures": 0
+          }
+        ]
+      },
+      "reference": {
+        "status": "fail",
+        "details": [
+          {
+            "check": "external_and_regressions",
+            "returncode": 4,
+            "collected": 0,
+            "failures": 0,
+            "errors": 1,
+            "assertionFailures": 0
+          }
+        ]
+      },
+      "referenceContractPassed": false
+    },
+    {
+      "id": "holdout-locate-stream",
+      "kind": "locate",
+      "split": "holdout",
+      "original": {
+        "status": "fail",
+        "details": [
+          {
+            "check": "invalid_artifact",
+            "error": "[Errno 2] No such file or directory: 'pai_playground/project-task-evals/feature57-initial-freeze/holdout-locate-stream/workspace/answer.json'"
+          }
+        ]
+      },
+      "reference": {
+        "status": "pass",
+        "details": [
+          {
+            "check": "answer",
+            "actual": {
+              "path": "src/pai/core/streaming.py",
+              "symbol": "assemble"
+            }
+          }
+        ]
+      },
+      "referenceContractPassed": true
+    },
+    {
+      "id": "holdout-tests-boundary",
+      "kind": "tests",
+      "split": "holdout",
+      "original": {
+        "status": "fail",
+        "details": [
+          {
+            "check": "new_tests",
+            "error": "missing or existing file"
+          }
+        ]
+      },
+      "reference": {
+        "status": "fail",
+        "details": [
+          {
+            "check": "candidate_correct",
+            "returncode": 4,
+            "collected": 0,
+            "failures": 0,
+            "errors": 1,
+            "assertionFailures": 0
+          }
+        ]
+      },
+      "referenceContractPassed": false
+    }
+  ]
+}

@@ -1,0 +1,61 @@
+FF..FF..                                                                 [100%]
+=================================== FAILURES ===================================
+__________________ test_default_skips_newer_foreign_directory __________________
+
+tmp_path = PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-46/test_default_skips_newer_forei0')
+
+    def test_default_skips_newer_foreign_directory(tmp_path: Path) -> None:
+        (here, other) = (tmp_path / 'here', tmp_path / 'other')
+        wanted = session(tmp_path, 'ours', here, 100)
+        session(tmp_path, 'foreign', other, 200)
+>       assert resolve(None, tmp_path, here) == wanted
+E       AssertionError: assert PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-46/test_default_skips_newer_forei0/foreign.jsonl') == PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-46/test_default_skips_newer_forei0/ours.jsonl')
+E        +  where PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-46/test_default_skips_newer_forei0/foreign.jsonl') = resolve(None, PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-46/test_default_skips_newer_forei0'), PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-46/test_default_skips_newer_forei0/here'))
+
+_external_grading/test_check_0.py:25: AssertionError
+___________ test_missing_current_directory_fails_instead_of_foreign ____________
+
+tmp_path = PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-46/test_missing_current_directory0')
+
+    def test_missing_current_directory_fails_instead_of_foreign(tmp_path: Path) -> None:
+        session(tmp_path, 'foreign', tmp_path / 'other', 200)
+        with pytest.raises(FileNotFoundError):
+>           resolve(None, tmp_path, tmp_path / 'here')
+E           Failed: DID NOT RAISE <class 'FileNotFoundError'>
+
+_external_grading/test_check_0.py:30: Failed
+_________________________ test_process_cwd_is_default __________________________
+
+tmp_path = PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-46/test_process_cwd_is_default0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1068f62e0>
+
+    def test_process_cwd_is_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        here = tmp_path / 'here'
+        here.mkdir()
+        wanted = session(tmp_path, 'ours', here, 100)
+        session(tmp_path, 'foreign', tmp_path / 'other', 200)
+        monkeypatch.chdir(here)
+>       assert resolve_resume_target(None, tmp_path) == wanted
+E       AssertionError: assert PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-46/test_process_cwd_is_default0/foreign.jsonl') == PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-46/test_process_cwd_is_default0/ours.jsonl')
+E        +  where PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-46/test_process_cwd_is_default0/foreign.jsonl') = resolve_resume_target(None, PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-46/test_process_cwd_is_default0'))
+
+/Users/sakuzeng/improve/coding/agent/projects/pai/pai_playground/project-task-evals/feature57-final-freeze/holdout-fix-resume/original/8692b2cc83a14b5bb326388f9db956ed/external_and_regressions-2168ef43eebb407f825abd20d096940c/_external_grading/test_check_0.py:46: AssertionError
+________________________ test_broken_header_is_ignored _________________________
+
+tmp_path = PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-46/test_broken_header_is_ignored0')
+
+    def test_broken_header_is_ignored(tmp_path: Path) -> None:
+        (tmp_path / 'broken.jsonl').write_text('not json')
+        wanted = session(tmp_path, 'ours', tmp_path / 'here', 100)
+>       assert resolve(None, tmp_path, tmp_path / 'here') == wanted
+E       AssertionError: assert PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-46/test_broken_header_is_ignored0/broken.jsonl') == PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-46/test_broken_header_is_ignored0/ours.jsonl')
+E        +  where PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-46/test_broken_header_is_ignored0/broken.jsonl') = resolve(None, PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-46/test_broken_header_is_ignored0'), (PosixPath('/private/tmp/pytest-of-sakuzeng/pytest-46/test_broken_header_is_ignored0') / 'here'))
+
+_external_grading/test_check_0.py:51: AssertionError
+- generated xml file: /Users/sakuzeng/improve/coding/agent/projects/pai/pai_playground/project-task-evals/feature57-final-freeze/holdout-fix-resume/original/8692b2cc83a14b5bb326388f9db956ed/output-5c675c94241e403380f11d3b4bea9a57/junit.xml -
+=========================== short test summary info ============================
+FAILED ../../../../../../../../../../../../../../dev/test_check_0.py::test_default_skips_newer_foreign_directory
+FAILED ../../../../../../../../../../../../../../dev/test_check_0.py::test_missing_current_directory_fails_instead_of_foreign
+FAILED ../../../../../../../../../../../../../../dev/test_check_0.py::test_process_cwd_is_default
+FAILED ../../../../../../../../../../../../../../dev/test_check_0.py::test_broken_header_is_ignored
+4 failed, 4 passed in 0.04s

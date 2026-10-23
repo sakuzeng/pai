@@ -265,7 +265,7 @@ feature 12 又撞出六条，其中一条改写了一条已登记遗留的定性
 - 已有：[feature 32](features/32-20260824-evals/README.md) 的独立入口、回放/真模型两条纵切与工件；
   [feature 47](features/47-20260827-tool-choice-eval/README.md) 后续增加单步工具选择测量。
   完整任务重复测量已由 [feature 56](features/56-20261022-task-evals/README.md) 补齐首轮三题 3×3；实际项目多场景反向对照仍未完成，下面未勾选项保留。
-  [feature 56](features/56-20261022-task-evals/README.md) 已交付小型固定任务的真实模型跑批与首轮数据；它不等于实际项目场景的反向对照，后者仍待验证。
+  [feature 56](features/56-20261022-task-evals/README.md) 已交付小型固定任务的真实模型跑批与首轮数据；[feature 57](features/57-20261023-project-task-evals/README.md) 已交付六个完整历史任务的分组离线契约与冻结。本轮不调用新模型，因此实际项目场景的 agent 反向对照仍待验证。
 - 参照：pi `packages/evals/`（vitest-evals 驱动，打真模型的行为评测）；
   dsh `docs/testing.zh.md` + `packages/test-support/llm-replay`（分层车道 +
   会话 JSONL 回放，D#69 补记 2026-08-24——两家正好各占「跑批」与「回放」半边）；

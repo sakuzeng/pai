@@ -1,0 +1,24 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+______________ test_freeze_cli_accepts_relative_output_directory _______________
+
+catalog = (PosixPath('/private/var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-12/test_freeze_cli_acce...var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-12/test_freeze_cli_accepts_relati0/catalog'))
+tmp_path = PosixPath('/private/var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-12/test_freeze_cli_accepts_relati0')
+
+    def test_freeze_cli_accepts_relative_output_directory(catalog: tuple[Path, Path], tmp_path: Path) -> None:
+        import sys
+        scoring_case(catalog, "fix")
+        result = subprocess.run(
+            [sys.executable, "-B", "-m", "pai.evals.project_tasks", "--repo", str(catalog[0]),
+             "--catalog", str(catalog[1]), "--split", "all", "--freeze", "--output", "relative-report"],
+            cwd=tmp_path, capture_output=True, text=True, timeout=30)
+>       assert result.returncode == 0, result.stdout + result.stderr
+E       AssertionError: Reference contracts failed: relative-report
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/Users/sakuzeng/.virtualenvs/pai/bin/python3', '-B', '-m', 'pai.evals.project_tasks', '--repo'...eeze', '--output', 'relative-report'], returncode=1, stdout='', stderr='Reference contracts failed: relative-report\n').returncode
+
+tests/test_project_tasks.py:355: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_project_tasks.py::test_freeze_cli_accepts_relative_output_directory
+1 failed in 1.54s

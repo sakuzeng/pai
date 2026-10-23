@@ -1,0 +1,29 @@
+F....                                                                    [100%]
+=================================== FAILURES ===================================
+______ test_matching_messages_are_removed_without_dropping_unmatched[all] ______
+
+mode = 'all'
+
+    @pytest.mark.parametrize('mode', ['all', 'single'])
+    def test_matching_messages_are_removed_without_dropping_unmatched(mode: str) -> None:
+        queue = PendingMessageQueue(mode)
+        values = [{'content': text} for text in ('/help', 'one', '!pwd', 'two')]
+        for value in values:
+            queue.enqueue(value)
+        match = lambda item: not item['content'].startswith(('/', '!'))
+        if mode == 'all':
+            assert queue.drain(match) == [values[1], values[3]]
+        else:
+            assert queue.drain(match) == [values[1]]
+            assert queue.drain(match) == [values[3]]
+        assert queue.drain(match) == []
+>       assert queue.take_first() == values[0]
+E       AssertionError: assert None == {'content': '/help'}
+E        +  where None = take_first()
+E        +    where take_first = <pai.core.queue.PendingMessageQueue object at 0x10a0c19a0>.take_first
+
+_external_grading/test_check_0.py:17: AssertionError
+- generated xml file: /Users/sakuzeng/improve/coding/agent/projects/pai/pai_playground/premerge-57/20261023020449/development/dev-tests-queue/reference/90d70447d4444b67a6be7153faa0593d/output-a26eedf163f7456cb27952db29e04abb/junit.xml -
+=========================== short test summary info ============================
+FAILED ../../../../../../../../../../../../../../../dev/test_check_0.py::test_matching_messages_are_removed_without_dropping_unmatched[all]
+1 failed, 4 passed in 0.03s

@@ -1,0 +1,108 @@
+......................FFFFFF                                             [100%]
+=================================== FAILURES ===================================
+____________ test_freeze_detects_catalog_runtime_and_snapshot_drift ____________
+
+catalog = (PosixPath('/private/var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-7/test_freeze_detects_c.../var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-7/test_freeze_detects_catalog_ru0/catalog'))
+tmp_path = PosixPath('/private/var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-7/test_freeze_detects_catalog_ru0')
+
+    def test_freeze_detects_catalog_runtime_and_snapshot_drift(catalog: tuple[Path, Path], tmp_path: Path) -> None:
+>       from pai.evals.project_tasks import build_freeze, check_freeze
+E       ImportError: cannot import name 'build_freeze' from 'pai.evals.project_tasks' (/Users/sakuzeng/improve/coding/agent/projects/pai/src/pai/evals/project_tasks.py)
+
+tests/test_project_tasks.py:244: ImportError
+________ test_offline_report_marks_reference_contract_not_model_success ________
+
+catalog = (PosixPath('/private/var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-7/test_offline_report_m.../var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-7/test_offline_report_marks_refe0/catalog'))
+tmp_path = PosixPath('/private/var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-7/test_offline_report_marks_refe0')
+
+    def test_offline_report_marks_reference_contract_not_model_success(catalog: tuple[Path, Path], tmp_path: Path) -> None:
+>       from pai.evals.project_tasks import preflight
+E       ImportError: cannot import name 'preflight' from 'pai.evals.project_tasks' (/Users/sakuzeng/improve/coding/agent/projects/pai/src/pai/evals/project_tasks.py)
+
+tests/test_project_tasks.py:264: ImportError
+___________ test_project_cli_default_and_explicit_holdout_selection ____________
+
+catalog = (PosixPath('/private/var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-7/test_project_cli_defa.../var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-7/test_project_cli_default_and_e0/catalog'))
+tmp_path = PosixPath('/private/var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-7/test_project_cli_default_and_e0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10a7214c0>
+
+    def test_project_cli_default_and_explicit_holdout_selection(catalog: tuple[Path, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from pai.evals import project_tasks as module
+        invoked = []
+>       monkeypatch.setattr(module, "check_freeze", lambda *args: None)
+E       AttributeError: <module 'pai.evals.project_tasks' from '/Users/sakuzeng/improve/coding/agent/projects/pai/src/pai/evals/project_tasks.py'> has no attribute 'check_freeze'
+
+tests/test_project_tasks.py:279: AttributeError
+____________ test_project_cli_rejects_paid_flag_and_missing_freeze _____________
+
+catalog = (PosixPath('/private/var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-7/test_project_cli_reje.../var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-7/test_project_cli_rejects_paid_0/catalog'))
+tmp_path = PosixPath('/private/var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-7/test_project_cli_rejects_paid_0')
+
+    def test_project_cli_rejects_paid_flag_and_missing_freeze(catalog: tuple[Path, Path], tmp_path: Path) -> None:
+>       from pai.evals.project_tasks import main
+E       ImportError: cannot import name 'main' from 'pai.evals.project_tasks' (/Users/sakuzeng/improve/coding/agent/projects/pai/src/pai/evals/project_tasks.py)
+
+tests/test_project_tasks.py:292: ImportError
+__________ test_default_eval_does_not_collect_historical_grader_tests __________
+
+    def test_default_eval_does_not_collect_historical_grader_tests() -> None:
+        result = subprocess.run([str(REPO / "eval.sh"), "--collect-only", "-q"],
+                                cwd=REPO, text=True, capture_output=True, timeout=20)
+>       assert result.returncode == 0, result.stdout + result.stderr
+E       AssertionError: evals/project_tasks/dev-fix-path-key/grader/test_external.py::test_path_uses_named_argument[args0]
+E         evals/project_tasks/dev-fix-path-key/grader/test_external.py::test_path_uses_named_argument[args1]
+E         evals/project_tasks/dev-fix-path-key/grader/test_external.py::test_path_uses_named_argument[args2]
+E         evals/project_tasks/dev-fix-path-key/grader/test_external.py::test_empty_or_missing_path_does_not_use_content[args0]
+E         evals/project_tasks/dev-fix-path-key/grader/test_external.py::test_empty_or_missing_path_does_not_use_content[args1]
+E         evals/project_tasks/dev-fix-path-key/grader/test_external.py::test_absolute_path_is_not_rebased
+E         evals/project_tasks/dev-tests-queue/reference/test_task_added.py::test_matching_messages_are_removed_without_dropping_unmatched[all]
+E         evals/project_tasks/dev-tests-queue/reference/test_task_added.py::test_matching_messages_are_removed_without_dropping_unmatched[single]
+E         evals/project_tasks/dev-tests-queue/reference/test_task_added.py::test_all_keeps_fifo_and_returns_independent_result
+E         evals/project_tasks/dev-tests-queue/reference/test_task_added.py::test_empty_queue[all]
+E         evals/project_tasks/dev-tests-queue/reference/test_task_added.py::test_empty_queue[single]
+E         evals/test_replay.py::test_replay_greeting_trajectory_end_to_end
+E         
+E         ==================================== ERRORS ====================================
+E         _ ERROR collecting evals/project_tasks/holdout-fix-resume/grader/test_external.py _
+E         import file mismatch:
+E         imported module 'test_external' has this __file__ attribute:
+E           /Users/sakuzeng/improve/coding/agent/projects/pai/evals/project_tasks/dev-fix-path-key/grader/test_external.py
+E         which is not the same as the test file we want to collect:
+E           /Users/sakuzeng/improve/coding/agent/projects/pai/evals/project_tasks/holdout-fix-resume/grader/test_external.py
+E         HINT: remove __pycache__ / .pyc files and/or use a unique basename for your test file modules
+E         _ ERROR collecting evals/project_tasks/holdout-tests-boundary/reference/test_task_added.py _
+E         import file mismatch:
+E         imported module 'test_task_added' has this __file__ attribute:
+E           /Users/sakuzeng/improve/coding/agent/projects/pai/evals/project_tasks/dev-tests-queue/reference/test_task_added.py
+E         which is not the same as the test file we want to collect:
+E           /Users/sakuzeng/improve/coding/agent/projects/pai/evals/project_tasks/holdout-tests-boundary/reference/test_task_added.py
+E         HINT: remove __pycache__ / .pyc files and/or use a unique basename for your test file modules
+E         =========================== short test summary info ============================
+E         ERROR evals/project_tasks/holdout-fix-resume/grader/test_external.py
+E         ERROR evals/project_tasks/holdout-tests-boundary/reference/test_task_added.py
+E         !!!!!!!!!!!!!!!!!!! Interrupted: 2 errors during collection !!!!!!!!!!!!!!!!!!!!
+E         12/17 tests collected (5 deselected), 2 errors in 0.66s
+E         
+E       assert 2 == 0
+E        +  where 2 = CompletedProcess(args=['/Users/sakuzeng/improve/coding/agent/projects/pai/eval.sh', '--collect-only', '-q'], returncod...2 errors during collection !!!!!!!!!!!!!!!!!!!!\n12/17 tests collected (5 deselected), 2 errors in 0.66s\n", stderr='').returncode
+
+tests/test_project_tasks.py:304: AssertionError
+_________________ test_project_shell_entry_runs_offline_module _________________
+
+    def test_project_shell_entry_runs_offline_module() -> None:
+        result = subprocess.run([str(REPO / "eval.sh"), "--project-tasks", "--help"],
+                                cwd=REPO, text=True, capture_output=True, timeout=20)
+        assert result.returncode == 0, result.stdout + result.stderr
+>       assert "--split" in result.stdout
+E       assert '--split' in "usage: __main__.py [options] [file_or_dir] [file_or_dir] [...]\n\npositional arguments:\n  file_or_dir\n\ngeneral:\n ...specified file_or_dir or current dir if not specified; fixtures with leading '_' are only shown with the '-v' option\n"
+E        +  where "usage: __main__.py [options] [file_or_dir] [file_or_dir] [...]\n\npositional arguments:\n  file_or_dir\n\ngeneral:\n ...specified file_or_dir or current dir if not specified; fixtures with leading '_' are only shown with the '-v' option\n" = CompletedProcess(args=['/Users/sakuzeng/improve/coding/agent/projects/pai/eval.sh', '--project-tasks', '--help'], retu...r_dir or current dir if not specified; fixtures with leading \'_\' are only shown with the \'-v\' option\n', stderr='').stdout
+
+tests/test_project_tasks.py:312: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_project_tasks.py::test_freeze_detects_catalog_runtime_and_snapshot_drift
+FAILED tests/test_project_tasks.py::test_offline_report_marks_reference_contract_not_model_success
+FAILED tests/test_project_tasks.py::test_project_cli_default_and_explicit_holdout_selection
+FAILED tests/test_project_tasks.py::test_project_cli_rejects_paid_flag_and_missing_freeze
+FAILED tests/test_project_tasks.py::test_default_eval_does_not_collect_historical_grader_tests
+FAILED tests/test_project_tasks.py::test_project_shell_entry_runs_offline_module
+6 failed, 22 passed in 15.17s

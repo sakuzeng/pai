@@ -1,0 +1,132 @@
+{
+  "kind": "reference_contract",
+  "newModelCalls": 0,
+  "cases": [
+    {
+      "id": "dev-fix-path-key",
+      "kind": "fix",
+      "split": "development",
+      "original": {
+        "status": "fail",
+        "details": [
+          {
+            "check": "external_and_regressions",
+            "returncode": 1,
+            "collected": 54,
+            "failures": 5,
+            "errors": 0,
+            "skipped": 0,
+            "assertionFailures": 5
+          }
+        ]
+      },
+      "reference": {
+        "status": "pass",
+        "details": [
+          {
+            "check": "external_and_regressions",
+            "returncode": 0,
+            "collected": 54,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0,
+            "assertionFailures": 0
+          }
+        ]
+      },
+      "referenceContractPassed": true
+    },
+    {
+      "id": "dev-locate-compaction",
+      "kind": "locate",
+      "split": "development",
+      "original": {
+        "status": "fail",
+        "details": [
+          {
+            "check": "invalid_artifact",
+            "error": "[Errno 2] No such file or directory: '/Users/sakuzeng/improve/coding/agent/projects/pai/pai_playground/project-task-evals/feature57-default-dev/dev-locate-compaction/workspace/answer.json'"
+          }
+        ]
+      },
+      "reference": {
+        "status": "pass",
+        "details": [
+          {
+            "check": "answer",
+            "actual": {
+              "path": "src/pai/core/compaction.py",
+              "symbol": "find_cut_point"
+            }
+          }
+        ]
+      },
+      "referenceContractPassed": true
+    },
+    {
+      "id": "dev-tests-queue",
+      "kind": "tests",
+      "split": "development",
+      "original": {
+        "status": "fail",
+        "details": [
+          {
+            "check": "new_tests",
+            "error": "missing or existing file"
+          }
+        ]
+      },
+      "reference": {
+        "status": "pass",
+        "details": [
+          {
+            "check": "candidate_correct",
+            "returncode": 0,
+            "collected": 5,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0,
+            "assertionFailures": 0
+          },
+          {
+            "check": "regressions",
+            "returncode": 0,
+            "collected": 17,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0,
+            "assertionFailures": 0
+          },
+          {
+            "check": "mutant:drop_unmatched",
+            "returncode": 1,
+            "collected": 5,
+            "failures": 1,
+            "errors": 0,
+            "skipped": 0,
+            "assertionFailures": 1
+          },
+          {
+            "check": "mutant:repeat_single",
+            "returncode": 1,
+            "collected": 5,
+            "failures": 1,
+            "errors": 0,
+            "skipped": 0,
+            "assertionFailures": 1
+          },
+          {
+            "check": "mutant:reverse_all",
+            "returncode": 1,
+            "collected": 5,
+            "failures": 2,
+            "errors": 0,
+            "skipped": 0,
+            "assertionFailures": 2
+          }
+        ]
+      },
+      "referenceContractPassed": true
+    }
+  ]
+}

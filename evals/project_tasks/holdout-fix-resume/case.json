@@ -1,0 +1,22 @@
+{
+  "id": "holdout-fix-resume",
+  "kind": "fix",
+  "split": "holdout",
+  "family": "resume-recording-cwd",
+  "commit": "41d7174d8263d75e9c2f7fd14f67b8f620abce1f",
+  "reference_commit": "9e84081a9faf82b1fa57950417fdc2c8e6047a12",
+  "source": "src/pai/core/session.py",
+  "prompt": "修复 resolve_resume_target 的默认选择：无参时只返回 header.cwd 等于当前工作目录的最近会话，不能选到同仓库其他目录录制的会话。给该函数增加可选 cwd 参数以便测试（未传则使用进程 cwd）；无当前目录候选时清楚报错。显式 id 或路径仍允许跨目录。只允许修改 src/pai/core/session.py。只处理本题允许的产物，不修改已有测试、配置或开发文档。题目运行配置与判分材料由外部提供。",
+  "allowed": [
+    "src/pai/core/session.py"
+  ],
+  "regressions": [
+    "tests/test_session_format.py"
+  ],
+  "regression_select": {
+    "tests/test_session_format.py": [
+      "test_resolve_resume_target_by_id_prefix_and_by_path",
+      "test_resolve_resume_target_errors_honestly_when_nothing_matches"
+    ]
+  }
+}

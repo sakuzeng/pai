@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="3" skipped="0" tests="23" time="0.032" timestamp="2026-10-23T10:06:54.038020+08:00" hostname="sakuzengdeMacBook-Air.local"><testcase classname="test_ranges" name="test_clip_inside_range_returns_value[5-1-10]" time="0.000" /><testcase classname="test_ranges" name="test_clip_inside_range_returns_value[2-1-10]" time="0.000" /><testcase classname="test_ranges" name="test_clip_inside_range_returns_value[9-1-10]" time="0.000" /><testcase classname="test_ranges" name="test_clip_inside_range_returns_value[0--10-10]" time="0.000" /><testcase classname="test_ranges" name="test_clip_inside_range_returns_value[-3--10-10]" time="0.000" /><testcase classname="test_ranges" name="test_clip_inside_range_returns_value[7-7-7]" time="0.000" /><testcase classname="test_ranges" name="test_clip_outside_range_is_clamped[0-1-10-1]" time="0.000" /><testcase classname="test_ranges" name="test_clip_outside_range_is_clamped[-100--10-10--10]" time="0.000" /><testcase classname="test_ranges" name="test_clip_outside_range_is_clamped[11-1-10-10]" time="0.000"><failure message="assert 11 == 10&#10; +  where 11 = clip(11, 1, 10)">value = 11, lower = 1, upper = 10, expected = 10
+
+    @pytest.mark.parametrize(
+        "value, lower, upper, expected",
+        [
+            (0, 1, 10, 1),        # 低于下界
+            (-100, -10, 10, -10), # 负数低于下界
+            (11, 1, 10, 10),      # 高于上界
+            (1_000_000, 0, 100, 100),
+            (-5, 0, 0, 0),        # 退化区间越界
+        ],
+    )
+    def test_clip_outside_range_is_clamped(value, lower, upper, expected):
+&gt;       assert clip(value, lower, upper) == expected
+E       assert 11 == 10
+E        +  where 11 = clip(11, 1, 10)
+
+tests/test_ranges.py:41: AssertionError</failure></testcase><testcase classname="test_ranges" name="test_clip_outside_range_is_clamped[1000000-0-100-100]" time="0.000"><failure message="assert 1000000 == 100&#10; +  where 1000000 = clip(1000000, 0, 100)">value = 1000000, lower = 0, upper = 100, expected = 100
+
+    @pytest.mark.parametrize(
+        "value, lower, upper, expected",
+        [
+            (0, 1, 10, 1),        # 低于下界
+            (-100, -10, 10, -10), # 负数低于下界
+            (11, 1, 10, 10),      # 高于上界
+            (1_000_000, 0, 100, 100),
+            (-5, 0, 0, 0),        # 退化区间越界
+        ],
+    )
+    def test_clip_outside_range_is_clamped(value, lower, upper, expected):
+&gt;       assert clip(value, lower, upper) == expected
+E       assert 1000000 == 100
+E        +  where 1000000 = clip(1000000, 0, 100)
+
+tests/test_ranges.py:41: AssertionError</failure></testcase><testcase classname="test_ranges" name="test_clip_outside_range_is_clamped[-5-0-0-0]" time="0.000" /><testcase classname="test_ranges" name="test_clip_on_boundaries_returns_value[1-1-10]" time="0.000" /><testcase classname="test_ranges" name="test_clip_on_boundaries_returns_value[10-1-10]" time="0.000" /><testcase classname="test_ranges" name="test_clip_on_boundaries_returns_value[-10--10-10]" time="0.000" /><testcase classname="test_ranges" name="test_clip_on_boundaries_returns_value[10--10-10]" time="0.000" /><testcase classname="test_ranges" name="test_clip_on_boundaries_returns_value[7-7-7]" time="0.000" /><testcase classname="test_ranges" name="test_clip_invalid_range_raises_value_error[5-10-1]" time="0.000" /><testcase classname="test_ranges" name="test_clip_invalid_range_raises_value_error[0-1-0]" time="0.000" /><testcase classname="test_ranges" name="test_clip_invalid_range_raises_value_error[-5-3-2]" time="0.000" /><testcase classname="test_ranges" name="test_clip_invalid_range_raises_value_error[0--1--2]" time="0.000" /><testcase classname="test_ranges" name="test_clip_invalid_range_error_message" time="0.000" /><testcase classname="test_ranges" name="test_clip_result_within_bounds" time="0.000"><failure message="assert 14 &lt;= 13">def test_clip_result_within_bounds():
+        lower, upper = -7, 13
+        for value in range(-20, 21):
+            result = clip(value, lower, upper)
+&gt;           assert lower &lt;= result &lt;= upper
+E           assert 14 &lt;= 13
+
+tests/test_ranges.py:84: AssertionError</failure></testcase><testcase classname="test_ranges" name="test_clip_is_idempotent" time="0.000" /></testsuite></testsuites>
