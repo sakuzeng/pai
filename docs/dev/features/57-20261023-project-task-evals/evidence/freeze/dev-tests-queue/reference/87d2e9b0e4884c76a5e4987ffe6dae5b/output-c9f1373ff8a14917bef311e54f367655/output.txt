@@ -1,0 +1,28 @@
+.F...                                                                    [100%]
+=================================== FAILURES ===================================
+____ test_matching_messages_are_removed_without_dropping_unmatched[single] _____
+
+mode = 'single'
+
+    @pytest.mark.parametrize('mode', ['all', 'single'])
+    def test_matching_messages_are_removed_without_dropping_unmatched(mode: str) -> None:
+        queue = PendingMessageQueue(mode)
+        values = [{'content': text} for text in ('/help', 'one', '!pwd', 'two')]
+        for value in values:
+            queue.enqueue(value)
+        match = lambda item: not item['content'].startswith(('/', '!'))
+        if mode == 'all':
+            assert queue.drain(match) == [values[1], values[3]]
+        else:
+            assert queue.drain(match) == [values[1]]
+>           assert queue.drain(match) == [values[3]]
+E           AssertionError: assert [{'content': 'one'}] == [{'content': 'two'}]
+E             
+E             At index 0 diff: {'content': 'one'} != {'content': 'two'}
+E             Use -v to get more diff
+
+_external_grading/test_check_0.py:15: AssertionError
+- generated xml file: /Users/sakuzeng/improve/coding/agent/projects/pai/pai_playground/project-task-evals/feature57-final-freeze/dev-tests-queue/reference/87d2e9b0e4884c76a5e4987ffe6dae5b/output-c9f1373ff8a14917bef311e54f367655/junit.xml -
+=========================== short test summary info ============================
+FAILED ../../../../../../../../../../../../../../dev/test_check_0.py::test_matching_messages_are_removed_without_dropping_unmatched[single]
+1 failed, 4 passed in 0.02s

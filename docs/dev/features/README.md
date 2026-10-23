@@ -84,6 +84,7 @@
 
 | 功能 | 状态 | 一句话结果 |
 |---|---|---|
+| [57-20261023-project-task-evals](57-20261023-project-task-evals/README.md) | 已交付 | 六题完整历史快照与离线契约已冻结，默认开发集、显式保留集；无新增模型调用 |
 | [56-20261022-task-evals](56-20261022-task-evals/README.md) | 已验收 | 命令行任务评测自动化验收通过；首轮 9/9 产物独立重判通过，本轮无新增模型调用 |
 | [55-20261022-baseline-consistency](55-20261022-baseline-consistency/README.md) | 已交付 | 审计后补齐两个索引、按证据整理 TODO、补记 54 偏差并加强文档校验 |
 | [30-20260824-config-and-trust-dedup](30-20260824-config-and-trust-dedup/README.md) | 已交付 | settings 读取和信任标记共用，pytest-xdist 作为可选测试路径 |

@@ -77,4 +77,4 @@ def eval_artifact_dir(request, eval_run_dir):
     return directory
 
 # 题目中的测试只由评分器/题目自身运行，不并入评测设施的 pytest 收集。
-collect_ignore = ["tasks"]
+collect_ignore = ["tasks", "project_tasks"]

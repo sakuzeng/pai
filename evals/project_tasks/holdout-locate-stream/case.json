@@ -1,0 +1,16 @@
+{
+  "id": "holdout-locate-stream",
+  "kind": "locate",
+  "split": "holdout",
+  "family": "stream-assembly",
+  "commit": "9937c0288b731f5ae3fd333a7e422642c1e045d9",
+  "prompt": "定位流式响应的入口：消费增量块、装配助手正文与工具调用、累计最终 usage，并返回完整响应对象。将答案写入 answer.json，格式为 {\"path\":\"相对源码路径\",\"symbol\":\"函数名\"}。只处理本题允许的产物，不修改已有测试、配置或开发文档。题目运行配置与判分材料由外部提供。",
+  "answer": {
+    "path": "src/pai/core/streaming.py",
+    "symbol": "assemble"
+  },
+  "allowed": [
+    "answer.json"
+  ],
+  "regressions": []
+}

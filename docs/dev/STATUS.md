@@ -1,6 +1,6 @@
 # 当前状态快照
 
-最后核对：2026-10-23。上次固定文档基线涵盖 [54 文档对齐](features/54-20261022-current-docs-alignment/README.md)与[55 审计收口](features/55-20261022-baseline-consistency/README.md)；feature 56 已验收，本地整合基线由 main 引用定位，agent 主循环与工具沿用原实现。
+最后核对：2026-10-23。feature 57 的完整历史任务离线设施已交付，尚未进行新模型评测。上次固定文档基线涵盖 [54 文档对齐](features/54-20261022-current-docs-alignment/README.md)与[55 审计收口](features/55-20261022-baseline-consistency/README.md)；feature 56 已验收，本地整合基线由 main 引用定位，agent 主循环与工具沿用原实现。
 版本定位：文档与校验内容基线为 `585ac97`；默认开发主线为 `main`，远端为 `origin/main`。54/55 的远端同步授权见 55 档案；56 的本地收口见 56 日志，最新整合版本用 `git log -1 --format=%H main` 查询。
 
 阶段 1—7 均已有交付：压缩、REPL/TUI、记忆、权限、流式、skills/MCP 与基础 evals。
@@ -31,11 +31,13 @@
 | `tui/transcript.py` / `tui/groups.py` / `tui/markdown.py` / `tui/altscreen.py` | 可用 | transcript、连续工具分组、编辑 diff 默认展开、Markdown 与英文词边界折行、整屏重绘 |
 | `tui/mouse.py` / `tui/selection.py` / `tui/clipboard.py` / `tui/record.py` / `tui/replay.py` | 可用 | 鼠标与选区、剪贴板、终端字节录制及 PNG 回放；真机体验仍有待验收项 |
 | `viz/` | 可用 | 本地结构图、事件时间线与代码跳转；页面纯观察 |
-| `evals` | 可用 | 独立回放与真模型入口、工件索引、单步工具选择及三固定任务重复测量；泛化与改进收益仍未验证 |
+| `evals` | 可用 | 回放/原有真模型入口、三固定任务重复测量；57 增加六题完整历史快照、分组离线参考契约与冻结，未新增真实模型结果 |
 
-本地已验收：[56 任务级评测](features/56-20261022-task-evals/README.md)，分支 `feat/56-task-evals`；用户指定复用原始真实记录，完整离线与九份产物独立重判通过；本地提交与合并结果由 Git 引用定位，尚未推送。
+本地已验收：[56 任务级评测](features/56-20261022-task-evals/README.md)，分支 `feat/56-task-evals`；用户指定复用原始真实记录，完整离线与九份产物独立重判通过；本地提交 c473de0、合并 main 为 861cec7；用户已授权将 main 和功能分支同步 origin，实际远端版本由 Git 引用核对。
 
 ## 最近交付
+
+- [57：真实项目任务离线设施](features/57-20261023-project-task-evals/README.md)：六题完整历史快照、独立评分与哈希冻结；默认三开发题，显式三保留题。参考契约通过不算模型成绩，真实 once 适配与模型基线仍待后续；57 的提交/远端同步已获用户授权，当前仍为独立分支，具体版本用 origin/feat/57-project-task-evals 核对。
 
 - [56：任务级评测](features/56-20261022-task-evals/README.md)：真实 once 三任务各三次，外部判分完整成功 9/9；主请求 107291 token、5 次 bash 请求被拒后任务仍完整成功，其中修 bug 三次的额外检查未执行；真人弹窗不适用。固定小题结果不外推实际项目能力。
 
@@ -48,10 +50,10 @@
 
 ## 实测基线与验证边界
 
-- 2026-10-22，Python 3.9.6，本轮验收标准 ./test.sh 完整离线实际输出：`1965 passed, 8 deselected in 203.74s (0:03:23)`。8 项为默认排除的真实 LLM 测试；红→绿原始输出见 [56 日志](features/56-20261022-task-evals/devlog.md)。
+- 2026-10-23，Python 3.9.6，本轮标准 ./test.sh 完整离线实际输出：`1997 passed, 8 deselected in 224.05s (0:03:44)`。包含新增 32 项；8 项为真实 LLM 排除。首轮仅 STATUS 数量对账失败的输出也保留，见 [57 交付证据](features/57-20261023-project-task-evals/evidence/README.md)。
 - 运行命令为 `PATH=<项目虚拟环境>/bin:$PATH PYTHONDONTWRITEBYTECODE=1 ./test.sh -p no:cacheprovider --basetemp=<临时目录> -q`，实际解释器为 Python 3.9.6，临时产物位于 `/private/tmp`。
-- 完整离线回归获准在沙箱外执行，以支持 localhost 假 provider、pty 和 ps 进程图反证；真人交互验收本轮未做。
-- 本轮验收重跑两个离线入口、重判九份原始产物；完整输出与范围见 [56 验收报告](features/56-20261022-task-evals/evidence/20261022-acceptance-133734/README.md)。
+- 完整离线回归获准在沙箱外执行，以支持 localhost 假 provider、pty 和 ps 进程图反证；本轮未做真人交互验收或新增真实模型调用。
+- 56 上轮验收重跑两个离线入口、重判九份原始产物；完整输出与范围见 [56 验收报告](features/56-20261022-task-evals/evidence/20261022-acceptance-133734/README.md)。
 - 首次交付时，默认回放、新任务离线入口与真实基线均已执行；原始输出见 [56 证据](features/56-20261022-task-evals/evidence/20261022-deepseek-flash-baseline/README.md)。真实入口含预检共 69.12 秒；没有额外补跑或原有 LLM 套件跑批。
 
 ## 重要边界与未完成验证
@@ -65,5 +67,5 @@
 ## 下一步
 
 1. 按 TODO 的近期阅读入口安排真人验收；有复现证据再处理交互问题。
-2. 在 56 的固定小题基线上扩充实际项目场景与保留集；改工具/提示词前先冻结新判据做重复对照，不能把 9/9 当泛化收益。
+2. 57 的六题历史任务已做离线冻结，后续真实 once 执行与模型预算仍须另定；改工具/提示词前先在开发集重复对照，不把参考解通过或 56 的 9/9 当泛化收益。
 3. 用真实使用数据校准预算；MCP 新传输、ToolSearch、代码重构等按既有触发条件评估。

@@ -227,6 +227,7 @@ pai 自身的会话、记忆、历史与信任标记写入用户目录（布局�
 ./eval.sh --llm        # 追加原有真模型评测；工件落 evals/.eval/<时间戳>/runs.jsonl
 ./eval.sh --tasks      # 三个固定开发任务的离线评分预检
 ./eval.sh --tasks --llm # deepseek-flash 三任务各三次真实基线，会产生费用
+./eval.sh --project-tasks # 完整历史项目开发集的离线参考契约；不调用模型
 ```
 
 任务基线的权限、预算、判分和工件说明见 [evals](evals/README.md)。真人弹窗在单次模式下不适用；固定小题结果不外推真实项目能力。

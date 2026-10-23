@@ -1,0 +1,15 @@
+{
+  "id": "dev-tests-queue",
+  "kind": "tests",
+  "split": "development",
+  "family": "queue-predicate-drain",
+  "commit": "9937c0288b731f5ae3fd333a7e422642c1e045d9",
+  "source": "src/pai/core/queue.py",
+  "prompt": "为消息队列补一组独立回归测试，新增 tests/test_task_added.py。覆盖 all/single 两模式、按谓词抽取消息、未匹配消息保留且顺序不变、single 从后方找到第一条匹配消息、取走结果不导致重复发送，以及空队列行为。不得修改实现和已有测试。只处理本题允许的产物，不修改已有测试、配置或开发文档。题目运行配置与判分材料由外部提供。",
+  "allowed": [
+    "tests/test_task_added.py"
+  ],
+  "regressions": [
+    "tests/test_queue.py"
+  ]
+}

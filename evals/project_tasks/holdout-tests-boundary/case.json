@@ -1,0 +1,15 @@
+{
+  "id": "holdout-tests-boundary",
+  "kind": "tests",
+  "split": "holdout",
+  "family": "working-path-normalization",
+  "commit": "9937c0288b731f5ae3fd333a7e422642c1e045d9",
+  "source": "src/pai/core/boundary.py",
+  "prompt": "为 path_in_working_path 新增 tests/test_task_added.py，覆盖目录自身/子路径、相似前缀的相邻目录、空路径与空工作目录、含 .. 的路径归一化、根目录边界。只验证该纯路径判断契约，不把它误当符号链接解析函数；不得修改实现或已有测试。只处理本题允许的产物，不修改已有测试、配置或开发文档。题目运行配置与判分材料由外部提供。",
+  "allowed": [
+    "tests/test_task_added.py"
+  ],
+  "regressions": [
+    "tests/test_boundary.py"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "dev-fix-path-key",
+  "kind": "fix",
+  "split": "development",
+  "family": "permission-json-key-order",
+  "commit": "4ef6043f1d6ea453416d2ef2b530aa78b8e15339",
+  "reference_commit": "a8bac67b2393d908cb46c91e51f3e5ab034b0757",
+  "source": "src/pai/core/tools/fs.py",
+  "prompt": "修复文件工具路径规则的键序问题：同一 write_file/edit_file 请求中，path 与 content 在参数对象中的先后顺序不应改变规则匹配目标。路径必须从 path 字段取得；缺失/空路径不得把正文当路径，相对路径仍按匹配上下文解析。仅允许修改 src/pai/core/tools/fs.py。只处理本题允许的产物，不修改已有测试、配置或开发文档。题目运行配置与判分材料由外部提供。",
+  "allowed": [
+    "src/pai/core/tools/fs.py"
+  ],
+  "regressions": [
+    "tests/test_permissions.py"
+  ]
+}

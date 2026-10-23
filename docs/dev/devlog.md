@@ -147,3 +147,6 @@
 - 2026-10-22 任务级评测交付——逐项拍板后 TDD，标准完整离线 1965 passed、8 deselected；三固定任务真实基线完整成功 9/9，107291 token、5 次 bash 拒绝均恢复；原始工件、D#82 与复盘已归档，尚未提交/推送 → [features/56](features/56-20261022-task-evals/README.md)
 - 2026-10-22 任务级评测自动化验收——用户选择复用真实记录；本轮全量 1965 passed、8 deselected，包含新增 38 项；两个离线入口通过，152 个工件核对及九份历史产物独立重判 9/9，本轮新增模型调用 0；56 状态同步为已验收 → [验收报告](features/56-20261022-task-evals/evidence/20261022-acceptance-133734/README.md)
 - 2026-10-23 任务评测本地收口——用户同意先整合 56 再做真实项目评测；复核 78 passed、1 skipped，152 工件及九次指标一致，无新增模型调用；本地提交/合并结果由 Git 引用定位，未推送 → [features/56](features/56-20261022-task-evals/README.md)
+- 2026-10-23 真实项目任务评测立项——56 已本地提交 c473de0、整合 main 861cec7；新分支 feat/57-project-task-evals，四项单选拍板后定稿 spec/plan，本轮仅离线，尚无新测试结果 → [features/57](features/57-20261023-project-task-evals/README.md)
+- 2026-10-23 真实项目任务离线交付——六题完整历史快照、开发/保留分组与哈希冻结，相关参考契约通过；完整离线 1997 passed、8 deselected，含新增 32 项；无新增模型调用，D#83/复盘/后续 TODO 已登记，57 未提交或推送 → [features/57](features/57-20261023-project-task-evals/README.md)
+- 2026-10-23 任务评测远端同步授权——用户要求“推送到远端吧”；将 57 提交并推送独立分支，同时同步已整合 56 的 main 与 56 分支；冻结/归档及 1997 项验收证据复核一致，实际结果用远端引用核对 → [features/57](features/57-20261023-project-task-evals/README.md)

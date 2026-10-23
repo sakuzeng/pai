@@ -11,6 +11,11 @@
 # 与被评测进程的会话 JSONL 快照（gitignore，含 prompt 与工具输出）。
 set -euo pipefail
 
+if [[ "${1:-}" == "--project-tasks" ]]; then
+    shift
+    exec python3 -m pai.evals.project_tasks "$@"
+fi
+
 if [[ "${1:-}" == "--tasks" ]]; then
     shift
     if [[ "${1:-}" == "--llm" ]]; then

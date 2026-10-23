@@ -1,0 +1,16 @@
+{
+  "id": "dev-locate-compaction",
+  "kind": "locate",
+  "split": "development",
+  "family": "compaction-cut-point",
+  "commit": "9937c0288b731f5ae3fd333a7e422642c1e045d9",
+  "prompt": "在本仓库中定位：按最近保留 token 预算，在真实 usage 锚点边界计算历史保留起点的函数。把唯一答案写入 answer.json，格式为 {\"path\":\"相对源码路径\",\"symbol\":\"函数名\"}。只处理本题允许的产物，不修改已有测试、配置或开发文档。题目运行配置与判分材料由外部提供。",
+  "answer": {
+    "path": "src/pai/core/compaction.py",
+    "symbol": "find_cut_point"
+  },
+  "allowed": [
+    "answer.json"
+  ],
+  "regressions": []
+}

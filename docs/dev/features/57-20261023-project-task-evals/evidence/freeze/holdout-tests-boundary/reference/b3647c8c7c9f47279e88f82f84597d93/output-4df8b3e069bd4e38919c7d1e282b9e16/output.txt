@@ -1,0 +1,29 @@
+....FF.....                                                              [100%]
+=================================== FAILURES ===================================
+____________________ test_path_boundaries[-/project-False] _____________________
+
+target = '', root = '/project', inside = False
+
+    @pytest.mark.parametrize('target,root,inside', [('/project', '/project', True), ('/project/src/a.py', '/project', True), ('/project-evil/a.py', '/project', False), ('/other', '/project', False), ('', '/project', False), ('/project', '', False), ('/project/src/../a.py', '/project', True), ('/project/../outside', '/project', False), ('/project/a', '/project/', True), ('/anywhere', '/', True), ('/', '/', True)])
+    def test_path_boundaries(target: str, root: str, inside: bool) -> None:
+>       assert path_in_working_path(target, root) is inside
+E       AssertionError: assert True is False
+E        +  where True = path_in_working_path('', '/project')
+
+_external_grading/test_check_0.py:6: AssertionError
+____________________ test_path_boundaries[/project--False] _____________________
+
+target = '/project', root = '', inside = False
+
+    @pytest.mark.parametrize('target,root,inside', [('/project', '/project', True), ('/project/src/a.py', '/project', True), ('/project-evil/a.py', '/project', False), ('/other', '/project', False), ('', '/project', False), ('/project', '', False), ('/project/src/../a.py', '/project', True), ('/project/../outside', '/project', False), ('/project/a', '/project/', True), ('/anywhere', '/', True), ('/', '/', True)])
+    def test_path_boundaries(target: str, root: str, inside: bool) -> None:
+>       assert path_in_working_path(target, root) is inside
+E       AssertionError: assert True is False
+E        +  where True = path_in_working_path('/project', '')
+
+_external_grading/test_check_0.py:6: AssertionError
+- generated xml file: /Users/sakuzeng/improve/coding/agent/projects/pai/pai_playground/project-task-evals/feature57-final-freeze/holdout-tests-boundary/reference/b3647c8c7c9f47279e88f82f84597d93/output-4df8b3e069bd4e38919c7d1e282b9e16/junit.xml -
+=========================== short test summary info ============================
+FAILED ../../../../../../../../../../../../../../dev/test_check_0.py::test_path_boundaries[-/project-False]
+FAILED ../../../../../../../../../../../../../../dev/test_check_0.py::test_path_boundaries[/project--False]
+2 failed, 9 passed in 0.02s

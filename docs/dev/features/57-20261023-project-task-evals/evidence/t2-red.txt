@@ -1,0 +1,108 @@
+........FFFFFFFF                                                         [100%]
+=================================== FAILURES ===================================
+_______________ test_external_grader_checks_artifacts_and_source _______________
+
+catalog = (PosixPath('/private/var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-2/test_external_grader_.../var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-2/test_external_grader_checks_ar0/catalog'))
+tmp_path = PosixPath('/private/var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-2/test_external_grader_checks_ar0')
+
+    def test_external_grader_checks_artifacts_and_source(catalog: tuple[Path, Path], tmp_path: Path) -> None:
+>       from pai.evals.project_tasks import grade_project, install_reference
+E       ImportError: cannot import name 'grade_project' from 'pai.evals.project_tasks' (/Users/sakuzeng/improve/coding/agent/projects/pai/src/pai/evals/project_tasks.py)
+
+tests/test_project_tasks.py:156: ImportError
+________ test_fix_original_fails_reference_passes_in_historical_source _________
+
+catalog = (PosixPath('/private/var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-2/test_fix_original_fai.../var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-2/test_fix_original_fails_refere0/catalog'))
+tmp_path = PosixPath('/private/var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-2/test_fix_original_fails_refere0')
+
+    def test_fix_original_fails_reference_passes_in_historical_source(catalog: tuple[Path, Path], tmp_path: Path) -> None:
+>       from pai.evals.project_tasks import grade_project, install_reference
+E       ImportError: cannot import name 'grade_project' from 'pai.evals.project_tasks' (/Users/sakuzeng/improve/coding/agent/projects/pai/src/pai/evals/project_tasks.py)
+
+tests/test_project_tasks.py:168: ImportError
+_________ test_new_tests_cannot_pass_empty_skipped_or_import_errors[] __________
+
+catalog = (PosixPath('/private/var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-2/test_new_tests_cannot.../var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-2/test_new_tests_cannot_pass_emp0/catalog'))
+tmp_path = PosixPath('/private/var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-2/test_new_tests_cannot_pass_emp0')
+bad = ''
+
+    @pytest.mark.parametrize("bad", ["", "def test_empty():\n    pass\n",
+                                          "import pytest\n@pytest.mark.skip\ndef test_skip():\n    assert False\n",
+                                          "import nonexistent_dependency\n"])
+    def test_new_tests_cannot_pass_empty_skipped_or_import_errors(catalog: tuple[Path, Path], tmp_path: Path, bad: str) -> None:
+>       from pai.evals.project_tasks import grade_project
+E       ImportError: cannot import name 'grade_project' from 'pai.evals.project_tasks' (/Users/sakuzeng/improve/coding/agent/projects/pai/src/pai/evals/project_tasks.py)
+
+tests/test_project_tasks.py:184: ImportError
+_ test_new_tests_cannot_pass_empty_skipped_or_import_errors[def test_empty():\n    pass\n] _
+
+catalog = (PosixPath('/private/var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-2/test_new_tests_cannot.../var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-2/test_new_tests_cannot_pass_emp1/catalog'))
+tmp_path = PosixPath('/private/var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-2/test_new_tests_cannot_pass_emp1')
+bad = 'def test_empty():\n    pass\n'
+
+    @pytest.mark.parametrize("bad", ["", "def test_empty():\n    pass\n",
+                                          "import pytest\n@pytest.mark.skip\ndef test_skip():\n    assert False\n",
+                                          "import nonexistent_dependency\n"])
+    def test_new_tests_cannot_pass_empty_skipped_or_import_errors(catalog: tuple[Path, Path], tmp_path: Path, bad: str) -> None:
+>       from pai.evals.project_tasks import grade_project
+E       ImportError: cannot import name 'grade_project' from 'pai.evals.project_tasks' (/Users/sakuzeng/improve/coding/agent/projects/pai/src/pai/evals/project_tasks.py)
+
+tests/test_project_tasks.py:184: ImportError
+_ test_new_tests_cannot_pass_empty_skipped_or_import_errors[import pytest\n@pytest.mark.skip\ndef test_skip():\n    assert False\n] _
+
+catalog = (PosixPath('/private/var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-2/test_new_tests_cannot.../var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-2/test_new_tests_cannot_pass_emp2/catalog'))
+tmp_path = PosixPath('/private/var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-2/test_new_tests_cannot_pass_emp2')
+bad = 'import pytest\n@pytest.mark.skip\ndef test_skip():\n    assert False\n'
+
+    @pytest.mark.parametrize("bad", ["", "def test_empty():\n    pass\n",
+                                          "import pytest\n@pytest.mark.skip\ndef test_skip():\n    assert False\n",
+                                          "import nonexistent_dependency\n"])
+    def test_new_tests_cannot_pass_empty_skipped_or_import_errors(catalog: tuple[Path, Path], tmp_path: Path, bad: str) -> None:
+>       from pai.evals.project_tasks import grade_project
+E       ImportError: cannot import name 'grade_project' from 'pai.evals.project_tasks' (/Users/sakuzeng/improve/coding/agent/projects/pai/src/pai/evals/project_tasks.py)
+
+tests/test_project_tasks.py:184: ImportError
+_ test_new_tests_cannot_pass_empty_skipped_or_import_errors[import nonexistent_dependency\n] _
+
+catalog = (PosixPath('/private/var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-2/test_new_tests_cannot.../var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-2/test_new_tests_cannot_pass_emp3/catalog'))
+tmp_path = PosixPath('/private/var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-2/test_new_tests_cannot_pass_emp3')
+bad = 'import nonexistent_dependency\n'
+
+    @pytest.mark.parametrize("bad", ["", "def test_empty():\n    pass\n",
+                                          "import pytest\n@pytest.mark.skip\ndef test_skip():\n    assert False\n",
+                                          "import nonexistent_dependency\n"])
+    def test_new_tests_cannot_pass_empty_skipped_or_import_errors(catalog: tuple[Path, Path], tmp_path: Path, bad: str) -> None:
+>       from pai.evals.project_tasks import grade_project
+E       ImportError: cannot import name 'grade_project' from 'pai.evals.project_tasks' (/Users/sakuzeng/improve/coding/agent/projects/pai/src/pai/evals/project_tasks.py)
+
+tests/test_project_tasks.py:184: ImportError
+____________ test_reference_tests_must_kill_each_mutant_themselves _____________
+
+catalog = (PosixPath('/private/var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-2/test_reference_tests_.../var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-2/test_reference_tests_must_kill0/catalog'))
+tmp_path = PosixPath('/private/var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-2/test_reference_tests_must_kill0')
+
+    def test_reference_tests_must_kill_each_mutant_themselves(catalog: tuple[Path, Path], tmp_path: Path) -> None:
+>       from pai.evals.project_tasks import grade_project, install_reference
+E       ImportError: cannot import name 'grade_project' from 'pai.evals.project_tasks' (/Users/sakuzeng/improve/coding/agent/projects/pai/src/pai/evals/project_tasks.py)
+
+tests/test_project_tasks.py:193: ImportError
+__________________ test_deleted_test_and_symlink_are_rejected __________________
+
+catalog = (PosixPath('/private/var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-2/test_deleted_test_and.../var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-2/test_deleted_test_and_symlink_0/catalog'))
+tmp_path = PosixPath('/private/var/folders/yb/nmbrqvdd59bc3vn056gxgyj80000gn/T/pytest-of-sakuzeng/pytest-2/test_deleted_test_and_symlink_0')
+
+    def test_deleted_test_and_symlink_are_rejected(catalog: tuple[Path, Path], tmp_path: Path) -> None:
+>       from pai.evals.project_tasks import grade_project, install_reference
+E       ImportError: cannot import name 'grade_project' from 'pai.evals.project_tasks' (/Users/sakuzeng/improve/coding/agent/projects/pai/src/pai/evals/project_tasks.py)
+
+tests/test_project_tasks.py:206: ImportError
+=========================== short test summary info ============================
+FAILED tests/test_project_tasks.py::test_external_grader_checks_artifacts_and_source
+FAILED tests/test_project_tasks.py::test_fix_original_fails_reference_passes_in_historical_source
+FAILED tests/test_project_tasks.py::test_new_tests_cannot_pass_empty_skipped_or_import_errors[]
+FAILED tests/test_project_tasks.py::test_new_tests_cannot_pass_empty_skipped_or_import_errors[def test_empty():\n    pass\n]
+FAILED tests/test_project_tasks.py::test_new_tests_cannot_pass_empty_skipped_or_import_errors[import pytest\n@pytest.mark.skip\ndef test_skip():\n    assert False\n]
+FAILED tests/test_project_tasks.py::test_new_tests_cannot_pass_empty_skipped_or_import_errors[import nonexistent_dependency\n]
+FAILED tests/test_project_tasks.py::test_reference_tests_must_kill_each_mutant_themselves
+FAILED tests/test_project_tasks.py::test_deleted_test_and_symlink_are_rejected
+8 failed, 8 passed in 1.49s
